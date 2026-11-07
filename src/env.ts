@@ -1,0 +1,34 @@
+export interface Env {
+  KV: KVNamespace;
+
+  // vars (wrangler.jsonc)
+  TZ_NAME: string;
+  LAT: string;
+  LON: string;
+  DATA_SOURCE: "garmin" | "intervals";
+
+  // secrets (wrangler secret put / .dev.vars) – nikdy nelogovat
+  GARMIN_API_KEY?: string;
+  TELEGRAM_BOT_TOKEN?: string;
+  TELEGRAM_CHAT_ID?: string;
+  TELEGRAM_WEBHOOK_SECRET?: string;
+  ADMIN_TOKEN?: string;
+  INTERVALS_API_KEY?: string;
+  INTERVALS_ATHLETE_ID?: string;
+}
+
+/** Bezpečný přehled secrets: jen nastaveno / chybí, nikdy hodnota. */
+export function secretStatus(env: Env): Record<string, "nastavený" | "chybí"> {
+  const keys = [
+    "GARMIN_API_KEY",
+    "TELEGRAM_BOT_TOKEN",
+    "TELEGRAM_CHAT_ID",
+    "TELEGRAM_WEBHOOK_SECRET",
+    "ADMIN_TOKEN",
+    "INTERVALS_API_KEY",
+    "INTERVALS_ATHLETE_ID",
+  ] as const;
+  const out: Record<string, "nastavený" | "chybí"> = {};
+  for (const k of keys) out[k] = env[k] ? "nastavený" : "chybí";
+  return out;
+}

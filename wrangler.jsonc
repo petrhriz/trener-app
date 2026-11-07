@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "trener-app",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  // Jediný cron. Co se kdy má stát, rozhoduje interní plánovač podle času v Europe/Prague.
+  "triggers": { "crons": ["*/15 * * * *"] },
+  "observability": { "enabled": true },
+  "kv_namespaces": [
+    // id doplní setup po `wrangler kv namespace create KV`
+    { "binding": "KV", "id": "REPLACE_KV_ID" }
+  ],
+  "vars": {
+    "TZ_NAME": "Europe/Prague",
+    "LAT": "50.64",
+    "LON": "13.82",
+    "DATA_SOURCE": "garmin"
+  }
+}

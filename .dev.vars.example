@@ -1,0 +1,21 @@
+# Zkopíruj jako .dev.vars a doplň hodnoty. .dev.vars je v .gitignore a nikdy se necommituje.
+# Hodnotu piš hned za "=" bez uvozovek a bez mezer.
+
+# Garmin Personal API key (Garmin Connect -> Personal API)
+GARMIN_API_KEY=
+
+# Telegram bot token od @BotFather
+TELEGRAM_BOT_TOKEN=
+
+# Tvoje Telegram chat_id (zjistí `npm run telegram:chatid`)
+TELEGRAM_CHAT_ID=
+
+# Náhodný řetězec pro ověření webhooku Telegramu (vygeneruje `npm run secrets:push`, když je prázdný)
+TELEGRAM_WEBHOOK_SECRET=
+
+# Náhodný řetězec pro administrátorské volání (fáze 0, ruční sync). Vygeneruje se sám, když je prázdný.
+ADMIN_TOKEN=
+
+# intervals.icu API klíč (Settings -> Developer Settings) a ID atleta (např. i123456)
+INTERVALS_API_KEY=
+INTERVALS_ATHLETE_ID=
