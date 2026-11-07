@@ -58,11 +58,26 @@
 
 ## Fáze (podle promptu, kap. 9)
 
-0. Účty + test Garmin z Cloudflare ← **teď**
-1. Data: D1 schéma, sync po dávkách, backfill celé historie
-2. Jádro výpočtů + testy, srovnání 14 dní s intervals.icu
-3. Telegram bot: ráno, rozbor aktivity, příkazy
-4. Plán: 7 dní, návrhy Z1…, potvrzení, intervals.icu sync / FIT
-5. Dashboard za Cloudflare Access
-6. LLM vrstva
-7. Doladění: týden, upozornění, síla/mobilita, roční cíl
+0. ✅ Účty + test Garmin z Cloudflare (funguje)
+1. ✅ Data: D1 schéma, sync po dávkách, backfill celé historie (696 aktivit od 2019, 584 nocí)
+2. ✅ Jádro výpočtů + 71 testů, srovnání s intervals.icu (`npm run compare`, kalibrace hrTSS)
+3. ✅ Telegram bot: ráno, rozbor aktivity, příkazy, volný text
+4. ✅ Plán: 7 dní, návrhy Z1…, potvrzení, intervals.icu sync s ověřením, FIT
+5. ✅ Dashboard (čeká na zapnutí Cloudflare Access – kroky v README)
+6. ✅ LLM vrstva (Workers AI Mistral Small 3.1, kontrola čísel, šablony)
+7. ✅ Týdenní review, upozornění, síla/mobilita, roční cíl, režimy plánu
+
+## Soubory
+
+| Soubor | Co |
+|---|---|
+| `src/index.ts` | Hono app: webhook, /api, /admin, cron |
+| `src/scheduler.ts` | rozvrh zpráv podle pražského času |
+| `src/sync/*` | dávkový sync Garmin + intervals.icu + Open-Meteo, přepočet metrik |
+| `src/core/*` | zotavení, kondice, zátěž, kvalita, plán, workout 7.3, počasí, výživa, rozbor aktivity, doplňky |
+| `src/report/*` | načtení kontextu z D1 a skládání reportů |
+| `src/telegram/*` | API, šablony zpráv, příkazy a záměry |
+| `src/plan/*` | návrhy změn, zápis + ověření, FIT |
+| `src/llm/llm.ts` | Workers AI, kontrola čísel, pravidlové odpovědi |
+| `src/api/*` | API dashboardu + ověření Access JWT |
+| `public/*` | dashboard (vanilla JS, SVG grafy) |

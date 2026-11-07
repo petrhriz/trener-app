@@ -1,5 +1,12 @@
 export interface Env {
   KV: KVNamespace;
+  DB: D1Database;
+  AI?: Ai;
+  ASSETS?: Fetcher;
+  ACCESS_TEAM_DOMAIN?: string;
+  ACCESS_AUD?: string;
+  LLM_MODEL?: string;
+  PUBLIC_URL?: string;
 
   // vars (wrangler.jsonc)
   TZ_NAME: string;

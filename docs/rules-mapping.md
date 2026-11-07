@@ -32,7 +32,7 @@ Stav „ověřeno“ doplníme po fázi 0/1 podle `docs/garmin-endpoints.md`.
 |---|---|
 | `ctl`, `atl`, `rampRate` | ⚙️ vlastní výpočet z odjetých aktivit (vzorce 6.4), ukládáno do `daily_metrics`. Žádná naplánovaná zátěž v historii → problém „dnešní řádek obsahuje plán“ odpadá. |
 | `icu_training_load` | ⚙️ TSS = (s × NP × IF) / (FTP × 3600) × 100, IF = NP / FTP; nebo Garmin `trainingStressScore`, když existuje. Bez wattmetru hrTSS. Zdroj se ukládá (`load_source`). |
-| hrTSS | ⚠️ návrh: ze zón tepu, hodinová sazba Z1 30 · Z2 55 · Z3 70 · Z4 90 · Z5 120 (TSS/h, práh = 100), tj. hrTSS = Σ hodiny v zóně × sazba. Ve fázi 2 sazby zkalibrujeme proti `icu_training_load` tvých posledních aktivit a rozdíl vypíšeme. Garmin `activityTrainingLoad` se ukládá zvlášť a do CTL se nemíchá. |
+| hrTSS | ⚙️ zkalibrováno 7. 11. 2026 proti `icu_training_load` (intervals.icu HRSS) na 151 aktivitách: hlavní vzorec z průměrného tepu IF = (HRavg − klid) / (LTHR − klid), TSS = h × IF² × 100 (LTHR a klid z Garminu) → průměrná odchylka 13. Záloha bez LTHR: sazby podle zón tepu Z1..Z5 = 11 / 42 / 42 / 42 / 109 TSS/h (odchylka 12). Původní návrh sazeb nadhodnocoval 1,74×. Garmin `activityTrainingLoad` se ukládá zvlášť a do CTL se nemíchá. |
 | `get_fitness_forecast` | ⚙️ výhled vzorcem z `planned_workouts` (6.3, 6.4) |
 
 ## Aktivita (kap. 5, `Aktivita.md`)
@@ -43,7 +43,7 @@ Stav „ověřeno“ doplníme po fázi 0/1 podle `docs/garmin-endpoints.md`.
 | `icu_variability_index` | ⚙️ VI = NP / avgPower (2 des. místa) | |
 | Intenzita | ⚙️ NP / FTP v % | |
 | `decoupling` (aerobní drift) | ⚠️ ze souhrnu nejde | ⚙️ Pw:HR decoupling z `/details?maxChartSize=300` (ověřeno, ~300 bodů): poměr výkon/tep 1. vs. 2. polovina. Bez wattmetru rychlost/tep. Ve fázi 2 porovnáme s `decoupling` z intervals.icu. |
-| `compliance` | ⚠️ Garmin nemá | návrh: splnění = skutečná zátěž / plánovaná zátěž × 100 %, omezeno na 0–150 %; v reportu jako „splnění (zátěž)“. **Potvrď.** |
+| `compliance` | ⚠️ Garmin nemá | ⚙️ splnění = skutečná zátěž / plánovaná zátěž × 100 %, omezeno na 150 % (jen když je jednotka v plánu). Změnu stačí napsat. |
 | `icu_lap_count`, intervaly | ✅ počet lapů = Garmin `lapCount`; ⚠️ samotné lapy Garmin Personal API nevrací (404) → bereme z intervals.icu `/activity/{id}/intervals` | pravidla kap. 5 o „Use laps for intervals“ proto platí dál beze změny |
 | `icu_hr_zone_times` | ✅ `hrTimeInZone_1..5` | |
 | `icu_zone_times` (výkon) | ⚠️ Garmin `powerTimeInZone_1..7` počítá podle zón nastavených v Garminu | správně jen když má Garmin stejné FTP a Coggan zóny. Jinak „–“ a upozornění v nastavení. Alternativa: lapy (hrubé). |
@@ -71,6 +71,29 @@ Stav „ověřeno“ doplníme po fázi 0/1 podle `docs/garmin-endpoints.md`.
 | mráz: noc předchozí < 0 °C | ⚙️ min `temperature_2m` 0–8 h daného dne < 0 °C |
 | `iceProbability` | ⚠️ Open-Meteo nemá. Pravidlo říká „jen když konektor vrací“ → náledí neuvádíme; mráz se hlásí jako „riziko náledí ráno“ (jako v 8). |
 | Nejlepší 3h okno | ⚙️ zelená hodina = srážky ≤ 30 %, nárazy ≤ 40 km/h, pocitově (`apparent_temperature`) ≥ 3 °C; okno = 3 po sobě zelené hodiny 7–20 h s nejlepším skóre |
+
+## Režim plánu (tvoje přání 7. 11. 2026)
+
+| Režim | Týdenní zátěž | Poznámka |
+|---|---|---|
+| zlepšení (`/cil zlepseni`, výchozí podle tvé odpovědi) | 7 × CTL + 5–10 %, ramp max. +3 / týden | pravidla 6.6 krok 1 |
+| udržení (`/cil udrzeni`) | 7 × CTL ± 10 % | původní cíl v pravidlech |
+| řízený pokles (`/cil pokles`) | 80–90 % ze 7 × CTL, o 1 jízdu méně, 1 kvalita zůstává | „mírný pokles mimo sezónu do −10 % je v pořádku“ – objem klesá, intenzita se drží |
+
+## Doplňky z referencí (`Navrhy.txt`, VO2 prompt)
+
+Jen doplňkové údaje a pojistky, pravidla z `docs/coach-rules/` mají vždy přednost.
+
+| Odkud | Co je v aplikaci |
+|---|---|
+| Recovery check | poměr zátěže 7/28 dní (ACWR) v tabulce kondice; upozornění nad 1,3 a 1,5; do semaforu nevstupuje. Upozornění jen když je co hlásit. |
+| Plan my week | max. +10 % proti běžnému týdnu (větší z minulého týdne a průměru 4 týdnů); po 3 týdnech růstu lehčí týden (−30 %); zdůvodnění klíčové jednotky |
+| Weekly review | plán vs. skutečnost, vynechané jmenovitě, „Z2 nebyla lehká“ (> 20 % času v Z3+), výhry (nové maximum 5/20 min), 1–2 úpravy, trend přes týdny uložený v `weekly_reviews` |
+| Aerobic decoupling | drift pod 40 min nehodnotím, upozornění na teplo ≥ 25 °C; prahy 5 / 8 % zůstávají z tvých pravidel |
+| Fuel & pace | tekutiny (l/h) a sodík (mg/h) jako odhad z teploty a hmotnosti, plán výživy pro cíl 120 km / 4 h, návod na test pocení |
+| Sleep | pravidelnost spánku (rozptyl času vstávání za 14 dní) na stránce Zotavení |
+| Zone calculator | kontrola LTHR = 85–92 % nejvyššího tepu z dat |
+| VO2 optimizer | u VO2 kvality označení, zda jde o ověřený protokol 4×4 min (Tier 1) nebo jeho úpravu |
 
 ## Výstupy
 

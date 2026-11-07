@@ -2,38 +2,115 @@ import { Hono } from "hono";
 import type { Env } from "./env";
 import { secretStatus } from "./env";
 import { runPhase0 } from "./admin/phase0";
+import { api } from "./api/routes";
+import { loadCtx } from "./report/context";
+import { runScheduler } from "./scheduler";
+import { recomputeLoads, recomputeMetrics } from "./sync/metrics";
+import { syncTick } from "./sync/sync";
+import { getSettings } from "./lib/settings";
+import { logEvent } from "./lib/db";
+import { tgCall } from "./telegram/api";
+import { cmdPlan, cmdRano, cmdTyden, cmdZitra, handleUpdate } from "./telegram/bot";
 
 const app = new Hono<{ Bindings: Env }>();
 
-/** Porovnání v konstantním čase (admin token). */
-function safeEqual(a: string, b: string): boolean {
+/** Porovnání v konstantním čase. */
+export function safeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let r = 0;
   for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return r === 0;
 }
 
-// Administrátorská volání: jen s hlavičkou Authorization: Bearer <ADMIN_TOKEN>.
+// ---- Telegram webhook: ověření X-Telegram-Bot-Api-Secret-Token; chat_id ověřuje handleUpdate ----
+app.post("/telegram/webhook", async (c) => {
+  const want = c.env.TELEGRAM_WEBHOOK_SECRET;
+  const got = c.req.header("x-telegram-bot-api-secret-token") ?? "";
+  if (!want || !safeEqual(got, want)) return c.text("forbidden", 403);
+  const update = await c.req.json().catch(() => null);
+  if (update) {
+    c.executionCtx.waitUntil(
+      handleUpdate(c.env, update).catch((e) => logEvent(c.env.DB, "error", `telegram: ${(e as Error).message}`)),
+    );
+  }
+  return c.text("ok");
+});
+
+// ---- admin (ADMIN_TOKEN) ----
 app.use("/admin/*", async (c, next) => {
   const want = c.env.ADMIN_TOKEN;
   const got = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!want || !got || !safeEqual(got, want)) return c.json({ error: "unauthorized" }, 401);
   await next();
 });
-
 app.get("/admin/secrets", (c) => c.json(secretStatus(c.env)));
-
-app.get("/admin/phase0", async (c) => {
-  const probes = c.req.query("probes") !== "0";
-  const telegram = c.req.query("telegram") !== "0";
-  return c.json(await runPhase0(c.env, { probes, telegram }));
+app.get("/admin/phase0", async (c) => c.json(await runPhase0(c.env, { probes: c.req.query("probes") !== "0", telegram: c.req.query("telegram") !== "0" })));
+app.post("/admin/sync", async (c) => c.json(await syncTick(c.env, { force: c.req.query("force") === "1", backfillPages: Number(c.req.query("pages") ?? 4) })));
+app.post("/admin/scheduler", async (c) => c.json(await runScheduler(c.env)));
+app.post("/admin/recompute", async (c) => {
+  const s = await getSettings(c.env.DB);
+  const n = await recomputeLoads(c.env.DB, s);
+  const m = await recomputeMetrics(c.env.DB, (await loadCtx(c.env)).T);
+  return c.json({ loads: n, metrics: m });
 });
+app.post("/admin/send/:what", async (c) => {
+  const w = c.req.param("what");
+  if (w === "rano") await cmdRano(c.env);
+  else if (w === "zitra") await cmdZitra(c.env);
+  else if (w === "tyden") await cmdTyden(c.env);
+  else if (w === "plan") await cmdPlan(c.env);
+  else return c.json({ error: "unknown" }, 400);
+  return c.json({ ok: true });
+});
+app.get("/admin/preview/:what", async (c) => {
+  const { readiness, planFor, activityReport, findActivity } = await import("./report/build");
+  const { readinessMessage, planMessage, tomorrowMessage, activityMessage } = await import("./telegram/render");
+  const ctx = await loadCtx(c.env);
+  const w = c.req.param("what");
+  const t0 = Date.now();
+  let html = "";
+  if (w === "rano") html = readinessMessage(await readiness(ctx), c.env.PUBLIC_URL);
+  else if (w === "plan") html = planMessage(await planFor(ctx), "Plán", c.env.PUBLIC_URL);
+  else if (w === "zitra") html = tomorrowMessage(await planFor(ctx), c.env.PUBLIC_URL);
+  else if (w === "aktivita") html = findActivity(ctx, c.req.query("q")).map((a) => activityMessage(activityReport(ctx, a), c.env.PUBLIC_URL)).join("\n\n");
+  return c.text(`${html}\n\n[${Date.now() - t0} ms wall]`);
+});
+app.get("/admin/llm", async (c) => {
+  const { runLlm, numbersOk } = await import("./llm/llm");
+  const ctx = { forma: 19.1, kondice: 48.7, zatez_7_dni: 193, hrv_ms: 62, hrv_hodnoceni: "Nevyvážené", cil: "zlepšení kondice" };
+  const q = c.req.query("q") ?? "Jak jsem na tom?";
+  const sys = "Jsi osobní trenér cyklistiky. Piš česky, krátce, celými větami. Používej jen čísla z kontextu. Max. 3 věty.";
+  const out = await runLlm(c.env, sys, `KONTEXT: ${JSON.stringify(ctx)}\nOTÁZKA: ${q}`);
+  return c.json({ model: c.env.LLM_MODEL, answer: out, numbersOk: out ? numbersOk(out, { ...ctx, q }) : null });
+});
+app.get("/admin/ctx", async (c) => {
+  const { env: _e, ...ctx } = await loadCtx(c.env);
+  return c.json(ctx);
+});
+app.post("/admin/setup-webhook", async (c) => {
+  const url = `${c.env.PUBLIC_URL}/telegram/webhook`;
+  await tgCall(c.env, "setWebhook", { url, secret_token: c.env.TELEGRAM_WEBHOOK_SECRET, allowed_updates: ["message", "callback_query"], drop_pending_updates: false });
+  await tgCall(c.env, "setMyCommands", {
+    commands: [
+      ["rano", "Připravenost"], ["stav", "Celý denní report"], ["plan", "Plán na 7 dní"], ["zitra", "Zítřek"],
+      ["aktivita", "Rozbor aktivity"], ["tyden", "Týdenní review"], ["pocasi", "Počasí a okna"], ["nepojedu", "Dnes nepojedu"],
+      ["nemuzu", "Nemůžu <den>"], ["hokej", "Hokej <den>"], ["nemoc", "Jsem nemocný"], ["cil", "Cíl: zlepseni/udrzeni/pokles"],
+      ["ftp", "Nastavit FTP"], ["vaha", "Zapsat váhu"], ["sila", "Zapsat sílu"], ["mobilita", "Zapsat mobilitu"],
+      ["fit", "Workout jako FIT"], ["dashboard", "Odkaz na dashboard"], ["nastaveni", "Nastavení"], ["export", "Export dat"], ["pomoc", "Nápověda"],
+    ].map(([command, description]) => ({ command, description })),
+  });
+  const info = await tgCall<any>(c.env, "getWebhookInfo", {});
+  return c.json({ url: info.url === url ? "nastaveno" : info.url, pending: info.pending_update_count, lastError: info.last_error_message ?? null });
+});
+
+// ---- dashboard API (Cloudflare Access) ----
+app.route("/api", api);
 
 app.get("/health", (c) => c.json({ ok: true }));
 
 export default {
   fetch: app.fetch,
-  async scheduled(_event: ScheduledController, _env: Env, _ctx: ExecutionContext) {
-    // Fáze 0: cron zatím nic nedělá. Plánovač přibude ve fázi 1.
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(runScheduler(env).then(() => undefined).catch((e) => logEvent(env.DB, "error", `cron: ${(e as Error).message}`)));
   },
 } satisfies ExportedHandler<Env>;

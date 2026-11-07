@@ -1,15 +1,21 @@
 {
   "name": "trener-app",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Osobní AI trenér cyklistiky a zdraví na Cloudflare Workers (Garmin, Telegram, dashboard)",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "deploy": "wrangler d1 migrations apply trener-db --remote && wrangler deploy && node scripts/admin.mjs setup-webhook",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
+    "sync:backfill": "node scripts/backfill.mjs",
+    "wipe": "node scripts/wipe.mjs",
+    "export": "wrangler d1 export trener-db --remote --output exports/trener-export.sql",
+    "compare": "node scripts/compare.mjs",
+    "admin": "node scripts/admin.mjs",
+    "tg": "node scripts/tg-sim.mjs",
     "secrets:check": "node scripts/check-secrets.mjs",
     "secrets:push": "node scripts/push-secrets.mjs",
     "telegram:chatid": "node scripts/telegram-chatid.mjs",
@@ -20,6 +26,8 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261107.1",
+    "@garmin/fitsdk": "^21.221.0",
+    "@types/node": "^26.6.6",
     "typescript": "^5.9.3",
     "vitest": "^3.2.7",
     "wrangler": "^4.158.0"

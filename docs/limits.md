@@ -25,6 +25,24 @@ Ověřeno v dokumentaci Cloudflare 7. 11. 2026:
 | Open-Meteo | zdarma pro nekomerční použití, bez klíče (~10 000 volání / den) | 1–4 volání / den (cache v D1) | > 99 % |
 | Telegram Bot API | ~30 zpráv/s | jednotky denně | – |
 
+## Naměřeno po nasazení (7. 11. 2026)
+
+| Volání | CPU (wrangler tail) |
+|---|---|
+| jednoduchý požadavek | 0–5 ms |
+| sync dávka (cron) | 27–61 ms |
+| plán / připravenost / rozbor | 26–68 ms |
+
+Lokálně (Node, stejná data) trvá výpočet plánu **1 ms** za tepla a 12,6 ms při prvním volání – většinu CPU ve
+Workeru tvoří studený start (kompilace kódu v novém isolatu) a převod výsledků z D1, ne trenérské výpočty.
+Cloudflare tyto požadavky zatím nezahazuje (výsledek „ok“), ale **10 ms je překračováno**. Riziko: při
+přísnějším vynucování by některé spuštění skončilo chybou 1102. Zmírnění v kódu: každá úloha je idempotentní
+a zopakuje se při dalším cronu (za 15 min), zprávy mají deduplikaci. Kdyby se chyby objevily, další krok je
+zmenšit kontext (jen potřebné sloupce, laps jen pro rozbor), případně Workers Paid (5 USD/měsíc) – to by ale
+porušilo cíl 0 Kč, takže jen po tvém rozhodnutí.
+
+D1 po stažení celé historie: 835 KB (696 aktivit od 2019, 694 dní wellness).
+
 ## Pravidla, která z toho plynou (v kódu)
 
 1. **Sync po dávkách s kurzorem v D1** (`sync_state`). Jedno spuštění cronu stáhne nejvýš ~5 stránek / rozsahů
