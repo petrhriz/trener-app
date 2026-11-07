@@ -347,7 +347,11 @@ export async function handleUpdate(env: Env, update: any): Promise<void> {
   if (is("tyden", "týden", "tyden")) return cmdTyden(env);
   if (is("pocasi", "počasí", "pocasi")) return cmdPocasi(env);
   if (is("nastaveni", "nastavení")) return cmdNastaveni(env);
-  if (cmd === "dashboard") return send(env, env.PUBLIC_URL ? `📈 ${env.PUBLIC_URL}` : "Dashboard zatím nemá adresu.");
+  if (cmd === "dashboard" || is("dashboard", "dashboard", "přihlásit", "prihlasit")) {
+    const { createLoginLink } = await import("../api/session");
+    const url = await createLoginLink(env);
+    return send(env, `📈 <a href="${url}">Otevřít dashboard</a>\nOdkaz platí 15 minut a jen jednou, přihlášení pak vydrží 30 dní. Nikomu ho neposílej.`);
+  }
   if (cmd === "export") return cmdExport(env);
   if (cmd === "fit") return cmdFit(env, arg);
   if (cmd === "nemuzu" || /^nem[uů][zž]u\b/.test(lower)) return constraintCmd(env, "nemuzu", text);

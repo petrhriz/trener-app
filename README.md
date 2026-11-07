@@ -6,7 +6,7 @@ workouty, výživa) dělá kód podle pravidel v [`docs/coach-rules/`](docs/coac
 odpovídá na volné otázky nad předpočítanými čísly – bez něj vše funguje, každá zpráva má šablonu.
 
 - Bot: **@trener1234bot** (odpovídá jen na tvoje chat_id)
-- Dashboard: https://trener-app.trener-app.workers.dev (za Cloudflare Access)
+- Dashboard: https://trener-app.trener-app.workers.dev (přihlášení odkazem z Telegramu: `/dashboard`)
 - Provoz: **0 Kč** (Workers Free, D1, KV, Workers AI free, Open-Meteo, Telegram)
 
 ## Co dělá
@@ -56,9 +56,16 @@ proti běžnému týdnu a po 3 týdnech růstu lehčí týden.
    `INTERVALS_API_KEY`, `INTERVALS_ATHLETE_ID`, `WORKER_URL`.
 6. `npm run telegram:chatid` (zapíše tvoje chat_id), `npm run secrets:push`.
 7. `npm run deploy`, pak `npm run sync:backfill`.
-8. Cloudflare Access (níže) a ve `wrangler.jsonc` doplň `ACCESS_TEAM_DOMAIN` a `ACCESS_AUD`, znovu `npm run deploy`.
+8. Dashboard otevřeš přes `/dashboard` v Telegramu (volitelně navíc Cloudflare Access, viz níže).
 
-## Cloudflare Access (ochrana dashboardu)
+## Přihlášení do dashboardu
+
+Napiš botovi **/dashboard** → pošle jednorázový odkaz (platí 15 min, jen jednou) → prohlížeč dostane podepsanou
+HttpOnly cookie na 30 dní (Odhlásit v Nastavení). Odkaz chodí jen do tvého chatu; bez přihlášení `/api` vrací 403.
+
+## Cloudflare Access (volitelně, navíc)
+
+Worker umí i Cloudflare Access JWT. Nastavení vyžaduje kliknutí v prohlížeči:
 
 1. https://one.dash.cloudflare.com → Zero Trust (free plán, tým si pojmenuj, např. `petr`).
 2. **Access → Applications → Add an application → Self-hosted**:
@@ -74,9 +81,9 @@ Worker navíc ověřuje podpis Access JWT – bez něj `/api` vrací 403.
 
 ## Workouty do Edge 530
 
-- **Přes intervals.icu (zapnuto):** po „ano“ se jednotky zapíšou do kalendáře intervals.icu. V intervals.icu →
-  Settings → **Garmin Connect** → zapni **Upload planned workouts**. intervals.icu je pošle do Garmin Connect a
-  Edge 530 si je stáhne při synchronizaci (Trénink → Tréninkový kalendář).
+- **Přes intervals.icu (zapnuto, ověřeno 7. 11. 2026):** po „ano“ se jednotky zapíšou do kalendáře intervals.icu
+  (`external_id` = `trener-<id>`). Nahrávání plánovaných workoutů do Garmin Connect je zapnuté
+  (`icu_garmin_upload_workouts`), Edge 530 si je stáhne při synchronizaci (Trénink → Tréninkový kalendář).
 - **Záloha bez intervals.icu:** `/fit zítra` nebo tlačítko „📥 FIT“ – soubor nahraj kabelem do `Garmin/NewFiles`.
 
 ## Tajné klíče

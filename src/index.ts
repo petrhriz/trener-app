@@ -103,7 +103,19 @@ app.post("/admin/setup-webhook", async (c) => {
   return c.json({ url: info.url === url ? "nastaveno" : info.url, pending: info.pending_update_count, lastError: info.last_error_message ?? null });
 });
 
-// ---- dashboard API (Cloudflare Access) ----
+// ---- přihlášení do dashboardu odkazem z Telegramu ----
+app.get("/auth", async (c) => {
+  const { consumeLogin } = await import("./api/session");
+  const cookie = await consumeLogin(c.env, c.req.query("t"));
+  if (!cookie) return c.html(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><body style="font-family:system-ui;padding:24px;background:#121110;color:#f2efeb"><h2>Odkaz už neplatí</h2><p>Napiš botovi <b>/dashboard</b> a pošle ti nový (platí 15 minut, jen jednou).</p></body>`, 403);
+  return new Response(null, { status: 302, headers: { Location: "/#/prehled", "Set-Cookie": cookie, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
+});
+app.get("/logout", async (c) => {
+  const { logoutCookie } = await import("./api/session");
+  return new Response(null, { status: 302, headers: { Location: "/", "Set-Cookie": logoutCookie() } });
+});
+
+// ---- dashboard API (session z Telegramu nebo Cloudflare Access) ----
 app.route("/api", api);
 
 app.get("/health", (c) => c.json({ ok: true }));

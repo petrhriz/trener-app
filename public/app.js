@@ -36,7 +36,7 @@ async function api(path, opts) {
   if (!opts && cache.has(path) && Date.now() - cache.get(path).at < 60_000) return cache.get(path).data;
   const r = await fetch("/api/" + path, { credentials: "same-origin", headers: { "content-type": "application/json" }, ...opts });
   const data = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
-  if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  if (!r.ok) throw new Error(data.message || data.error || `HTTP ${r.status}`);
   if (!opts) cache.set(path, { at: Date.now(), data });
   return data;
 }
@@ -412,7 +412,7 @@ async function pageNastaveni(el) {
      ["LLM", st.llm ? esc(st.model) : "nedostupné"],
    ]))}
    ${card("c6", "Limity free plánu", "Cloudflare", `<p class="note">Jeden cron (*/15), sync po malých dávkách, LLM jen pro hotové zprávy. Detail v docs/limits.md.</p><table class="t"><tr><th>Kdy</th><th>Událost</th></tr>${st.logs.slice(0, 8).map((l) => `<tr><td class="sub">${new Date(l.at).toLocaleString("cs-CZ")}</td><td>${esc(l.level)}: ${esc(l.msg)}</td></tr>`).join("")}</table>`)}
-   ${card("c12", "Vzhled", "", `<div class="btns">${["auto", "light", "dark"].map((t) => `<button class="btn" data-theme="${t}">${{ auto: "Podle systému", light: "Světlý", dark: "Tmavý" }[t]}</button>`).join("")}</div>`)}
+   ${card("c12", "Vzhled a účet", "", `<div class="btns">${["auto", "light", "dark"].map((t) => `<button class="btn" data-theme="${t}">${{ auto: "Podle systému", light: "Světlý", dark: "Tmavý" }[t]}</button>`).join("")}<a class="btn" href="/logout">Odhlásit</a></div>`)}
   </div>`;
   el.querySelector("#sf").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -457,7 +457,9 @@ async function route() {
     if (page === "aktivita") await pageAktivita(el, arg);
     else await (ROUTES[page] || pagePrehled)(el);
   } catch (e) {
-    el.innerHTML = `<div class="err"><b>Data se nepodařilo načíst.</b><br>${esc(e.message)}</div>`;
+    el.innerHTML = /přihlášený/.test(e.message)
+      ? `<div class="card" style="max-width:520px"><h2>Přihlášení</h2><p>Dashboard je chráněný – obsahuje zdravotní data.</p><p>Napiš v Telegramu botovi <b>/dashboard</b> a otevři odkaz, který ti pošle. Přihlášení pak vydrží 30 dní.</p></div>`
+      : `<div class="err"><b>Data se nepodařilo načíst.</b><br>${esc(e.message)}</div>`;
   }
   if (seq !== routeSeq) return;
   main.replaceChildren(el);

@@ -17,6 +17,7 @@ import { activityReport, fitnessTable, planFor, readiness, weatherMap, weekly } 
 import { loadCtx } from "../report/context";
 import { recomputeLoads } from "../sync/metrics";
 import { verifyAccess } from "./access";
+import { verifySession } from "./session";
 
 export const api = new Hono<{ Bindings: Env }>();
 const isBike = (s: string) => BIKE_SPORTS.includes(s as any);
@@ -24,8 +25,10 @@ const isBike = (s: string) => BIKE_SPORTS.includes(s as any);
 api.use("*", async (c, next) => {
   const admin = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (c.env.ADMIN_TOKEN && admin && admin === c.env.ADMIN_TOKEN) return next();
+  // 1) session z přihlášení přes Telegram, 2) Cloudflare Access JWT (pokud je nastavené)
+  if (await verifySession(c.env, c.req.header("cookie"))) return next();
   const v = await verifyAccess(c.env, c.req.header("cf-access-jwt-assertion"));
-  if (!v.ok) return c.json({ error: v.reason === "access_not_configured" ? "Dashboard čeká na Cloudflare Access (viz README)." : "unauthorized" }, 403);
+  if (!v.ok) return c.json({ error: "login", message: "Nejsi přihlášený. Napiš botovi /dashboard a otevři odkaz, který ti pošle." }, 403);
   await next();
 });
 
