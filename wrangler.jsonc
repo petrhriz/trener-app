@@ -1,4 +1,4 @@
-{
+﻿{
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "trener-app",
   "main": "src/index.ts",
@@ -8,8 +8,7 @@
   "triggers": { "crons": ["*/15 * * * *"] },
   "observability": { "enabled": true },
   "kv_namespaces": [
-    // id doplní setup po `wrangler kv namespace create KV`
-    { "binding": "KV", "id": "REPLACE_KV_ID" }
+    { "binding": "KV", "id": "1dfcfb7a0f4b49a59752cc25e0c7b0c1" }
   ],
   "vars": {
     "TZ_NAME": "Europe/Prague",

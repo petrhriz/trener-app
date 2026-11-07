@@ -24,7 +24,7 @@ Stav „ověřeno“ doplníme po fázi 0/1 podle `docs/garmin-endpoints.md`.
 | `sleepScore` | ✅ sleep `sleepScores.overall.value` | |
 | `sleepQuality` (Q1–Q4) | ⚠️ Garmin vrací `sleepScores.overall.qualifierKey` (EXCELLENT/GOOD/FAIR/POOR) | mapujeme EXCELLENT→Q1 Výborný, GOOD→Q2 Dobrý, FAIR→Q3 Uspokojivý, POOR→Q4 Špatný. Číslo se nedopočítává. |
 | Body Battery, stres | ✅ dailysummaries | jen doplňkový údaj, do semaforu nevstupují |
-| `vo2max` | ⚠️ není v uvedených endpointech | zkusíme `/metrics-service/metrics/maxmet/daily/{od}/{do}`, jinak pole aktivity `vO2MaxValue` (poslední jízda s wattmetrem) |
+| `vo2max` | ⚠️ Garmin maxmet endpoint 404 | bereme z intervals.icu wellness `vo2max` (Garmin ho tam posílá) |
 
 ## Kondice / únava / forma (6.4)
 
@@ -42,9 +42,9 @@ Stav „ověřeno“ doplníme po fázi 0/1 podle `docs/garmin-endpoints.md`.
 | NP, průměrný výkon | ✅ `normPower`, `avgPower` | |
 | `icu_variability_index` | ⚙️ VI = NP / avgPower (2 des. místa) | |
 | Intenzita | ⚙️ NP / FTP v % | |
-| `decoupling` (aerobní drift) | ⚠️ ze souhrnu nejde | ⚙️ Pw:HR decoupling z `/details` s malým vzorkem (~300 bodů): poměr výkon/tep 1. vs. 2. polovina. Bez wattmetru rychlost/tep. Když endpoint nejde: „–“. |
+| `decoupling` (aerobní drift) | ⚠️ ze souhrnu nejde | ⚙️ Pw:HR decoupling z `/details?maxChartSize=300` (ověřeno, ~300 bodů): poměr výkon/tep 1. vs. 2. polovina. Bez wattmetru rychlost/tep. Ve fázi 2 porovnáme s `decoupling` z intervals.icu. |
 | `compliance` | ⚠️ Garmin nemá | návrh: splnění = skutečná zátěž / plánovaná zátěž × 100 %, omezeno na 0–150 %; v reportu jako „splnění (zátěž)“. **Potvrď.** |
-| `icu_lap_count`, intervaly | ✅ Garmin laps (`/activity-service/activity/{id}/splits`, pokud Personal API pustí) | lapy jsou přímo z Garminu → problém „Use laps for intervals“ odpadá. Když endpoint nejde: plán B lapy z intervals.icu. |
+| `icu_lap_count`, intervaly | ✅ počet lapů = Garmin `lapCount`; ⚠️ samotné lapy Garmin Personal API nevrací (404) → bereme z intervals.icu `/activity/{id}/intervals` | pravidla kap. 5 o „Use laps for intervals“ proto platí dál beze změny |
 | `icu_hr_zone_times` | ✅ `hrTimeInZone_1..5` | |
 | `icu_zone_times` (výkon) | ⚠️ Garmin `powerTimeInZone_1..7` počítá podle zón nastavených v Garminu | správně jen když má Garmin stejné FTP a Coggan zóny. Jinak „–“ a upozornění v nastavení. Alternativa: lapy (hrubé). |
 | Křivka výkonu (`get_power_curves`) | ⚙️ `maxAvgPower_30/60/300/1200` z aktivit → nejlepší v okně 42 / 42 dní | |

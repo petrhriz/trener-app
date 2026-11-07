@@ -22,7 +22,7 @@ const dir = mkdtempSync(join(tmpdir(), "trener-"));
 const file = join(dir, "secrets.json");
 writeFileSync(file, JSON.stringify(payload), { mode: 0o600 });
 try {
-  const r = spawnSync("npx", ["wrangler", "secret", "bulk", file], {
+  const r = spawnSync(`npx wrangler secret bulk "${file}"`, {
     cwd: ROOT,
     stdio: ["ignore", "pipe", "pipe"],
     shell: process.platform === "win32",
