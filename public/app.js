@@ -1480,11 +1480,13 @@ function bbPanel(d, isToday, sum = {}, part = null) {
   const mn = sum.min ?? (pts.length ? Math.min(...pts.map((p) => p.v)) : null);
   const tone = (v) => (v == null ? "var(--z1)" : v >= 60 ? "var(--z3)" : v >= 30 ? "var(--z4)" : "var(--z6)");
   const ago = last && isToday ? Math.round(minOfDay(d, Date.now()) - last.m) : null;
-  const kpi = (l, v, cls = "") => `<div class="bbk"><span>${l}</span><b class="${cls}">${v}</b></div>`;
-  // kroužek = hodnota teď (nebo večer), vedle 4 čísla 2 × 2 – „teď“ už se neopakuje
-  const when = isToday ? (last ? `teď · ${clock(Math.max(0, last.m))}${ago != null && ago > 45 ? ` (před ${ago >= 90 ? `${Math.round(ago / 60)} h` : `${ago} min`})` : ""}` : "teď") : "večer";
-  const top = `<div class="bbtop"><div class="bbring">${scoreRing(now, { grad: [tone(now), tone(now)], size: 104 })}<small>${when}</small></div>
-    <div class="bbkpis">${kpi("☀️ Ráno", num(mx))}${kpi("📉 Minimum", num(mn))}${kpi("🔋 Nabito", d.bbCharged != null || sum.charged != null ? `+${num(d.bbCharged ?? sum.charged)}` : DASH, "good")}${kpi("⚡ Vybito", d.bbDrained != null || sum.drained != null ? `−${num(d.bbDrained ?? sum.drained)}` : DASH, "bad")}</div></div>`;
+  // varianta A: půlkruh (barva podle úrovně), vedle 4 čísla bez rámečků a emoji
+  const kpi = (l, v) => `<div class="bbkA"><span>${l}</span><b>${v}</b></div>`;
+  const when = isToday ? (last ? `teď${ago != null && ago > 45 ? ` · před ${ago >= 90 ? `${Math.round(ago / 60)} h` : `${ago} min`}` : ` · ${clock(Math.max(0, last.m))}`}` : "teď") : "večer";
+  const L = Math.PI * 80, frac = clamp((now ?? 0) / 100, 0, 1);
+  const gauge = `<div class="bbgauge"><svg viewBox="0 0 190 104" width="190" height="104" role="img" aria-label="Body Battery ${now ?? "–"} ze 100"><path d="M15 95 A80 80 0 0 1 175 95" fill="none" stroke="var(--card2)" stroke-width="12" stroke-linecap="round"/>${now != null ? `<path d="M15 95 A80 80 0 0 1 175 95" fill="none" stroke="${tone(now)}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${(L * frac).toFixed(1)} ${L.toFixed(1)}"/>` : ""}</svg><div class="bbg-v"><b>${num(now)}</b><small>${when}</small></div></div>`;
+  const ch = d.bbCharged ?? sum.charged, dr = d.bbDrained ?? sum.drained;
+  const top = `<div class="bbtopA">${gauge}<div class="bbkpisA">${kpi("Ráno", num(mx))}${kpi("Minimum", num(mn))}${kpi("Nabito", ch != null ? `+${num(ch)}` : DASH)}${kpi("Vybito", dr != null ? `−${num(dr)}` : DASH)}</div></div>`;
   const line = pts.length >= 2 ? sized((W) => bbLineW(d, pts, isToday, W)) : `<div class="empty">Průběh dne zatím nemám – Garmin pošle body po synchronizaci hodinek.</div>`;
   // part: "top" = kroužek a čísla, "line" = jen graf (Přehled je dává do dvou karet), jinak obojí
   return part === "top" ? top : part === "line" ? line : top + line;
@@ -1499,7 +1501,7 @@ function bbLineW(d, pts, isToday, W) {
   // pruh dne: spánek (nabíjí) a aktivity (vybíjí) – ikona nad grafem
   for (const s of daySpans(d)) {
     const c = s.kind === "sleep" ? "var(--srem)" : "var(--acc)";
-    g += `<rect x="${X(s.a)}" y="${P.t}" width="${Math.max(2, X(s.b) - X(s.a))}" height="${H - P.t - P.b}" fill="${c}" opacity=".08"/><rect x="${X(s.a)}" y="${P.t - 6}" width="${Math.max(3, X(s.b) - X(s.a))}" height="4" rx="2" fill="${c}"/><text x="${(X(Math.max(0, s.a)) + X(Math.min(1440, s.b))) / 2}" y="${P.t - 11}" text-anchor="middle" style="font-size:13px">${s.kind === "sleep" ? "🌙" : s.txt}</text>`;
+    g += `<rect x="${X(s.a)}" y="${P.t}" width="${Math.max(2, X(s.b) - X(s.a))}" height="${H - P.t - P.b}" fill="${c}" opacity=".05"/><rect x="${X(s.a)}" y="${P.t - 6}" width="${Math.max(3, X(s.b) - X(s.a))}" height="4" rx="2" fill="${c}"/><text x="${(X(Math.max(0, s.a)) + X(Math.min(1440, s.b))) / 2}" y="${P.t - 11}" text-anchor="middle" style="font-size:13px">${s.kind === "sleep" ? "🌙" : s.txt}</text>`;
   }
   const id = uid("bb");
   // plocha a čára přímo mezi body (bez vyhlazování – mezi body data nejsou)
@@ -1508,9 +1510,11 @@ function bbLineW(d, pts, isToday, W) {
   const hi = pts.reduce((a, b) => (b.v > a.v ? b : a)), lo = pts.reduce((a, b) => (b.v < a.v ? b : a)), last = pts[pts.length - 1];
   const lbl = (p, up) => `<text x="${X(p.m)}" y="${Y(p.v) + (up ? -9 : 17)}" text-anchor="middle" class="bbl">${p.v}</text>`;
   const nowM = isToday ? minOfDay(d, Date.now()) : null;
-  const svg = `<defs><linearGradient id="${id}g" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${Y(100)}" y2="${Y(0)}"><stop offset="0" stop-color="var(--z3)" stop-opacity=".35"/><stop offset=".55" stop-color="var(--z4)" stop-opacity=".18"/><stop offset="1" stop-color="var(--z6)" stop-opacity=".04"/></linearGradient><linearGradient id="${id}s" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${Y(100)}" y2="${Y(0)}"><stop offset="0" stop-color="var(--z3)"/><stop offset=".5" stop-color="var(--z4)"/><stop offset="1" stop-color="var(--z6)"/></linearGradient></defs>${g}
-    <path d="${area}" fill="url(#${id}g)"/><path d="${line}" fill="none" stroke="url(#${id}s)" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
-    ${pts.map((p) => `<circle cx="${X(p.m)}" cy="${Y(p.v)}" r="3" fill="var(--card)" stroke="url(#${id}s)" stroke-width="2"/>`).join("")}
+  // varianta A: graf jednou barvou podle úrovně teď (zelená / žlutá / červená), jemná výplň
+  const lv = pts[pts.length - 1].v, col = lv >= 60 ? "var(--z3)" : lv >= 30 ? "var(--z4)" : "var(--z6)";
+  const svg = `<defs><linearGradient id="${id}g" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${Y(100)}" y2="${Y(0)}"><stop offset="0" stop-color="${col}" stop-opacity=".22"/><stop offset="1" stop-color="${col}" stop-opacity=".02"/></linearGradient></defs>${g}
+    <path d="${area}" fill="url(#${id}g)"/><path d="${line}" fill="none" stroke="${col}" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
+    ${pts.map((p) => `<circle cx="${X(p.m)}" cy="${Y(p.v)}" r="3" fill="var(--card)" stroke="${col}" stroke-width="2"/>`).join("")}
     ${lbl(hi, true)}${lo !== hi && lo !== last ? lbl(lo, false) : ""}${last !== hi ? lbl(last, true) : ""}
     ${nowM != null && nowM < 1440 ? `<line x1="${X(nowM)}" x2="${X(nowM)}" y1="${P.t}" y2="${H - P.b}" stroke="var(--muted)" stroke-dasharray="2 4"/>` : ""}`;
   bindHover(id, W, (cx) => { let best = 0, bd = Infinity; pts.forEach((p, i) => { const dd = Math.abs(X(p.m) - cx); if (dd < bd) { bd = dd; best = i; } }); return best; }, (i) => X(pts[i].m), (i) => ({ html: `<b>${clock(Math.max(0, pts[i].m))}</b><div>Body Battery <b>${pts[i].v}</b></div>`, dots: [{ y: Y(pts[i].v), c: "var(--fg)" }] }));
@@ -1795,61 +1799,88 @@ async function pageTelo(el) {
 }
 
 /** výchozí díly podle druhu vybavení */
-const PART_PRESET = { bike: [["Řetěz", "Vyměněno", 3000, 1000], ["Pneumatiky", "Vyměněno", 4000, 1000], ["Brzdové destičky", "Vyměněno", 2500, 500]], ski: [["Vosk", "Navoskováno", 250, 50], ["Broušení", "Nabroušeno", 1000, 200]], shoe: [["Boty", "Vyměněno", 800, 100]], other: [] };
+const PART_PRESET = { bike: [["Řetěz", "Vyměněno", 3000, 1000], ["Pláště", "Vyměněno", 4000, 1000], ["Brzdové destičky", "Vyměněno", 2500, 500]], ski: [["Vosk", "Navoskováno", 250, 50], ["Broušení", "Nabroušeno", 1000, 200]], shoe: [["Boty", "Vyměněno", 800, 100]], other: [] };
+/** Díly a servis: řádek s km / kontrolou, pruh (zelená → oranžová před servisem → červená po termínu), tlačítko servisu. */
 function partsHtml(g) {
   const ps = g.parts || [];
   const rows = ps.map((p) => {
     const pct = p.interval_km ? clamp((p.km / p.interval_km) * 100, 0, 100) : null;
     const tone = p.interval_km ? (p.km >= p.interval_km ? "bad" : p.km >= p.interval_km * 0.85 ? "warn" : "ok") : "";
-    return `<div class="part ${tone}"><div class="part-h"><b>${esc(p.name)}</b><span class="part-km">${num(p.km)} km</span></div>
-      ${pct != null ? `<div class="prog sm"><i style="width:${pct}%"></i></div>` : ""}
-      <div class="part-f"><span class="sub">od ${dm(p.since.slice(0, 10))}${p.since.slice(0, 4)}${p.interval_km ? ` · kontrola při ${thou(p.interval_km)} km, pak po ${thou(p.repeat_km || p.interval_km)}` : ""}${p.km >= (p.interval_km || 1e9) ? " · ⚠️ čas na servis" : ""}</span>
-      <span class="part-b"><button class="btn sm pri" data-reset="${p.id}">✓ ${esc(p.action || "Servis")}</button><button class="btn sm" data-pdel="${p.id}" title="smazat díl">✕</button></span></div>
-      ${p.history && p.history.length ? `<div class="sub part-hist">dřív: ${p.history.map((h) => `${dm(h.at.slice(0, 10))}${h.at.slice(0, 4)} (${num(h.km)} km)`).join(" · ")}</div>` : ""}</div>`;
+    return `<div class="gpart ${tone}"><div class="gp-h"><b>${esc(p.name)}</b><span class="num">${thou(p.km)}${p.interval_km ? ` / ${thou(p.interval_km)}` : ""} km</span></div>
+      ${pct != null ? `<div class="gp-bar"><i style="width:${pct}%"></i></div>` : ""}
+      <div class="gp-f"><button class="btn sm gp-do" data-reset="${p.id}">✓ ${esc(p.name)} – ${esc((p.action || "servis").toLowerCase())}</button><span class="sub">od ${dm(p.since.slice(0, 10))}${p.since.slice(0, 4)}${p.history && p.history.length ? ` · dřív ${p.history.length}×` : ""}</span><button class="gp-del" data-pdel="${p.id}" aria-label="smazat díl ${esc(p.name)}" title="smazat díl">✕</button></div></div>`;
   }).join("");
   const pre = (PART_PRESET[g.kind] || []).filter(([n]) => !ps.some((p) => p.name === n));
-  return `<div class="parts">${rows}<details class="addpart"><summary class="btn sm">＋ Díl / servis</summary>
-    ${pre.length ? `<div class="chips2">${pre.map(([n, a, i, r]) => `<button class="btn sm" data-preset='${esc(JSON.stringify({ name: n, action: a, interval_km: i, repeat_km: r }))}' data-gid="${g.id}">${esc(n)} · ${thou(i)} km</button>`).join("")}</div>` : ""}
-    <form class="pform form-grid" data-gid="${g.id}"><label>Název<input name="name" placeholder="např. Řetěz" required></label><label>Tlačítko<input name="action" placeholder="Vyměněno"></label><label>Kontrola po (km)<input name="interval_km" type="number" min="0"></label><label>Pak každých (km)<input name="repeat_km" type="number" min="0"></label><label>Najeto už teď (km)<input name="start_km" type="number" min="0" value="0"></label><label>Počítat od data<input name="since" type="date"></label><div><button class="btn pri" type="submit">Přidat díl</button></div></form>
-    <p class="note">Km dílu = aktivity s tímto vybavením od posledního servisu. Při překročení kontroly přijde upozornění do Telegramu a pak znovu po každém dalším úseku, dokud nedáš „${esc("✓")}“.</p></details></div>`;
+  return `<div class="gparts"><div class="sl">Díly a servis</div>${rows || `<p class="sub gp-empty">Zatím žádné díly – přidej je a hlídej km od servisu (upozornění přijde do Telegramu).</p>`}
+    <div class="gp-add">${pre.slice(0, 2).map(([n, a, i, r]) => `<button class="btn sm" data-preset='${esc(JSON.stringify({ name: n, action: a, interval_km: i, repeat_km: r }))}' data-gid="${g.id}">＋ ${esc(n)} ${thou(i)} km</button>`).join("")}<details class="addpart"><summary class="btn sm">＋ Jiný díl</summary>
+    <form class="pform form-grid" data-gid="${g.id}"><label>Název<input name="name" placeholder="např. Řetěz" required></label><label>Tlačítko<input name="action" placeholder="Vyměněno"></label><label>Kontrola po (km)<input name="interval_km" type="number" min="0"></label><label>Pak každých (km)<input name="repeat_km" type="number" min="0"></label><label>Najeto už teď (km)<input name="start_km" type="number" min="0" value="0"></label><label>Počítat od data<input name="since" type="date"></label><div><button class="btn pri" type="submit">Přidat díl</button></div></form></details></div></div>`;
 }
+/** druh vybavení: ikona (SVG), barva, název */
 const GEAR_KIND = { bike: ["🚲", "Kolo"], ski: ["🎿", "Lyže"], shoe: ["👟", "Boty"], other: ["🎒", "Jiné"] };
+const GEAR_ICO = {
+  bike: '<circle cx="6" cy="16" r="3.6"/><circle cx="18" cy="16" r="3.6"/><path d="M6 16l4-7h5l3 7M10 9l3 7h-7M14 6h3"/>',
+  ski: '<path d="M3 18h18M6 18l3-13M18 18l-3-13"/>',
+  shoe: '<path d="M3 16c0-3 1-6 2-8l4 2c1 .5 2 .5 3 0l1-1 7 4c1 .6 1 2.4 1 3v1H3z"/><path d="M3 18h18"/>',
+  other: '<rect x="5" y="7" width="14" height="13" rx="2"/><path d="M9 7V5h6v2"/>',
+};
+const GEAR_COLOR = { bike: "var(--z2)", ski: "#3a8fd0", shoe: "var(--acc)", other: "var(--z7)" };
 const GEAR_SPORTS = [["ride", "Silnice"], ["mtb", "MTB"], ["indoor", "Trenažér"], ["run", "Běh"], ["xc_ski", "Běžky"], ["walk", "Chůze"], ["hike", "Turistika"]];
+let gearShow = "active"; // active | retired
 async function pageVybaveni(el) {
   const list = await api("gear");
   const form = (g = {}) => `<form class="gform" data-id="${g.id || ""}"><div class="form-grid">
     <label>Název<input name="name" value="${esc(g.name || "")}" placeholder="např. Canyon Endurace" required></label>
-    <label>Druh<select name="kind">${Object.entries(GEAR_KIND).map(([k, [i, l]]) => `<option value="${k}" ${g.kind === k ? "selected" : ""}>${i} ${l}</option>`).join("")}</select></label>
+    <label>Druh<select name="kind">${Object.entries(GEAR_KIND).map(([k, [, l]]) => `<option value="${k}" ${g.kind === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
     <label>Najeto před evidencí (km)<input name="start_km" type="number" min="0" value="${g.start_km || 0}"></label>
     <label>Výchozí od data (prázdné = celá historie)<input name="from_date" type="date" value="${g.from_date || ""}"></label>
     <label>Vyřazeno k datu<input name="to_date" type="date" value="${g.to_date || ""}"></label>
     <label>Poznámka<input name="note" value="${esc(g.note || "")}"></label>
     </div><div class="sl" style="margin:12px 0 6px">Výchozí pro sporty (aktivity bez ručního výběru)</div><div class="chks">${GEAR_SPORTS.map(([k, l]) => `<label class="chk"><input type="checkbox" name="df" value="${k}" ${(g.default_for || "").split(",").includes(k) ? "checked" : ""}> ${l}</label>`).join("")}</div>
-    <div class="btns"><button class="btn pri" type="submit">${g.id ? "Uložit" : "Přidat"}</button>${g.id ? `<button class="btn" type="button" data-del="${g.id}">Smazat</button>` : ""}</div></form>`;
-  const tiles = list.map((g) => `<div class="gear ${g.to_date ? "retired" : ""}"><div class="gear-h"><span class="gi">${GEAR_KIND[g.kind]?.[0] || "🎒"}</span><div><a href="#/vybaveni/${g.id}"><b>${esc(g.name)}</b></a><div class="sub">${esc((g.default_for || "").split(",").filter(Boolean).map((s) => SPORT_NAME[s] || s).join(", ") || "jen ručně")}${g.to_date ? ` · vyřazeno ${dm(g.to_date)}${g.to_date.slice(0, 4)}` : ""}</div></div><a class="btn sm" href="#/vybaveni/${g.id}">Aktivity →</a><button class="btn sm" data-edit="${g.id}">Upravit</button></div>
-    <div class="la-grid"><div><span>Celkem</span><b>${thou(g.km)}<small> km</small></b></div><div><span>Aktivit</span><b>${g.n}</b></div><div><span>Čas</span><b>${num(g.hours, 0)}<small> h</small></b></div></div>
-    <div class="sub" style="margin-top:6px">${g.first ? `od ${dm(g.first)}${g.first.slice(0, 4)} · naposledy ${dm(g.last)}${g.last.slice(0, 4)} · ↑ ${thou(g.up)} m` : "zatím žádná aktivita"}${g.start_km ? ` · včetně ${thou(g.start_km)} km před evidencí` : ""}</div>${partsHtml(g)}<div class="gedit" id="ge${g.id}"></div></div>`).join("");
-  el.innerHTML = `<div class="head"><div><h1>Vybavení</h1><div class="sub">Kola, lyže, boty – km z aktivit. Garmin vybavení přes API nedává, evidence je tady.</div></div></div><div class="grid">
-   ${card("c7", "Moje vybavení", "", tiles || '<div class="empty">Zatím nic. Přidej první kolo nebo lyže vpravo.</div>')}
-   ${card("c5", "➕ Přidat", "", form() + `<p class="note">Výchozí vybavení se přiřadí všem aktivitám daného sportu (od zvoleného data). Konkrétní aktivitě ho změníš v jejím detailu.</p>`)}
-  </div>`;
-  const bindForm = (f) => {
+    <div class="btns"><button class="btn pri" type="submit">${g.id ? "Uložit" : "Přidat"}</button>${g.id ? `<button class="btn" type="button" data-del="${g.id}">Smazat</button>` : ""}</div>
+    <p class="note">Výchozí vybavení se přiřadí všem aktivitám daného sportu (od zvoleného data). Konkrétní aktivitě ho změníš v jejím detailu.</p></form>`;
+  const active = list.filter((g) => !g.to_date), retired = list.filter((g) => g.to_date);
+  const shown = gearShow === "retired" ? retired : active;
+  const cardOf = (g) => {
+    const sports = (g.default_for || "").split(",").filter(Boolean).map((s) => SPORT_NAME[s] || s);
+    return `<article class="gcard ${g.to_date ? "retired" : ""}" style="--gc:${GEAR_COLOR[g.kind] || "var(--z1)"}">
+      <div class="gc-h"><span class="gc-ico"><svg viewBox="0 0 24 24" aria-hidden="true">${GEAR_ICO[g.kind] || GEAR_ICO.other}</svg></span>
+        <div class="gc-t"><b>${esc(g.name)}</b><span class="sub">${GEAR_KIND[g.kind]?.[1] || "Jiné"}${sports.length ? ` · výchozí pro ${esc(sports.join(", ").toLowerCase())}` : " · jen ručně"}${g.to_date ? ` · vyřazeno ${dm(g.to_date)}${g.to_date.slice(0, 4)}` : ""}</span></div>
+        <button class="gc-edit" data-edit="${g.id}" aria-label="Upravit ${esc(g.name)}" title="Upravit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/></svg></button></div>
+      <div class="gc-km"><span class="num">${thou(g.km)}</span><small>km</small><span class="gc-st">${g.n} ${g.kind === "ski" ? "jízd" : g.kind === "shoe" ? "aktivit" : "jízd"} · ${num(g.hours, 0)} h${g.up ? ` · ↑ ${thou(g.up)} m` : ""}</span></div>
+      ${g.start_km ? `<div class="sub">včetně ${thou(g.start_km)} km před evidencí</div>` : ""}
+      ${partsHtml(g)}
+      <a class="gc-link" href="#/vybaveni/${g.id}">Aktivity s tímto vybavením →</a></article>`;
+  };
+  el.innerHTML = `<div class="head"><div><h1>Vybavení</h1><div class="sub">Km se počítají z aktivit. Servis dílů hlídá Telegram.</div></div><button class="btn pri" id="gearAdd">＋ Přidat vybavení</button></div>
+  <div class="seg sm gseg"><button class="${gearShow === "active" ? "on" : ""}" data-gs="active">V provozu · ${active.length}</button><button class="${gearShow === "retired" ? "on" : ""}" data-gs="retired">Vyřazené · ${retired.length}</button></div>
+  <div class="ggrid">${shown.map(cardOf).join("") || `<div class="card"><div class="empty">${gearShow === "retired" ? "Žádné vyřazené vybavení." : "Zatím nic. Přidej první kolo nebo lyže tlačítkem nahoře."}</div></div>`}</div>`;
+  const reload = () => { cache.clear(); pageVybaveni(el); };
+  // úprava / přidání v okně
+  const openForm = (g) => {
+    const ov = document.createElement("div");
+    ov.className = "modal";
+    ov.innerHTML = `<div class="modal-in gmodal"><div class="ch"><h2>${g ? `Upravit · ${esc(g.name)}` : "Přidat vybavení"}</h2><button class="btn sm" data-x aria-label="Zavřít">✕</button></div>${form(g || {})}</div>`;
+    document.body.appendChild(ov);
+    const close = () => ov.remove();
+    ov.querySelector("[data-x]").onclick = close;
+    ov.addEventListener("click", (e) => { if (e.target === ov) close(); });
+    const f = ov.querySelector("form");
     f.addEventListener("submit", async (e) => {
       e.preventDefault();
       const fd = new FormData(f);
       const body = { name: fd.get("name"), kind: fd.get("kind"), start_km: fd.get("start_km"), from_date: fd.get("from_date"), to_date: fd.get("to_date"), note: fd.get("note"), default_for: fd.getAll("df") };
       await api(f.dataset.id ? `gear/${f.dataset.id}` : "gear", { method: f.dataset.id ? "PUT" : "POST", body: JSON.stringify(body) });
-      cache.clear(); pageVybaveni(el);
+      close(); reload();
     });
-    f.querySelector("[data-del]")?.addEventListener("click", async () => { if (!confirm("Smazat vybavení? Aktivity zůstanou.")) return; await api(`gear/${f.dataset.id}`, { method: "DELETE" }); cache.clear(); pageVybaveni(el); });
+    f.querySelector("[data-del]")?.addEventListener("click", async () => { if (!confirm("Smazat vybavení? Aktivity zůstanou.")) return; await api(`gear/${f.dataset.id}`, { method: "DELETE" }); close(); reload(); });
   };
-  el.querySelectorAll(".gform").forEach(bindForm);
-  const reload = () => { cache.clear(); pageVybaveni(el); };
-  el.querySelectorAll("[data-reset]").forEach((b) => b.addEventListener("click", async () => { if (!confirm(`Zapsat servis „${b.textContent.replace("✓ ", "")}“ k dnešku? Km dílu začnou od nuly.`)) return; b.disabled = true; await api(`gear/parts/${b.dataset.reset}/reset`, { method: "POST", body: "{}" }); reload(); }));
+  el.querySelector("#gearAdd").addEventListener("click", () => openForm(null));
+  el.querySelectorAll("[data-edit]").forEach((b) => b.addEventListener("click", () => openForm(list.find((g) => String(g.id) === b.dataset.edit))));
+  el.querySelectorAll("[data-gs]").forEach((b) => b.addEventListener("click", () => { gearShow = b.dataset.gs; pageVybaveni(el); }));
+  el.querySelectorAll("[data-reset]").forEach((b) => b.addEventListener("click", async () => { if (!confirm(`Zapsat „${b.textContent.replace("✓ ", "")}“ k dnešku? Km dílu začnou od nuly.`)) return; b.disabled = true; await api(`gear/parts/${b.dataset.reset}/reset`, { method: "POST", body: "{}" }); reload(); }));
   el.querySelectorAll("[data-pdel]").forEach((b) => b.addEventListener("click", async () => { if (!confirm("Smazat díl i s historií servisu?")) return; await api(`gear/parts/${b.dataset.pdel}`, { method: "DELETE" }); reload(); }));
   el.querySelectorAll("[data-preset]").forEach((b) => b.addEventListener("click", async () => { b.disabled = true; await api(`gear/${b.dataset.gid}/parts`, { method: "POST", body: b.dataset.preset }); reload(); }));
   el.querySelectorAll(".pform").forEach((f) => f.addEventListener("submit", async (e) => { e.preventDefault(); const fd = new FormData(f); await api(`gear/${f.dataset.gid}/parts`, { method: "POST", body: JSON.stringify(Object.fromEntries(fd)) }); reload(); }));
-  el.querySelectorAll("[data-edit]").forEach((b) => b.addEventListener("click", () => { const box = el.querySelector(`#ge${b.dataset.edit}`); if (box.innerHTML) { box.innerHTML = ""; return; } box.innerHTML = form(list.find((g) => String(g.id) === b.dataset.edit)); bindForm(box.querySelector("form")); }));
 }
 
 /** Aktivity s jedním vybavením (klik na vybavení). */

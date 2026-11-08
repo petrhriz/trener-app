@@ -1100,3 +1100,64 @@ html:root[data-skin="k"] .stat, html:root[data-skin="k"] .mtile { border-radius:
 .st-warn .pb-ico { background: color-mix(in srgb, var(--warn) 22%, var(--card)); }
 .st-info .pb-ico { background: color-mix(in srgb, var(--z2) 22%, var(--card)); }
 .dnav { border-radius: 16px; }
+/* Body Battery – varianta A: půlkruh, čísla bez rámečků, tichý seznam „co nabilo a vybilo“ */
+.bbtopA { display: flex; align-items: flex-end; gap: 24px; margin-bottom: 14px; flex-wrap: wrap; }
+.bbgauge { position: relative; width: 190px; height: 104px; flex: none; }
+.bbgauge svg { display: block; }
+.bbg-v { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; }
+.bbg-v b { font-size: 44px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.bbg-v small { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.bbkpisA { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; flex: 1; min-width: 180px; padding-bottom: 4px; }
+.bbkA { display: flex; flex-direction: column; }
+.bbkA span { font-size: 12px; color: var(--muted); }
+.bbkA b { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.ens { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--line); }
+.en { background: none; border-radius: 0; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.en:last-child { border-bottom: 0; }
+.en-i { display: none; }
+@media (max-width: 760px) {
+  .bbtopA { gap: 14px; }
+  .bbgauge { width: 150px; height: 84px; } .bbgauge svg { width: 150px; height: 82px; }
+  .bbg-v b { font-size: 36px; }
+  .bbkpisA { gap: 8px 16px; min-width: 140px; } .bbkA b { font-size: 19px; }
+}
+/* Vybavení: karty (ikona v barvě druhu, km velkým číslem, díly s pruhem a tlačítkem servisu), formulář v okně */
+.gseg { margin-bottom: 14px; }
+.ggrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; align-items: start; }
+.gcard { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow); min-width: 0; }
+.gcard.retired { opacity: .7; }
+.gc-h { display: flex; align-items: center; gap: 12px; }
+.gc-ico { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; flex: none; background: color-mix(in srgb, var(--gc) 15%, var(--card)); }
+.gc-ico svg { width: 26px; height: 26px; fill: none; stroke: var(--gc); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.gc-t { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.gc-t b { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gc-t .sub { font-size: 12.5px; }
+.gc-edit { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); display: grid; place-items: center; cursor: pointer; flex: none; }
+.gc-edit svg { width: 16px; height: 16px; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.gc-edit:hover { border-color: var(--acc); }
+.gc-km { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.gc-km .num { font-size: 34px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1; }
+.gc-km small { font-size: 14px; color: var(--muted); }
+.gc-st { margin-left: auto; font-size: 13px; color: var(--muted); }
+.gparts { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--line); padding-top: 12px; }
+.gparts > .sl { margin: 0; }
+.gp-empty { margin: 0; font-size: 13px; }
+.gpart { display: flex; flex-direction: column; gap: 6px; }
+.gp-h { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; }
+.gp-h span { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.gpart.bad .gp-h span { color: var(--bad); font-weight: 700; }
+.gp-bar { height: 6px; border-radius: 99px; background: var(--card2); overflow: hidden; }
+.gp-bar i { display: block; height: 100%; border-radius: 99px; background: var(--ok); }
+.gpart.warn .gp-bar i { background: var(--warn); } .gpart.bad .gp-bar i { background: var(--bad); }
+.gp-f { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.gp-f .sub { font-size: 12px; }
+.gp-do { background: var(--accbg); border-color: transparent; color: var(--acc); }
+.gpart.bad .gp-do { background: var(--badbg); color: var(--bad); }
+.gp-del { margin-left: auto; border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 14px; width: 30px; height: 30px; border-radius: 8px; }
+.gp-del:hover { background: var(--card2); color: var(--bad); }
+.gp-add { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; }
+.gp-add details[open] { flex-basis: 100%; }
+.gc-link { margin-top: auto; font-size: 13px; font-weight: 600; color: var(--acc); }
+.gmodal { max-width: 620px; max-height: 88dvh; overflow-y: auto; }
+.gmodal .ch { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+@media (max-width: 760px) { .ggrid { grid-template-columns: minmax(0, 1fr); } .gc-st { margin-left: 0; flex-basis: 100%; } }
