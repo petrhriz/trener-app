@@ -45,3 +45,33 @@ describe("TrainingPeaks výpočty", () => {
     expect(m.tone).toBe("bad");
   });
 });
+
+import { parseOwnRide } from "../src/core/ownRide";
+import { parseConsent } from "../src/plan/proposals";
+describe("ultrareview: vlastní jízda a souhlas", () => {
+  const T = "2026-11-08"; // neděle
+  it("dny s diakritikou", () => {
+    expect(parseOwnRide("v pondělí pojedu 3 h", T)!.date).toBe("2026-11-09");
+    expect(parseOwnRide("v úterý jedu 2 h", T)!.date).toBe("2026-11-10");
+  });
+  it("2.5 h není datum", () => {
+    const r = parseOwnRide("v sobotu pojedu 2.5 h", T)!;
+    expect(r.date).toBe("2026-11-14");
+    expect(r.min).toBe(150);
+  });
+  it("čas startu není délka", () => {
+    expect(parseOwnRide("zítra vyrážím v 9:00 na 3 h", T)!.min).toBe(180);
+    expect(parseOwnRide("pozítří jedu 3:30 h", T)!.min).toBe(210);
+  });
+  it("„po“ jako předložka není pondělí", () => {
+    expect(parseOwnRide("v sobotu pojedu po obědě 3 h", T)!.date).toBe("2026-11-14");
+    expect(parseOwnRide("pojedu po práci 2 h", T)).toBeNull();
+  });
+  it("datum 21. 11.", () => {
+    expect(parseOwnRide("21. 11. pojedu 4 h", T)!.date).toBe("2026-11-21");
+  });
+  it("souhlas s diakritikou", () => {
+    expect(parseConsent("jasně", ["#1", "#2"])).toEqual(["#1", "#2"]);
+    expect(parseConsent("zapiš #2", ["#1", "#2"])).toEqual(["#2"]);
+  });
+});

@@ -10,11 +10,15 @@ import { syncTick } from "./sync/sync";
 import { cmdRano, cmdTyden, cmdZitra, send } from "./telegram/bot";
 import { activityMessage } from "./telegram/render";
 import { serviceAlerts } from "./api/gear";
+import { retryIcuDeletes } from "./plan/proposals";
 
 export async function runScheduler(env: Env, at = new Date()): Promise<string[]> {
   const log: string[] = [];
   const rep = await syncTick(env);
   log.push(...rep.steps);
+  // dříve nesmazané události v intervals.icu (výpadek) – zkusit znovu
+  const del = await retryIcuDeletes(env).catch(() => 0);
+  if (del) log.push(`intervals.icu: dosmazáno ${del}`);
   if (!env.TELEGRAM_CHAT_ID) return log;
   const now = localNow(at, env.TZ_NAME);
   const T = now.date;

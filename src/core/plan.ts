@@ -295,9 +295,10 @@ export function generatePlan(inp: PlanInput): PlanResult {
   // Hotové / vynechané položky z minulosti (6.1a)
   const done: { id: number; date: string }[] = [];
   const missed: PlanResult["missed"] = [];
-  for (const c of calPlanned) {
+  const calPast = inp.calendar.filter((c) => c.kind !== "rest" && (c.status === "planned" || c.status === "moved" || c.status === "missed" || c.status === "done"));
+  for (const c of calPast) {
     if (c.date > T || (c.date === T && !todayDone)) continue;
-    if (rodeOn(c.date)) done.push({ id: c.id, date: c.date });
+    if (c.status === "done" || rodeOn(c.date)) done.push({ id: c.id, date: c.date });
     else if (c.date < T) missed.push({ id: c.id, date: c.date, name: c.name, kind: c.kind });
   }
 
@@ -483,7 +484,7 @@ export function generatePlan(inp: PlanInput): PlanResult {
   };
 
   // Přesuny kalendářních jednotek z blokovaných dnů (výměnou, 6.1b)
-  const moveQueue: Slot[] = slots.filter((s) => s.cal && s.changed === "smazat");
+  const moveQueue: Slot[] = slots.filter((s) => s.cal && s.changed === "smazat" && !s.userRest);
 
   // ---- po týdnech ----
   const weeks = [...new Set(dates.map(mondayOf))];
@@ -570,6 +571,15 @@ export function generatePlan(inp: PlanInput): PlanResult {
         mv.changed = null; // nahrazeno přesunem
         (target as Slot & { moveOf?: number }).cal = null;
         (target as Slot & { moveId?: number }).moveId = cal.id;
+        if (target.kind === "quality") {
+          if (qCount >= limit) {
+            target.kind = "z2";
+            target.qualityType = null;
+            target.workout = undefined;
+            target.why.push(`limit kvality ${limit} týdně`);
+          } else qCount++;
+        }
+        if (target.kind === "z2" || target.kind === "quality" || target.kind === "long" || target.kind === "recovery") rides++;
       }
     }
 
@@ -745,9 +755,11 @@ export function generatePlan(inp: PlanInput): PlanResult {
         (x) => x.kind === "rest" && !x.cal && !x.userRest && x.date !== T && mondayOf(x.date) === mon && (() => { const ww = inp.weather.get(x.date); return ww && !ww.bad; })() && !prevDayHard(x.date) === true,
       );
       if (target && s.date !== T) {
-        Object.assign(target, { kind: s.kind, minutes: s.minutes, indoor: false, qualityType: null, fixedName: s.fixedName, workout: s.workout, movedFrom: s.date, changed: s.cal ? "přesunout" : "nová" });
+        const origId = s.cal?.id ?? (s as any).moveId;
+        Object.assign(target, { kind: s.kind, minutes: s.minutes, indoor: false, qualityType: null, fixedName: s.fixedName, workout: s.workout, movedFrom: s.movedFrom ?? s.date, changed: origId ? "přesunout" : "nová" });
         target.why = [...s.why, `z ${dayDm(s.date)}: ${weatherWhy(w)}`];
-        (target as any).moveId = s.cal?.id;
+        (target as any).moveId = origId;
+        (s as any).moveId = undefined;
         s.kind = "rest";
         s.changed = s.cal ? null : null;
         s.note.push(`Jízda přesunuta na ${dayDm(target.date)} (${weatherWhy(w)}).`);
@@ -766,7 +778,7 @@ export function generatePlan(inp: PlanInput): PlanResult {
 
   // ---- dnešek podle zotavení (kap. 4) ----
   const todaySlot = slots.find((s) => s.date === T);
-  if (todaySlot && inp.recovery && inp.recovery !== "green" && todaySlot.kind !== "rest" && todaySlot.kind !== "blocked") {
+  if (todaySlot && inp.recovery && inp.recovery !== "green" && (todaySlot.kind === "z2" || todaySlot.kind === "quality" || todaySlot.kind === "long" || todaySlot.kind === "recovery")) {
     if (inp.recovery === "red") {
       todaySlot.why.push("🔴 neodpočatý: volno nebo Z1 do 45 min");
       todaySlot.kind = "recovery";

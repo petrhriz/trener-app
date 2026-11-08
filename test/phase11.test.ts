@@ -125,3 +125,23 @@ describe("Zlepšit nemá kratší jízdy než Udržet (8. kolo)", () => {
     for (let i = 0; i < 2; i++) { expect(z[i]!).toBeGreaterThanOrEqual(u[i]!); expect(u[i]!).toBeGreaterThanOrEqual(p[i]!); }
   });
 });
+
+describe("ultrareview: plánovač", () => {
+  const cal = (id: number, date: string, kind: "z2" | "quality" = "z2") => ({ id, date, kind, quality_type: null, name: kind === "quality" ? "Práh" : "Z2 vytrvalost", indoor: 0, duration_min: 75, steps_json: null, steps_text: null, target_load: 80, reason: null, status: "planned", sport: "ride", goal: "zvyseni" }) as any;
+  it("volno z tvé volby trénink smaže, nepřesune", () => {
+    const p = generatePlan(planInput({ calendar: [cal(1, "2026-11-10")], constraints: [{ date: "2026-11-10", kind: "sport", note: "rest" } as any] }));
+    const ch = p.changes.filter((c) => c.targetId === 1);
+    expect(ch.some((c) => c.action === "smazat")).toBe(true);
+    expect(ch.some((c) => c.action === "přesunout")).toBe(false);
+  });
+  it("hokej dnes s červeným ránem nepřepíše na jízdu", () => {
+    const p = generatePlan(planInput({ calendar: [cal(1, "2026-11-08")], constraints: [{ date: "2026-11-08", kind: "hokej", note: null } as any], recovery: "red" }));
+    const d = p.days.find((x) => x.date === "2026-11-08");
+    expect(d?.kind === "recovery").toBe(false);
+  });
+  it("přesunutá kvalita z blokovaného dne se počítá do limitu", () => {
+    const p = generatePlan(planInput({ calendar: [cal(1, "2026-11-10", "quality")], constraints: [{ date: "2026-11-10", kind: "nemuzu", note: null } as any] }));
+    const wk = p.days.filter((x) => x.date >= "2026-11-09" && x.date <= "2026-11-15");
+    expect(wk.filter((x) => x.kind === "quality").length).toBeLessThanOrEqual(1); // listopad: limit 1
+  });
+});

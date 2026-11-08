@@ -3,7 +3,8 @@ import type { Env } from "../env";
 import { IntervalsClient } from "../datasource/intervals";
 import type { Change, Payload } from "../core/plan";
 import { ICU_TYPE } from "../core/workout";
-import { all, first, lit, logEvent, run } from "../lib/db";
+import { all, first, getState, lit, logEvent, run, setState } from "../lib/db";
+import { HttpError } from "../lib/http";
 import { dayDm } from "../lib/format";
 import { getSettings } from "../lib/settings";
 
@@ -33,11 +34,12 @@ export async function getProposal(env: Env, id: number) {
 export function parseConsent(text: string, codes: string[]): string[] | null {
   const t = text.trim().toLowerCase().replace(/[.!]+$/, "");
   // „#1“, „1“ i staré „Z1“ → kód změny se stejným číslem
-  const picked = [...t.replace(/^(ano|zapiš|zapis|ok|jo|jasně|jasne|ne)\b/, "").matchAll(/(?:z|#)?\s?(\d+)/g)]
+  // hranice slova přes (?!\p{L}) – \b v JS nefunguje za písmenem s diakritikou („jasně“, „zapiš“)
+  const picked = [...t.replace(/^(ano|zapiš|zapis|ok|jo|jasně|jasne|ne)(?!\p{L})/u, "").matchAll(/(?:z|#)?\s?(\d+)/g)]
     .map((m) => codes.find((c) => c.replace(/\D/g, "") === m[1]))
     .filter((c): c is string => !!c);
-  if (/^(ano|zapiš|zapis|ok|jo|jasně|jasne)\b/.test(t)) return picked.length ? picked : codes;
-  if (/^ne\b/.test(t)) return picked.length ? codes.filter((c) => !picked.includes(c)) : [];
+  if (/^(ano|zapiš|zapis|ok|jo|jasně|jasne)(?!\p{L})/u.test(t)) return picked.length ? picked : codes;
+  if (/^ne(?!\p{L})/u.test(t)) return picked.length ? codes.filter((c) => !picked.includes(c)) : [];
   return null;
 }
 
@@ -59,6 +61,35 @@ export interface ApplyResult {
   verify: string;
 }
 
+// ---- mazání událostí v intervals.icu: chyba se nezahazuje, nesmazané se zkouší znovu ----
+const DEL_QUEUE = "icu_delete_queue";
+/** smaže událost; true = smazáno (nebo už neexistuje – 404), false = nepovedlo se (zařadí do fronty) */
+async function deleteIcuEvent(env: Env, icu: IntervalsClient, id: string): Promise<boolean> {
+  try {
+    await icu.deleteEvent(id);
+    return true;
+  } catch (e) {
+    if (e instanceof HttpError && e.status === 404) return true;
+    const q = (await getState<string[]>(env.DB, DEL_QUEUE)) ?? [];
+    if (!q.includes(id)) await setState(env.DB, DEL_QUEUE, [...q, id].slice(-200));
+    await logEvent(env.DB, "warn", `intervals.icu: událost ${id} se nepodařilo smazat (${(e as Error).message.slice(0, 80)}) – zkusím znovu`);
+    return false;
+  }
+}
+/** zopakovat dříve nesmazané události (volá se před zápisem a z plánovače) */
+export async function retryIcuDeletes(env: Env): Promise<number> {
+  const q = (await getState<string[]>(env.DB, DEL_QUEUE)) ?? [];
+  if (!q.length) return 0;
+  const icu = new IntervalsClient(env);
+  if (!icu.configured) return 0;
+  const left: string[] = [];
+  for (const id of q) {
+    try { await icu.deleteEvent(id); } catch (e) { if (!(e instanceof HttpError && e.status === 404)) left.push(id); }
+  }
+  await setState(env.DB, DEL_QUEUE, left);
+  return q.length - left.length;
+}
+
 /** Zápis vybraných změn (7.2). Před zápisem znovu načte dotčené dny, po zápisu ověří zpětným čtením. */
 export async function applyChanges(env: Env, items: Change[]): Promise<ApplyResult> {
   const s = await getSettings(env.DB);
@@ -67,15 +98,18 @@ export async function applyChanges(env: Env, items: Change[]): Promise<ApplyResu
   const now = new Date().toISOString();
   const lines: string[] = [];
   const touched = new Set<string>();
+  const notDeleted: string[] = [];
+  if (sync) await retryIcuDeletes(env).catch(() => 0);
 
   for (const c of items) {
     try {
       if (c.action === "smazat" && c.targetId) {
         const row = await first<{ icu_event_id: string | null; date: string }>(env.DB, "SELECT icu_event_id, date FROM planned_workouts WHERE id = ?", c.targetId);
         await run(env.DB, "UPDATE planned_workouts SET status = 'skipped', updated_at = ? WHERE id = ?", now, c.targetId);
-        if (sync && row?.icu_event_id) await icu.deleteEvent(row.icu_event_id).catch(() => null);
+        const ok = !(sync && row?.icu_event_id) || (await deleteIcuEvent(env, icu, row.icu_event_id));
         if (row) touched.add(row.date);
-        lines.push(`${c.code} smazáno: ${c.name}`);
+        if (!ok && row) notDeleted.push(dayDm(row.date));
+        lines.push(ok ? `${c.code} smazáno: ${c.name}` : `${c.code} smazáno z plánu, v intervals.icu se to zatím nepovedlo (zkusím znovu): ${c.name}`);
         continue;
       }
       const p = c.payload;
@@ -149,6 +183,7 @@ export async function applyChanges(env: Env, items: Change[]): Promise<ApplyResu
       }
     }
   }
+  if (notDeleted.length) verify += ` ⚠️ V intervals.icu zatím zůstalo ke smazání: ${notDeleted.join(", ")} – zkusím to znovu automaticky.`;
   return { lines, verify };
 }
 
@@ -161,7 +196,8 @@ export async function removeConstraint(env: Env, date: string, kind: string | nu
   );
   const icu = new IntervalsClient(env);
   for (const r of rows) {
-    if (r.icu_event_id && icu.configured) await icu.deleteEvent(r.icu_event_id).catch(() => null);
+    // nesmazanou poznámku si fronta pamatuje, i když řádek v D1 zmizí
+    if (r.icu_event_id && icu.configured) await deleteIcuEvent(env, icu, r.icu_event_id);
     await run(env.DB, "DELETE FROM constraints WHERE id = ?", r.id);
   }
   // jednotka, kterou kvůli omezení smazal potvrzený návrh, se vrátí do plánu (i do intervals.icu → Garmin)
