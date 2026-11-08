@@ -796,8 +796,8 @@ async function pagePrehled(el) {
   // 4) průběh dne
   // vlevo grafy dne (tep, Body Battery), vpravo stav (kroužek Body Battery, stres, co nabilo a vybilo)
   // Body Battery v jedné kartě (půlkruh, čísla, graf, co nabilo a vybilo), vedle tep a stres
-  const bbCard = card("c6", `<a href="#/detail/bb">🔋 Body Battery · ${d.isToday ? "dnes" : dayDm(d.date)} →</a>`, "Garmin", `<div id="bbtop"></div><div id="bbday" class="loading sm">Načítám průběh dne…</div><div id="dayenergy"></div>`);
-  const hrCard = card("c6", `<a href="#/detail/stres">❤️ Tep a stres · ${d.isToday ? "dnes" : dayDm(d.date)} →</a>`, "Garmin", `<div id="hrday" class="loading sm">Načítám tep…</div><div id="daystress"></div>`);
+  const bbCard = card("c12 energy", `<a href="#/detail/bb">🔋 Energie a tep · ${d.isToday ? "dnes" : dayDm(d.date)} →</a>`, "Garmin", `<div id="energy" class="loading sm">Načítám průběh dne…</div>`);
+  const hrCard = "";
 
   // 5) poslední aktivita + počasí
   const la = d.lastActivity;
@@ -813,18 +813,13 @@ async function pagePrehled(el) {
   bindDateNav(el, "pnav", d.todayDate, (v) => { viewDate = v; route(); });
   el.querySelector("#statusBtn")?.addEventListener("click", () => openStatusModal(d.status, () => route()));
   api("day" + (d.isToday ? "" : `?date=${d.date}`)).then((day) => {
-    const hb = el.querySelector("#hrday"), bb2 = el.querySelector("#bbday");
-    if (hb) { hb.className = ""; hb.innerHTML = dayHrChart(day); }
-    const bbSum = { latest: bb.latest, max: bb.max, min: bb.min, charged: bb.charged, drained: bb.drained };
-    if (bb2) { bb2.className = ""; bb2.innerHTML = bbPanel(day, d.isToday, bbSum, "line"); }
-    const bt = el.querySelector("#bbtop"); if (bt) bt.innerHTML = bbPanel(day, d.isToday, bbSum, "top");
-    const ds = el.querySelector("#daystress"); if (ds) ds.innerHTML = dayStressHtml(day);
-    const de = el.querySelector("#dayenergy"); if (de) de.innerHTML = dayEnergyHtml(day);
+    const en = el.querySelector("#energy");
+    if (en) { en.className = ""; en.innerHTML = energyHtml(day, d.isToday, bb); }
     // poslední data z hodinek = nejnovější bod tepu / Body Battery (hodinky je pošlou až po synchronizaci s telefonem)
     const lastT = Math.max(0, ...(day.hr || []).map((x) => x[0]), ...(day.bb || []).map((x) => x[0]));
     const wa = el.querySelector("#watchAt");
     if (wa && lastT && d.isToday) { const m = Math.round((Date.now() - lastT) / 60000); wa.innerHTML = ` · hodinky ${new Date(lastT).toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" })} <span class="${m > 120 ? "warn" : ""}">(před ${m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`})</span>`; }
-  }).catch((e) => { for (const s of ["#hrday", "#bbday"]) { const b = el.querySelector(s); if (b) { b.className = ""; b.innerHTML = `<div class="empty">${esc(e.message)}</div>`; } } });
+  }).catch((e) => { for (const s of ["#energy"]) { const b = el.querySelector(s); if (b) { b.className = ""; b.innerHTML = `<div class="empty">${esc(e.message)}</div>`; } } });
 }
 
 
@@ -1395,7 +1390,7 @@ async function drawMap(box, s, legBox, modeBox) {
   syncNight(first);
   map.on("baselayerchange", (e) => { try { localStorage.setItem("mapLayer3", e.name); } catch {} syncLogo(e.name); syncNight(e.name); });
   // ⤢ vycentrovat trasu (po přiblížení zpět na celou trasu, stejně jako po otevření)
-  const fitAll = () => map.fitBounds(L.latLngBounds(route.map((p) => [p[0], p[1]])), { padding: [10, 10] });
+  const fitAll = () => map.fitBounds(L.latLngBounds(route.map((p) => [p[0], p[1]])), { padding: [22, 22] }); // malinko oddálené – trasa nekončí u okraje
   const fitCtl = L.control({ position: "topleft" });
   fitCtl.onAdd = () => { const b = L.DomUtil.create("a", "leaflet-bar mapfit"); b.href = "#"; b.title = "Vycentrovat celou trasu"; b.setAttribute("role", "button"); b.innerHTML = "⤢"; L.DomEvent.on(b, "click", (e) => { L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e); fitAll(); }); return b; };
   fitCtl.addTo(map);
@@ -1563,6 +1558,99 @@ async function pageAktivita(el, id) {
  * nahoře to, co je jisté (teď / ráno / minimum / nabito / vybito), pod tím čára jen mezi skutečnými body
  * (žádné dopočítané křivky) a pruh dne se spánkem a aktivitami.
  */
+// ---------- Energie a tep (Přehled): baterie + Body Battery a tep pod jednou osou ----------
+// barva podle úrovně: zelená ≥ 70, žlutá 50–69, oranžová 25–49, červená pod 25 (plynulé přechody v grafu)
+const BB_STOPS = [[0, "#d63b47"], [25, "#ee7d24"], [50, "#e8b414"], [70, "#3fa85f"], [100, "#23955a"]];
+function bbColor(v) {
+  const x = clamp(v ?? 0, 0, 100);
+  for (let i = 1; i < BB_STOPS.length; i++) {
+    const [v1, c1] = BB_STOPS[i], [v0, c0] = BB_STOPS[i - 1];
+    if (x <= v1) {
+      const f = (x - v0) / (v1 - v0 || 1), h = (c) => [1, 3, 5].map((k) => parseInt(c.slice(k, k + 2), 16));
+      const a = h(c0), b = h(c1);
+      return "#" + a.map((q, k) => Math.round(q + (b[k] - q) * f).toString(16).padStart(2, "0")).join("");
+    }
+  }
+  return BB_STOPS[BB_STOPS.length - 1][1];
+}
+function batteryIcon(v) {
+  const w = 132, h = 58, fw = Math.max(v ? 10 : 0, ((w - 12) * clamp(v ?? 0, 0, 100)) / 100);
+  const onFill = (v ?? 0) >= 55; // číslo do volné části baterie, u plné bíle do výplně
+  return `<svg class="battery" viewBox="0 0 ${w + 14} ${h + 4}" width="${w + 14}" height="${h + 4}" role="img" aria-label="Body Battery ${v ?? "–"} %"><rect x="1.5" y="2" width="${w}" height="${h}" rx="15" style="fill:var(--card2);stroke:var(--line)" stroke-width="2"/><rect x="${w + 5}" y="${h / 2 - 9}" width="7" height="22" rx="3.5" style="fill:var(--line)"/>${v != null ? `<rect x="7.5" y="8" width="${fw.toFixed(1)}" height="${h - 12}" rx="10" fill="${bbColor(v)}"/>` : ""}<text x="${(onFill ? 7.5 + fw / 2 : (7.5 + fw + w) / 2).toFixed(1)}" y="${h / 2 + 12}" text-anchor="middle" class="bat-n${onFill ? " on" : ""}">${v ?? "–"}<tspan class="bat-u" dx="1">%</tspan></text></svg>`;
+}
+function energyHtml(d, isToday, sum = {}) {
+  const bbp = (d.bb || []).map(([t, v]) => ({ m: minOfDay(d, t), v })).filter((q) => q.m >= -1 && q.m <= 1441);
+  const hrp = (d.hr || []).filter((q) => q[1] != null && q[1] > 0).map(([t, v]) => ({ m: minOfDay(d, t), v })).filter((q) => q.m >= 0 && q.m <= 1440);
+  const last = bbp[bbp.length - 1] || null;
+  const now = isToday ? (sum.latest ?? last?.v ?? null) : (last?.v ?? sum.min ?? null);
+  const ago = last && isToday ? Math.round(minOfDay(d, Date.now()) - last.m) : null;
+  const when = last ? (isToday ? `teď · ${clock(Math.max(0, Math.round(last.m)))}${ago != null && ago > 45 ? ` (před ${ago >= 90 ? `${Math.round(ago / 60)} h` : `${ago} min`})` : ""}` : `večer · ${clock(Math.max(0, Math.round(last.m)))}`) : "";
+  const top = `<div class="en-top">${batteryIcon(now)}<div class="en-side"><span>Body Battery</span><small>${esc(when)}</small></div></div>`;
+  if (bbp.length < 2 && hrp.length < 5) return top + `<div class="empty">Průběh dne zatím nemám – Garmin pošle data po synchronizaci hodinek.</div>`;
+  return `<div class="en-wrap">${top}<div class="en-chart">` + sized((W) => energyChartW(d, bbp, hrp, isToday, W)) + `<div class="legend"><span><i style="background:linear-gradient(90deg,${BB_STOPS.map((x) => x[1]).join(",")})"></i>Body Battery</span><span><i style="background:linear-gradient(90deg,${HR_ZC.join(",")})"></i>tep ${hrp.length ? `${Math.min(...hrp.map((q) => q.v))}–${Math.max(...hrp.map((q) => q.v))}` : ""}</span><span><i class="bandsw" style="background:var(--srem)"></i>spánek</span></div></div></div>`;
+}
+function energyChartW(d, bbp, hrp, isToday, W) {
+  const H1 = 130, GAP = 10, H2 = 58, AX = 20, P = { l: 4, r: 4, t: 18 };
+  const H = P.t + H1 + GAP + H2 + AX;
+  const X = (m) => P.l + (clamp(m, 0, 1440) / 1440) * (W - P.l - P.r);
+  const Y1 = (v) => P.t + (1 - v / 100) * H1;
+  const hv = hrp.map((q) => q.v), hlo = hv.length ? Math.max(30, Math.min(...hv) - 4) : 40, hhi = hv.length ? Math.max(...hv) + 4 : 120;
+  const y2 = P.t + H1 + GAP, Y2 = (v) => y2 + (1 - (v - hlo) / (hhi - hlo || 1)) * H2;
+  const id = uid("en");
+  let g = "";
+  // mřížka Body Battery 0 / 50 / 100 (čárkovaně, popisky vpravo uvnitř)
+  for (const v of [50, 100]) g += `<line x1="${P.l}" x2="${W - P.r}" y1="${Y1(v)}" y2="${Y1(v)}" class="gl" stroke-dasharray="2 4"/><text class="yl" x="${W - P.r - 2}" y="${Y1(v) - 3}" text-anchor="end">${v}</text>`;
+  g += `<line x1="${P.l}" x2="${W - P.r}" y1="${Y1(0)}" y2="${Y1(0)}" class="gl"/>`;
+  // spánek a aktivity přes oba grafy
+  for (const sp of daySpans(d)) {
+    const c = sp.kind === "sleep" ? "var(--srem)" : "var(--acc)";
+    g += `<rect x="${X(sp.a)}" y="${P.t}" width="${Math.max(2, X(sp.b) - X(sp.a))}" height="${H1 + GAP + H2}" fill="${c}" opacity=".07" rx="4"/><rect x="${X(sp.a)}" y="${P.t - 8}" width="${Math.max(3, X(sp.b) - X(sp.a))}" height="3" rx="1.5" fill="${c}" opacity=".8"/>`;
+  }
+  // Body Battery: barva čáry i plochy podle úrovně (vodorovný přechod), plocha mizí dolů
+  let bbSvg = "";
+  if (bbp.length >= 2) {
+    const pts = bbp.map((q) => ({ x: X(q.m), y: Y1(q.v) }));
+    const stops = bbp.map((q) => `<stop offset="${(((X(q.m) - P.l) / (W - P.l - P.r)) * 100).toFixed(2)}%" stop-color="${bbColor(q.v)}"/>`).join("");
+    const line = curvePath(pts);
+    bbSvg = `<defs><linearGradient id="${id}c" gradientUnits="userSpaceOnUse" x1="${P.l}" x2="${W - P.r}" y1="0" y2="0">${stops}</linearGradient>
+      <linearGradient id="${id}f" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".42"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+      <mask id="${id}m"><rect x="0" y="${P.t}" width="${W}" height="${H1}" fill="url(#${id}f)"/></mask></defs>
+      <path d="${line}L${pts[pts.length - 1].x.toFixed(1)},${Y1(0)}L${pts[0].x.toFixed(1)},${Y1(0)}Z" fill="url(#${id}c)" mask="url(#${id}m)"/>
+      <path d="${line}" fill="none" stroke="url(#${id}c)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>`;
+    const hi = bbp.reduce((a, b) => (b.v > a.v ? b : a)), lst = bbp[bbp.length - 1];
+    bbSvg += `<text x="${X(hi.m) + 9}" y="${Y1(hi.v) - 4}" text-anchor="start" class="bbl">${hi.v}</text>`;
+    bbSvg += `<circle cx="${X(lst.m)}" cy="${Y1(lst.v)}" r="5" fill="${bbColor(lst.v)}" style="stroke:var(--card)" stroke-width="2"/>`;
+  }
+  // tep: tenká čára s přechodem modrá (klid) → červená (zátěž), průměr po 6 min
+  let hrSvg = "";
+  if (hrp.length >= 5) {
+    const b6 = [];
+    for (let m = 0; m < 1440; m += 6) { const xs = hrp.filter((q) => q.m >= m && q.m < m + 6); if (xs.length) b6.push({ m: m + 3, v: xs.reduce((t, q) => t + q.v, 0) / xs.length, gap: false }); }
+    b6.forEach((q, i) => { q.gap = i > 0 && q.m - b6[i - 1].m > 20; });
+    const segs = []; b6.forEach((q, i) => { if (i === 0 || q.gap) segs.push([]); segs[segs.length - 1].push({ x: X(q.m), y: Y2(q.v) }); });
+    // barva čáry podle zón tepu (ostré přechody na hranicích zón, stejné barvy jako u aktivit)
+    const floors = d.hrFloors ? d.hrFloors.slice(1) : [135, 165, 184, 202];
+    const off = (v) => clamp((Y2(v) - y2) / H2, 0, 1);
+    let zs = "";
+    for (let z = 4; z >= 0; z--) { const top = z === 4 ? hhi + 50 : floors[z] - 0.01, bot = z === 0 ? hlo - 50 : floors[z - 1]; zs += `<stop offset="${off(top).toFixed(4)}" style="stop-color:${HR_ZC[z]}"/><stop offset="${off(bot).toFixed(4)}" style="stop-color:${HR_ZC[z]}"/>`; }
+    hrSvg = `<defs><linearGradient id="${id}h" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${y2}" y2="${y2 + H2}">${zs}</linearGradient></defs>
+      <path d="${segs.filter((sg) => sg.length > 1).map((sg) => curvePath(sg)).join("")}" fill="none" stroke="url(#${id}h)" stroke-width="1.7" stroke-linejoin="round"/>`;
+  }
+  let ax = "";
+  for (let h = 0; h <= 24; h += 6) ax += `<text class="xl" x="${X(h * 60)}" y="${H - 5}" text-anchor="${h === 0 ? "start" : h === 24 ? "end" : "middle"}">${h === 24 ? "24" : `${h}:00`}</text>`;
+  const nowM = isToday ? minOfDay(d, Date.now()) : null;
+  const nowL = nowM != null && nowM < 1440 ? `<line x1="${X(nowM)}" x2="${X(nowM)}" y1="${P.t}" y2="${y2 + H2}" stroke="var(--muted)" stroke-dasharray="2 4" opacity=".6"/>` : "";
+  // bublina: čas, Body Battery (mezi body dopočtené) a tep
+  const bbAt = (m) => { if (!bbp.length || m < bbp[0].m || m > bbp[bbp.length - 1].m) return null; for (let i = 1; i < bbp.length; i++) if (m <= bbp[i].m) { const a = bbp[i - 1], b = bbp[i]; return Math.round(a.v + ((b.v - a.v) * (m - a.m)) / (b.m - a.m || 1)); } return null; };
+  const base = hrp.length ? hrp : bbp;
+  bindHover(id, W, (cx) => { let best = 0, bd = Infinity; base.forEach((q, i) => { const dd = Math.abs(X(q.m) - cx); if (dd < bd) { bd = dd; best = i; } }); return best; }, (i) => X(base[i].m), (i) => {
+    const m = base[i].m, bv = bbAt(m), hv2 = hrp.length ? base[i].v : null;
+    return { html: `<b>${clock(Math.max(0, Math.round(m)))}</b>${bv != null ? `<div><span class="sw" style="background:${bbColor(bv)}"></span>Body Battery <b>${bv}</b></div>` : ""}${hv2 != null ? `<div><span class="sw" style="background:${HR_ZC[hrZoneIdx(hv2, d.hrFloors ? d.hrFloors.slice(1) : [135, 165, 184, 202])]}"></span>tep <b>${hv2} bpm</b> · Z${hrZoneIdx(hv2, d.hrFloors ? d.hrFloors.slice(1) : [135, 165, 184, 202]) + 1}</div>` : ""}`,
+      dots: [...(bv != null ? [{ y: Y1(bv), c: bbColor(bv) }] : []), ...(hv2 != null ? [{ y: Y2(hv2), c: HR_ZC[hrZoneIdx(hv2, d.hrFloors ? d.hrFloors.slice(1) : [135, 165, 184, 202])] }] : [])] };
+  });
+  return `<svg class="chart" id="${id}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${g}${bbSvg}${hrSvg}${nowL}${ax}<line class="cur" y1="${P.t}" y2="${y2 + H2}"/><g class="dots"></g></svg>`;
+}
+
 function bbPanel(d, isToday, sum = {}, part = null) {
   const pts = (d.bb || []).map(([t, v]) => ({ m: minOfDay(d, t), v })).filter((p) => p.m >= -1 && p.m <= 1441);
   const last = pts[pts.length - 1] || null;
