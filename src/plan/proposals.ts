@@ -16,14 +16,17 @@ export async function saveProposal(env: Env, source: string, changes: Change[]):
   return r?.id ?? 0;
 }
 
+/** starší návrhy měly kódy Z1, Z2 (pletly se se zónami) → zobrazovat jako #1, #2 */
+const codes = (items: Change[]): Change[] => items.map((c) => ({ ...c, code: c.code.replace(/^Z(?=[0-9]+$)/, "#") }));
+
 export async function openProposal(env: Env): Promise<{ id: number; items: Change[] } | null> {
   const r = await first<{ id: number; items: string }>(env.DB, "SELECT id, items FROM proposals WHERE status = 'open' ORDER BY id DESC LIMIT 1");
-  return r ? { id: r.id, items: JSON.parse(r.items) as Change[] } : null;
+  return r ? { id: r.id, items: codes(JSON.parse(r.items) as Change[]) } : null;
 }
 
 export async function getProposal(env: Env, id: number) {
   const r = await first<{ id: number; items: string; status: string }>(env.DB, "SELECT id, items, status FROM proposals WHERE id = ?", id);
-  return r ? { id: r.id, items: JSON.parse(r.items) as Change[], status: r.status } : null;
+  return r ? { id: r.id, items: codes(JSON.parse(r.items) as Change[]), status: r.status } : null;
 }
 
 /** „ano“ = vše · „ano Z1, Z3“ = jen tyto · „ne Z2“ = vše kromě · „ne“ = nic. null = není to odpověď na návrh. */

@@ -20,7 +20,7 @@ import { weeklyLoadTarget } from "../core/fitness";
 import { round6 } from "./round6";
 import { addDays, dow, localNow, mondayOf } from "../lib/time";
 import { addConstraint, applyChanges, getProposal, openProposal, removeConstraint, saveProposal } from "../plan/proposals";
-import { activityReport, eftpOf, ftpCheckOf, fitnessTable, plannedFor, planFor, readiness, weatherMap, weekLoads, weekly } from "../report/build";
+import { activityReport, eftpOf, ftpCheckOf, fitnessTable, recoveryFor, plannedFor, planFor, readiness, weatherMap, weekLoads, weekly } from "../report/build";
 import { weekTargetAdjusted, z2MaxMinutes } from "../core/plan";
 import { loadCtx } from "../report/context";
 import { recomputeLoads } from "../sync/metrics";
@@ -650,7 +650,9 @@ api.get("/recovery", async (c) => {
   // ?date= : kterýkoli den v historii – spánek té noci, normy z 60 dní před ním
   const T = pastDate(c.req.query("date"), T0);
   // vždy aspoň 150 dní: pásmo normy v grafu 90 dní potřebuje 30 dní před prvním dnem
-  const ctx = await withHistory(c.env, ctx0, T < addDays(T0, -60) ? T : addDays(T0, -60));
+  // ?hist=400 pro graf za rok (týdenní průměry + pásmo normy)
+  const back = Math.min(400, Math.max(150, Number(c.req.query("hist") ?? 150) || 150)) - 90;
+  const ctx = await withHistory(c.env, ctx0, T < addDays(T0, -back) ? T : addDays(T0, -back));
   const hist = ctx.well.filter((w) => w.date >= addDays(T, -60) && w.date < T);
   const n = (k: "hrv" | "rhr" | "sleep_s" | "sleep_score" | "sleep_resp" | "stress_avg" | "bb_max") => {
     const x = norm(hist.map((w) => w[k]));
@@ -670,7 +672,8 @@ api.get("/recovery", async (c) => {
     })),
     sleep: sleepReport((ctx.well.find((w) => w.date === T) ?? null) as any, ctx.well.filter((w) => w.date <= T) as any),
     norms: { hrv: n("hrv"), rhr: n("rhr"), sleep: n("sleep_s"), score: n("sleep_score"), resp: n("sleep_resp"), stress: n("stress_avg"), bb: n("bb_max") },
-    recovery: r.recovery,
+    // semafor i pro minulý den (stejný výpočet, jen k tomu datu)
+    recovery: T === T0 ? r.recovery : recoveryFor({ ...ctx, T, well: ctx.well.filter((w) => w.date <= T) } as any),
     sleepReg: sleepRegularity(ctx.well.filter((w) => w.date >= addDays(T, -14)).map((w) => w.wake_time)),
   });
 });

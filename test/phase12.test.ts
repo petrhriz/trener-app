@@ -83,3 +83,14 @@ describe("souhlas s návrhem: nové kódy #1 a staré Z1", () => {
     expect(parseConsent("ano", codes)).toEqual(codes);
   });
 });
+
+import { generatePlan } from "../src/core/plan";
+describe("únava stáhne objem", () => {
+  const base = { today: "2026-11-08", ftp: 298, hr: null, goal: "zvyseni" as const, ridesPerWeek: 3, startToday: null, acts: [], actsPower: [], past: () => null, calendar: [], constraints: [], weather: new Map(), weatherOk: false, recovery: "green" as const, p5: 340, weekLoads: [300, 320, 310, 330] };
+  it("forma −32 → cíl týdne o 25 % nižší a upozornění", () => {
+    const fresh = generatePlan({ ...base, startYesterday: { ctl: 50, atl: 45 } });
+    const tired = generatePlan({ ...base, startYesterday: { ctl: 50, atl: 82 } });
+    expect(tired.weeklyTarget.mid).toBeLessThan(fresh.weeklyTarget.mid * 0.8);
+    expect(tired.warnings.some((w) => w.startsWith("Únava"))).toBe(true);
+  });
+});

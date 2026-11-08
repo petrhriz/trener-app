@@ -2,7 +2,7 @@
 import { Hono } from "hono";
 import type { Env } from "../env";
 import { STATUS_LABEL, type StatusKind } from "../core/readinessScore";
-import { answerChat } from "../llm/llm";
+import { AI_DAILY_NEURONS, aiUsedToday, answerChat } from "../llm/llm";
 import { all } from "../lib/db";
 import { getSettings, setSetting, statusOn } from "../lib/settings";
 import { addDays } from "../lib/time";
@@ -153,5 +153,8 @@ Změny (${p.changes.length}) čekají na potvrzení v Trenérovi → Návrh změ
   };
   const out = await answerChat(c.env, msgs, context);
   if (!out) return c.json({ error: "AI teď neodpovídá (Workers AI nedostupné, nebo vypnuté v Nastavení)." }, 503);
-  return c.json(out);
+  return c.json({ ...out, ai: { used: await aiUsedToday(c.env), limit: AI_DAILY_NEURONS } });
 });
+
+/** Kolik denního limitu Workers AI už padlo (odhad, celý účet). */
+round6.get("/ai-usage", async (c) => c.json({ used: await aiUsedToday(c.env), limit: AI_DAILY_NEURONS }));

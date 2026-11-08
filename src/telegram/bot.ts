@@ -263,7 +263,7 @@ async function makeEasier(env: Env, date: string) {
   const w = z2Workout({ ftp: s.ftp ?? 250 }, min);
   const name = cal.indoor ? "Trenažér – Z2" : "Z2 vytrvalost";
   const ch: Change = {
-    code: "Z1",
+    code: "#1",
     date,
     action: "upravit",
     name,

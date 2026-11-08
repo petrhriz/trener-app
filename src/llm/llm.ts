@@ -38,6 +38,28 @@ export async function llmAvailable(env: Env): Promise<boolean> {
   return (await getSettings(env.DB)).llm_enabled;
 }
 
+/**
+ * Spotřeba Workers AI (free: 10 000 neuronů denně na celý účet – sdílejí ho všichni uživatelé).
+ * Odhad z tokenů: Mistral Small 3.1 ≈ 0,032 neuronu na vstupní a 0,050 na výstupní token (ceník Workers AI);
+ * když model počty tokenů nevrátí, 1 token ≈ 4 znaky.
+ */
+export const AI_DAILY_NEURONS = 10_000;
+export async function trackAi(env: Env, inChars: number, r: { usage?: { prompt_tokens?: number; completion_tokens?: number }; response?: string } | null) {
+  try {
+    const inT = r?.usage?.prompt_tokens ?? Math.ceil(inChars / 4);
+    const outT = r?.usage?.completion_tokens ?? Math.ceil((r?.response ?? "").length / 4);
+    const n = inT * 0.032 + outT * 0.05;
+    const base: Env = (env as any).__base ?? env;
+    const key = `ai_neurons:${new Date().toISOString().slice(0, 10)}`;
+    await base.DB.prepare("INSERT INTO sync_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS REAL) + CAST(excluded.value AS REAL) AS TEXT)").bind(key, String(Math.round(n * 10) / 10)).run();
+  } catch { /* počítadlo není nutné */ }
+}
+export async function aiUsedToday(env: Env): Promise<number> {
+  const base: Env = (env as any).__base ?? env;
+  const r = await base.DB.prepare("SELECT value FROM sync_state WHERE key = ?").bind(`ai_neurons:${new Date().toISOString().slice(0, 10)}`).first<{ value: string }>().catch(() => null);
+  return r ? Math.round(Number(r.value) || 0) : 0;
+}
+
 export async function runLlm(env: Env, system: string, user: string, maxTokens = 350): Promise<string | null> {
   if (!env.AI) return null;
   const model = env.LLM_MODEL || "@cf/mistralai/mistral-small-3.1-24b-instruct";
@@ -49,7 +71,8 @@ export async function runLlm(env: Env, system: string, user: string, maxTokens =
       ],
       max_tokens: maxTokens,
       temperature: 0.2,
-    } as any)) as { response?: string };
+    } as any)) as { response?: string; usage?: { prompt_tokens?: number; completion_tokens?: number } };
+    await trackAi(env, system.length + user.length, r);
     const t = (r?.response ?? "").trim();
     return t || null;
   } catch (e) {
@@ -92,7 +115,8 @@ export async function answerChat(
   const system = `${CHAT_STYLE}\n\nKONTEXT (JSON, data uživatele):\n${JSON.stringify(context)}`;
   const run1 = async (extra = "") => {
     try {
-      const r = (await env.AI!.run(model as any, { messages: [{ role: "system", content: system + extra }, ...messages], max_tokens: 700, temperature: 0.3 } as any)) as { response?: string };
+      const r = (await env.AI!.run(model as any, { messages: [{ role: "system", content: system + extra }, ...messages], max_tokens: 700, temperature: 0.3 } as any)) as { response?: string; usage?: { prompt_tokens?: number; completion_tokens?: number } };
+      await trackAi(env, system.length + extra.length + messages.reduce((t, m) => t + m.content.length, 0), r);
       return (r?.response ?? "").trim() || null;
     } catch (e) {
       await logEvent(env.DB, "warn", `chat: ${(e as Error).message.slice(0, 120)}`);

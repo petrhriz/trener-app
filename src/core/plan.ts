@@ -476,7 +476,11 @@ export function generatePlan(inp: PlanInput): PlanResult {
   const weeks = [...new Set(dates.map(mondayOf))];
   const ctlRef = inp.startYesterday.ctl;
   const adj = weekTargetAdjusted(weeklyLoadTarget(ctlRef, inp.goal), inp.weekLoads, inp.goal);
-  const weeklyTarget = { lo: adj.lo, hi: adj.hi, mid: adj.mid };
+  // únava: forma (CTL − ATL) hluboko v minusu → týden lehčí, ať nehrozí přetížení (pod −30 Vysoké riziko)
+  const formY = inp.startYesterday.ctl - inp.startYesterday.atl;
+  const tired = formY < -30 ? 0.75 : formY < -20 ? 0.88 : 1;
+  const weeklyTarget = { lo: Math.round(adj.lo * tired), hi: Math.round(adj.hi * tired), mid: Math.round(adj.mid * tired) };
+  if (tired < 1) warnings.push(`Únava: forma ${num(formY, 1)} – týden o ${Math.round((1 - tired) * 100)} % lehčí (cíl ${weeklyTarget.mid}).`);
   if (adj.note) warnings.push(adj.note);
   const qualityWeeks: PlanResult["qualityWeeks"] = [];
 
