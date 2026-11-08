@@ -195,6 +195,12 @@ export async function addConstraint(env: Env, date: string, kind: string, note: 
     else await run(env.DB, "INSERT INTO constraints (date, kind, note, created_at) VALUES (?, 'sport', 'ride', ?)", date, new Date().toISOString());
     return;
   }
+  if (kind === "delka") {
+    // délka tréninku zadaná uživatelem (min); prázdná / 0 = zrušit
+    await run(env.DB, "DELETE FROM constraints WHERE date = ? AND kind = 'delka'", date);
+    if (note && Number(note) >= 20) await run(env.DB, "INSERT INTO constraints (date, kind, note, created_at) VALUES (?, 'delka', ?, ?)", date, String(Math.round(Number(note))), new Date().toISOString());
+    return;
+  }
   if (kind === "jizda") {
     // vlastní jízda: platí poslední zadání pro den (JSON {min, km, with}); jízda se zapíše do kalendáře přes návrh změn
     await run(env.DB, "DELETE FROM constraints WHERE date = ? AND kind = 'jizda'", date);

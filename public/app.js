@@ -219,8 +219,6 @@ function bindHover(id, W, getI, xOf, tipFn, top, bottom) {
 function lineChart(o) { return o.W ? lineChartW(o) : sized((W) => lineChartW({ ...o, W })); }
 function lineChartW({ W = 760, x, series, band, bands = null, bandSeries = null, avgLine = null, include = null, height = 200, fmt = (v) => num(v, 1), xfmt = (l) => l, zero = false, markIndex = null, yfmt = null, legend = true, minSpan = 0, step: forceStep = null, yticks = null, bandsLegend = true }) {
   const H = hScale(height, W), P = { l: W < 500 ? 32 : 42, r: W < 500 ? 6 : 12, t: 12, b: 26 };
-  // pásma s popisky (zóny formy): graf skončí dřív, popisky jsou v pravém okraji a výhled je nepřekryje
-  if (bands && bands.some((z) => z.name)) P.r = W < 500 ? 74 : 96;
   const vis = series.filter((s) => !s.hidden);
   const all = vis.flatMap((s) => s.values).filter((v) => v != null && isFinite(v));
   if (band) all.push(band.lo, band.hi);
@@ -249,7 +247,7 @@ function lineChartW({ W = 760, x, series, band, bands = null, bandSeries = null,
     const hi = Math.min(z.hi ?? mx, mx), lo = Math.max(z.lo ?? mn, mn);
     if (hi <= lo) continue;
     b += `<rect x="${P.l}" y="${Y(hi)}" width="${W - P.l - P.r}" height="${Y(lo) - Y(hi)}" fill="${z.color}" opacity=".13"/>`;
-    if (Y(lo) - Y(hi) >= 13) b += `<text class="bandl" x="${W - P.r + 8}" y="${(Y(hi) + Y(lo)) / 2 + 4}" text-anchor="start" style="fill:${z.color}">${esc(z.name)}</text>`;
+    if (Y(lo) - Y(hi) >= 13) b += `<text class="bandl" x="${P.l + 8}" y="${(Y(hi) + Y(lo)) / 2 + 4}" text-anchor="start" style="fill:${z.color}" paint-order="stroke" stroke="var(--card)" stroke-width="3">${esc(z.name)}</text>`; // vlevo v grafu – stará data jsou méně důležitá než dnešek a výhled
   }
   let defs = "", paths = "";
   // normální rozsah posuvný po dnech (jako v Bevelu): plocha mezi hi a lo
@@ -672,7 +670,7 @@ function statusPill(st) {
 const wIcon = (code, prob, night = false) => code == null ? (prob >= 50 ? "🌧️" : "⛅") : code <= 1 ? (night ? "🌙" : code === 0 ? "☀️" : "🌤️") : code === 2 ? (night ? "☁️" : "⛅") : code === 3 ? "☁️" : code <= 48 ? "🌫️" : code <= 57 ? "🌦️" : code <= 67 ? "🌧️" : code <= 77 ? "🌨️" : code <= 82 ? "🌧️" : code <= 86 ? "🌨️" : "⛈️";
 function weatherPill(w) {
   if (!w) return `<div class="pillbig"><span class="pb-ico">·</span><span class="pb-t"><b>${DASH}</b><small>počasí nemám</small></span></div>`;
-  return `<a class="pillbig" href="#/prehled" onclick="document.getElementById('wcard')?.scrollIntoView({behavior:'smooth'});return false"><span class="pb-ico">${wIcon(w.code, w.prob, new Date().getHours() >= 17 || new Date().getHours() < 7)}</span><span class="pb-t"><b>${num(w.temp)} °C</b><small>${esc(w.place || "")}${w.feels != null && Math.abs(w.feels - w.temp) >= 2 ? ` · pocitově ${num(w.feels)}°` : ""}</small></span></a>`;
+  return `<a class="pillbig" href="#/trener" onclick="setTimeout(() => document.getElementById('pocasi')?.scrollIntoView({ behavior: 'smooth' }), 900)" title="Počasí na 7 dní v Trenérovi"><span class="pb-ico">${wIcon(w.code, w.prob, new Date().getHours() >= 17 || new Date().getHours() < 7)}</span><span class="pb-t"><b>${num(w.temp)} °C</b><small>${esc(w.place || "")}${w.feels != null && Math.abs(w.feels - w.temp) >= 2 ? ` · pocitově ${num(w.feels)}°` : ""}</small></span></a>`;
 }
 function openStatusModal(cur, onDone) {
   const ov = document.createElement("div");
@@ -732,6 +730,13 @@ function formScale(f) {
   const segs = [[-35, -30, "var(--z6)"], [-30, -10, "var(--z3)"], [-10, 5, "var(--z1)"], [5, 20, "var(--z2)"], [20, 25, "var(--z4)"]];
   return `<div class="fscale"><div class="fs-t">${segs.map(([a, b, c]) => `<i style="left:${pos(a)}%;width:${pos(b) - pos(a)}%;background:${c}"></i>`).join("")}<b style="left:${pos(f)}%"></b></div></div>`;
 }
+/** barva hodnoty proti normě: v normě (±1 SD) zelená, mírně mimo (do 2 SD) oranžová, víc červená; „lepší“ směr je zelený */
+function stateColor(v, n, lowGood = false) {
+  if (v == null || !n || !n.sd) return "var(--ok)";
+  const z = (v - n.mean) / n.sd;
+  const bad = lowGood ? z : -z; // kladné = horší směr
+  return bad <= 1 ? "var(--ok)" : bad <= 2 ? "var(--warn)" : "var(--bad)";
+}
 const normState = (v, n, lowGood = false) => { const s = vsNorm(v, n); return !s ? ["", ""] : s === "v normě" ? ["v normě", "good"] : (s === "pod normou") === lowGood ? [s === "pod normou" ? "pod normou ↓" : "nad normou ↑", "good"] : [s === "pod normou" ? "pod normou ↓" : "nad normou ↑", "warn"]; };
 
 // ---------- stránky ----------
@@ -775,30 +780,30 @@ async function pagePrehled(el) {
   const [hvS, hvT] = normState(hv.today, hv.norm), [rhS, rhT] = normState(rh.today, rh.norm, true), [stS, stT] = normState(st.avg, st.norm, true);
   const bbNow = d.isToday ? bb.latest : bb.max;
   const tiles = `<div class="mtiles c12">
-    ${metricTile({ label: "🫀 VST", value: num(hv.today), unit: "ms", state: hvS, tone: hvT, spark: sparkRolling(hv.series.map((x) => x.v), "var(--m-hrv)", 56), href: "#/detail/vst", foot: hv.norm ? `norma ${num(hv.norm.mean - hv.norm.sd)}–${num(hv.norm.mean + hv.norm.sd)}` : "" })}
-    ${metricTile({ label: "❤️ Klidový tep", value: num(rh.today), unit: "bpm", state: rhS, tone: rhT, spark: sparkRolling(rh.series.map((x) => x.v), "var(--m-rhr)", 56), href: "#/detail/tep", foot: rh.norm ? `norma ${num(rh.norm.mean)} ± ${num(rh.norm.sd, 1)}` : "" })}
+    ${metricTile({ label: "🫀 VST", value: num(hv.today), unit: "ms", state: hvS, tone: hvT, spark: sparkRolling(hv.series.map((x) => x.v), stateColor(hv.today, hv.norm), 56), href: "#/detail/vst", foot: hv.norm ? `norma ${num(hv.norm.mean - hv.norm.sd)}–${num(hv.norm.mean + hv.norm.sd)}` : "" })}
+    ${metricTile({ label: "❤️ Klidový tep", value: num(rh.today), unit: "bpm", state: rhS, tone: rhT, spark: sparkRolling(rh.series.map((x) => x.v), stateColor(rh.today, rh.norm, true), 56), href: "#/detail/tep", foot: rh.norm ? `norma ${num(rh.norm.mean)} ± ${num(rh.norm.sd, 1)}` : "" })}
     ${metricTile({ label: "🔋 Body Battery", value: num(bbNow), unit: d.isToday ? "teď" : "ráno", tone: bbNow == null ? "" : bbNow >= 50 ? "good" : bbNow >= 25 ? "warn" : "bad", state: bb.max != null ? `ráno ${num(bb.max)}` : "", spark: `<div class="prog bb"><i style="width:${clamp(bbNow || 0, 0, 100)}%"></i></div>`, href: "#/detail/bb", foot: `<span class="good">+${num(bb.charged)}</span> · <span class="bad">−${num(bb.drained)}</span>` })}
-    ${metricTile({ label: "😮‍💨 Stres", value: num(st.avg), state: stS, tone: stT, spark: sparkRolling(st.series.map((x) => x.v), "var(--m-stress)", 56), href: "#/detail/stres", foot: st.max != null ? `max ${num(st.max)}` : "" })}
+    ${metricTile({ label: "😮‍💨 Stres", value: num(st.avg), state: stS, tone: stT, spark: sparkRolling(st.series.map((x) => x.v), stateColor(st.avg, st.norm, true), 56), href: "#/detail/stres", foot: st.max != null ? `max ${num(st.max)}` : "" })}
     ${metricTile({ label: "👣 Kroky", value: thou(stp.today), state: stp.today != null ? `${num(Math.min(100, (stp.today / stp.goal) * 100))} %` : "", tone: (stp.today ?? 0) >= stp.goal ? "good" : "", spark: `<div class="prog"><i style="width:${clamp(((stp.today || 0) / stp.goal) * 100, 0, 100)}%"></i></div>`, href: "#/chuze", foot: `cíl ${thou(stp.goal)}${stp.floors != null ? ` · ${num(stp.floors)} pater` : ""}` })}
     ${metricTile({ label: "🎯 Forma", value: signed(sn.form, 1), state: esc(sn.zone || ""), spark: formScale(sn.form), tone: sn.form == null ? "" : sn.form < -25 ? "bad" : sn.form < -10 ? "warn" : "good", href: "#/kondice", foot: `kondice ${num(sn.ctl, 1)} · únava ${num(sn.atl, 1)}` })}
   </div>`;
 
   // 4) průběh dne
   // vlevo grafy dne (tep, Body Battery), vpravo stav (kroužek Body Battery, stres, co nabilo a vybilo)
-  const bbCard = card("c6", `<a href="#/detail/stres">📈 Tep a Body Battery · ${d.isToday ? "dnes" : dayDm(d.date)} →</a>`, "Garmin", `<div id="hrday" class="loading sm">Načítám tep…</div><div class="sl" style="margin:14px 0 2px">Body Battery</div><div id="bbday" class="loading sm">Načítám průběh dne…</div>`);
-  const hrCard = card("c6", `<a href="#/detail/bb">🔋 Body Battery a stres · ${d.isToday ? "dnes" : dayDm(d.date)} →</a>`, "Garmin", `<div id="bbtop"></div><div id="daystress"></div><div id="dayenergy"></div>`);
+  // Body Battery v jedné kartě (půlkruh, čísla, graf, co nabilo a vybilo), vedle tep a stres
+  const bbCard = card("c6", `<a href="#/detail/bb">🔋 Body Battery · ${d.isToday ? "dnes" : dayDm(d.date)} →</a>`, "Garmin", `<div id="bbtop"></div><div id="bbday" class="loading sm">Načítám průběh dne…</div><div id="dayenergy"></div>`);
+  const hrCard = card("c6", `<a href="#/detail/stres">❤️ Tep a stres · ${d.isToday ? "dnes" : dayDm(d.date)} →</a>`, "Garmin", `<div id="hrday" class="loading sm">Načítám tep…</div><div id="daystress"></div>`);
 
   // 5) poslední aktivita + počasí
   const la = d.lastActivity;
   const laCard = la
-    ? card("c4 fit", "Poslední aktivita", "", `<a class="lastact" href="#/aktivita/${la.id}"><span class="big-ico">${SPORT_ICON[la.sport] || "🏅"}</span><div><b>${esc(la.name || SPORT_NAME[la.sport])}</b><div class="sub">${dayDm(la.date)}${la.plan ? ` · plán ${la.compliance ? `${num(la.compliance)} %` : "✓"}` : ""}</div></div><span class="go">→</span></a>
+    ? card("c12 lacard", "Poslední aktivita", "", `<a class="lastact" href="#/aktivita/${la.id}"><span class="big-ico">${SPORT_ICON[la.sport] || "🏅"}</span><div><b>${esc(la.name || SPORT_NAME[la.sport])}</b><div class="sub">${dayDm(la.date)}${la.plan ? ` · plán ${la.compliance ? `${num(la.compliance)} %` : "✓"}` : ""}</div></div><span class="go">→</span></a>
       <div class="la-grid">${[la.km ? ["Vzdálenost", num(la.km, 1), "km"] : null, ["Čas", hmm(la.moving_s), "h"], la.elev ? ["Převýšení", num(la.elev), "m"] : null, la.np ? ["Výkon NP", num(la.np), "W"] : null, la.avg_hr ? ["Tep ⌀", num(la.avg_hr), "bpm"] : null, ["Zátěž", num(la.load), ""]].filter(Boolean).slice(0, 6).map(([l, v, u]) => `<div><span>${l}</span><b>${v}${u ? `<small> ${u}</small>` : ""}</b></div>`).join("")}</div>`)
-    : card("c4", "Poslední aktivita", "", `<div class="empty">Žádná aktivita za 90 dní.</div>`);
+    : card("c12", "Poslední aktivita", "", `<div class="empty">Žádná aktivita za 90 dní.</div>`);
 
   el.innerHTML = `<div class="head"><div><h1>${greeting(d.hour)}, <span class="acc">${esc(d.name)}</span></h1><div class="sub">data k ${d.lastSync ? new Date(d.lastSync).toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" }) : DASH}<span id="watchAt"></span></div></div>${dateNav(d.date, d.minDate, d.todayDate, "pnav")}</div>
   <div class="toprow">${statusPill(d.status)}${d.isToday ? weatherPill(d.weatherNow) : ""}</div>
-  <div class="grid prehled">${dnes}${sleepCard}${tiles}${bbCard}${hrCard}${laCard}
-  ${d.isToday ? card("c8", "Počasí na trénink · 7 dní", "Open-Meteo", weatherList(d.weather, d.rideTemps), 'id="wcard"') : ""}</div>`;
+  <div class="grid prehled">${dnes}${sleepCard}${tiles}${bbCard}${hrCard}${laCard}</div>`;
   bindHours(el);
   bindDateNav(el, "pnav", d.todayDate, (v) => { viewDate = v; route(); });
   el.querySelector("#statusBtn")?.addEventListener("click", () => openStatusModal(d.status, () => route()));
@@ -878,100 +883,155 @@ function weekLoadsHtml(w) {
     <p class="note">Zátěž = TSS (stejné číslo jako Garmin a intervals.icu). Kondice (CTL) ≈ průměrná denní zátěž za 6 týdnů, týden na udržení ≈ 7 × CTL.</p>`;
 }
 
+// ---------- Trenér: dnešek, plán týdne (interaktivní), z čeho trenér vychází, AI trenér ----------
+const COACH_KEY = "coachAsk";
+let tOpen = null; // otevřený den (panel úprav)
+function tSportIco(s) { return ({ run: "🏃", xc_ski: XC_SVG, walk: "🚶" })[s] || "🚴"; }
+/** Pruh zátěže týdne: hotovo (plně) + plán (světle) proti cílovému pásmu. */
+function weekBar(w, label) {
+  if (!w) return "";
+  const t = w.target || {};
+  const max = Math.max(t.hi || 0, (w.done || 0) + (w.planned || 0)) * 1.12 || 1;
+  const pc = (v) => clamp((v / max) * 100, 0, 100);
+  const total = (w.done || 0) + (w.planned || 0);
+  const tone = total < (t.lo || 0) * 0.9 ? "warn" : total > (t.hi || 1e9) * 1.1 ? "bad" : "good";
+  return `<div class="wbar"><div class="wb-h"><b>${label}</b><span class="num ${tone}">${thou(total)} <small>/ cíl ${t.lo}–${t.hi}</small></span></div>
+    <div class="wb-t"><i class="wb-band" style="left:${pc(t.lo || 0)}%;width:${pc(t.hi || 0) - pc(t.lo || 0)}%"></i><i class="wb-done" style="width:${pc(w.done || 0)}%"></i><i class="wb-plan" style="left:${pc(w.done || 0)}%;width:${pc(w.planned || 0)}%"></i></div>
+    <div class="wb-l"><span><i class="wb-sw done"></i>hotovo ${thou(w.done || 0)}</span><span><i class="wb-sw plan"></i>plán ${thou(w.planned || 0)}</span><span><i class="wb-sw band"></i>cíl týdne</span></div></div>`;
+}
 async function pageTrener(el) {
-  const [d, y] = await Promise.all([api("coach"), api("year")]);
-  const r = d.readiness, rec = r.recovery, f = r.fitness;
-  const cur = d.goals.find((g) => g.key === d.goal);
-  const ind = (name, i, val) => `<tr><td><span class="flag ${i.status !== "ok" ? "none" : i.flag === "none" ? "" : i.flag}"></span><b>${name}</b><span class="s2">${i.status === "insufficient" ? `nehodnotím, jen ${i.norm.n} hodnot` : i.status === "missing" ? "nemám" : `${esc(i.rating || "")}${i.expected ? ` · po ${esc(rec.dayAfter)} očekávané` : ""}`}</span></td><td class="r">${val}</td><td class="r">${i.avg7 != null ? (name === "Spánek" ? hmm(i.avg7) + " h" : num(i.avg7) + (name === "VST" ? " ms" : " bpm")) : DASH}</td><td class="r">${esc(name === "Spánek" ? (i.norm.n ? hmm(i.norm.mean) + " h" : DASH) : i.rangeText)}</td></tr>`;
-  const recTable = `<table class="t"><tr><th>Ukazatel</th><th class="r">Dnes</th><th class="r">⌀ 7 d</th><th class="r">Norma</th></tr>
-    ${ind("VST", rec.hrv, rec.hrv.today != null ? num(rec.hrv.today) + " ms" : "nemám")}
-    ${ind("Klidový tep", rec.rhr, rec.rhr.today != null ? num(rec.rhr.today) + " bpm" : "nemám")}
-    ${ind("Spánek", rec.sleep, rec.sleep.today != null ? hmm(rec.sleep.today) + " h" : "nemám")}</table>`;
-  const fitTable = `<table class="t"><tr><th>Ukazatel</th><th class="r">${esc(f.col1)}</th><th class="r">${esc(f.col2)}</th><th class="r">Změna</th></tr>${f.rows.map((x) => `<tr class="${x.iv ? "iv" : ""}"><td><b>${esc(x.label)}</b><span class="s2">${esc(x.sub)}</span></td><td class="r">${x.v1}</td><td class="r">${x.v2}</td><td class="r">${x.diff}</td></tr>`).join("")}</table><p class="note">${esc(f.note)}</p>`;
-  const t = r.today;
+  const [d, mine] = await Promise.all([api("coach"), api("plan/mine").catch(() => [])]);
+  const r = d.readiness, rec = r.recovery, f = r.fitness, p = r.plan;
   const tone = rec.state === "green" ? "good" : rec.state === "yellow" ? "warn" : "bad";
   const paused = d.status && d.status.kind !== "active";
   const skipped = (d.constraints || []).find((c) => c.date === r.date && ["nepojedu", "nemuzu", "dovolena", "nemoc"].includes(c.kind));
-  const todayCard = `<div class="badge ${tone}">${rec.emoji} ${esc(rec.stateLabel)}</div><div class="hero-dec sm">${esc(paused ? `${d.status.label} – plán stojí` : skipped ? "Dnes volno (tvoje volba)" : t.decision)}</div><p>${esc(paused ? `Stav ${d.status.label.toLowerCase()} ${d.status.until ? `do ${dayDm(d.status.until)}` : "do odvolání"} – změníš na Přehledu.` : skipped ? "Omylem? Vrať to tlačítkem níže – plán se přepočítá." : t.decisionWhy)}</p>${!paused && t.day && t.day.name && t.decision !== "Odjeto" ? planDayHtml(t.day) : ""}<p class="note">➡️ Zítra: ${esc(r.tomorrow)}</p>
-    <div class="btns">${paused ? "" : skipped ? `<button class="btn pri" data-undo="${r.date}" data-kind="${skipped.kind}">↩️ Vrátit – dnes pojedu</button>` : `<button class="btn" data-skip="${r.date}">🚫 Dnes nepojedu</button>`}</div>`;
+  const t = r.today;
+  // --- dnešek (tmavá karta) ---
+  const todayCard = `<section class="card tdark c12"><span class="td-d">Dnes · ${dayDm(r.date)} · <span class="${tone}">${rec.emoji} ${esc(rec.stateLabel)}</span></span>
+    <b class="td-h">${esc(paused ? `${d.status.label} – plán stojí` : skipped ? "Dnes volno (tvoje volba)" : t.decision)}${!paused && t.day && t.day.name && t.decision !== "Odjeto" ? ` · ${dur((t.day.durationMin || 0) * 60)}` : ""}</b>
+    <p class="td-p">${esc(paused ? "Stav změníš na Přehledu." : skipped ? "Omylem? Vrať to tlačítkem." : t.decisionWhy)} ${esc("Zítra: " + r.tomorrow)}</p>
+    <div class="btns">${paused ? "" : skipped ? `<button class="btn pri" data-undo="${r.date}" data-kind="${skipped.kind}">↩️ Vrátit – dnes pojedu</button>` : `<button class="btn" data-skip="${r.date}">🚫 Dnes nepojedu</button>`}</div></section>`;
+  // --- pruh zátěže: tento a příští týden (plán zasahuje do obou) ---
+  const wk = d.weeks.weeks;
+  const cur = wk.find((x) => x.current), next = wk.find((x) => x.future);
+  const bars = weekBar(cur && { ...cur, target: d.weeks.target }, "Tento týden") + (p.days.some((x) => x.date > (cur ? addDay(cur.from, 6) : "")) && next ? weekBar({ ...next, target: d.weeks.target }, "Příští týden") : "");
+  // --- dny ---
+  const others = (x) => p.days.filter((y) => y.date !== x.date);
+  const dayRow = (x) => {
+    const ride = !!x.name;
+    const q = x.kind === "quality";
+    const tags = [q ? '<span class="ttag q">kvalita</span>' : "", x.kind === "long" ? '<span class="ttag">dlouhá</span>' : "", x.own ? '<span class="ttag">vlastní jízda</span>' : "", x.mine ? '<span class="ttag me">tvoje úprava</span>' : "", x.changed ? '<span class="ttag ch">nezapsáno</span>' : ""].join("");
+    const w = x.weather;
+    const wtxt = w ? `${weatherIcon(w)} ${num(w.tmax)}°${w.window && ride && !x.indoor && x.sport === "ride" ? ` · okno ${String(w.window.from).padStart(2, "0")}–${String(w.window.to).padStart(2, "0")} h` : ""}${x.indoor ? " · trenažér" : ""}` : "";
+    const open = tOpen === x.date;
+    const panel = open && !x.isPast && x.kind !== "blocked" ? `<div class="tpanel">
+      ${ride ? `<label class="tp-l">Přesunout na<select data-shift="${x.date}"><option value="">vyber den…</option>${others(x).map((y) => `<option value="${y.date}">${dayDm(y.date)} · ${esc(y.name || "volno")}${y.name ? " (prohodit)" : ""}</option>`).join("")}</select></label>` : ""}
+      <div class="tp-g"><span class="tp-k">Druh</span><div class="seg sm">${[["z2", "Z2"], ["quality", "Kvalita"], ["rest", "Volno"]].map(([k, l]) => `<button class="${(k === "rest" && !ride) || (k === "quality" && q) || (k === "z2" && ride && !q) ? "on" : ""}" data-kindset="${k}" data-date="${x.date}">${l}</button>`).join("")}</div></div>
+      <div class="tp-g"><span class="tp-k">Sport</span><div class="sw-sport" data-date="${x.date}">${[["ride", "🚴", "Kolo"], ["run", "🏃", "Běh"], ["xc_ski", XC_SVG, "Běžky"], ["walk", "🚶", "Chůze"]].map(([k, i, l]) => `<button class="${ride && x.sport === k ? "on" : ""}" data-sport="${k}" title="${l}">${i}</button>`).join("")}</div></div>
+      ${ride && !x.own ? `<div class="tp-g"><span class="tp-k">Délka</span><div class="tp-len"><button class="btn sm" data-len="${x.date}" data-v="${Math.max(20, (x.durationMin || 60) - 15)}">−15 min</button><b class="num">${dur((x.durationMin || 0) * 60)}</b><button class="btn sm" data-len="${x.date}" data-v="${(x.durationMin || 60) + 15}">+15 min</button></div></div>` : ""}
+      ${ownForm(x)}
+      ${x.steps && x.steps.length ? `<details class="stepsd"><summary>Kroky tréninku (${x.steps.length})</summary><ol class="steps">${x.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol></details>` : ""}
+      ${x.note ? `<p class="note">${esc(x.note)}</p>` : ""}</div>` : "";
+    return `<div class="tday ${x.isToday ? "today" : ""} ${ride ? "" : "rest"} ${q ? "q" : ""} ${open ? "open" : ""}" data-day="${x.date}" ${ride ? 'draggable="true"' : ""}>
+      <div class="td-row"><span class="td-date"><b>${DAYS[dow(x.date) - 1]}</b> ${dm(x.date)}</span>
+      <span class="td-main">${ride ? `<span class="td-ico">${tSportIco(x.sport)}</span>` : ""}<span class="td-t"><b>${esc(x.name || (x.kind === "blocked" ? x.tag : x.kind === "hockey" ? "Hokej" : "Volno"))}</b>${tags}${x.targetText && ride ? `<small>${esc(x.targetText)}</small>` : ""}</span></span>
+      <span class="td-n num">${ride ? `${dur((x.durationMin || 0) * 60)}<small>zátěž ${num(x.load)}</small>` : ""}</span>
+      <span class="td-w">${wtxt}</span>
+      ${x.kind === "blocked" ? "<span></span>" : `<button class="td-btn" data-open="${x.date}" aria-expanded="${open}">${open ? "Zavřít" : ride ? "Upravit" : "＋ Přidat"}</button>`}</div>${panel}</div>`;
+  };
   const prop = d.proposal;
-  const changes = prop && prop.items.length
-    ? `<div>${prop.items.map((c) => `<label class="chg"><input type="checkbox" checked value="${c.code}"><span><b>${c.code}</b> · ${dayDm(c.date)} · <b>${esc(c.action)}</b> – ${esc(c.name)}${c.why ? `<span class="s2">${esc(c.why)}</span>` : ""}</span></label>`).join("")}</div><div class="btns"><button class="btn pri" id="applyBtn">✅ Zapsat vybrané</button><button class="btn" id="newProp">↻ Nový návrh</button></div><p class="note" id="applyMsg">Po zapsání jde trénink do intervals.icu a odtud do Garminu.</p>`
-    : `<p>Kalendář odpovídá plánu, nic neměním.</p><div class="btns"><button class="btn" id="newProp">↻ Přepočítat návrh</button></div><p class="note" id="applyMsg"></p>`;
-  const floor = d.floor.map((x) => `<div class="row"><span class="dot ${x.done ? "ok" : x.planned ? "today" : ""}">${x.done ? "✓" : ""}</span><span class="t"><b>${esc(x.label)}</b>${x.count != null ? `<span class="sub">tento týden ${x.count}×</span>` : ""}</span><span class="r">${x.done ? "splněno" : x.planned ? "v plánu" : "zbývá"}</span></div>`).join("");
-  const full = d.full;
-  const intens = `<table class="t"><tr><th>Jednotka</th><th class="r">% FTP</th><th class="r">Watty</th></tr>${d.intensity.targets.map((x) => `<tr><td>${esc(x.name)}</td><td class="r">${x.pct[0]}–${x.pct[1]} %</td><td class="r">${x.w[0]}–${x.w[1]} W</td></tr>`).join("")}</table><p class="note">FTP ${d.intensity.ftp} W (test, intervals.icu)${d.eftp ? ` · eFTP ${d.eftp.w} W (odhad intervals.icu z jízd)` : ""}.</p>`;
-  const weekRows = y.week.map((w) => {
-    const done = w.done.length > 0;
-    const st = done ? "ok" : w.planned && w.date < y.date ? "miss" : w.isToday ? "today" : "";
-    const right = done ? w.done.map((a) => `${a.km ? num(a.km, 1) + " km · " : ""}${a.min} min`).join("<br>") : w.planned ? (w.planned.status === "návrh" ? "návrh" : hmm((w.planned.min || 0) * 60)) : "";
-    return `<div class="row ${w.isToday ? "today-row" : ""}"><span class="dot ${st}">${done ? "✓" : st === "miss" ? "!" : ""}</span><span class="d">${esc(w.label)}</span><span class="t">${done ? w.done.map((a) => `<a href="#/aktivita/${a.id}"><b>${esc(a.name)}</b></a>`).join("") : `<b>${esc(w.planned ? w.planned.name : "Volno")}</b>`}${done && w.planned ? `<span class="sub">plán: ${esc(w.planned.name)}</span>` : ""}</span><span class="r">${right}</span></div>`;
-  }).join("");
-  const p = r.plan;
-  const goalTable = `<details class="gcmp"><summary>Jak se cíle liší (čísla pro tvou dnešní kondici)</summary><table class="t"><tr><th>Cíl</th><th class="r">Zátěž / týden</th><th class="r">Tréninky</th><th class="r">Kvalita</th><th class="r">Z2 max (všední / víkend)</th><th class="r">Max. dní za sebou</th></tr>${d.goals.map((g) => `<tr class="${g.key === d.goal ? "iv" : ""}"><td><b>${esc(g.label)}</b></td><td class="r">${g.lo}–${g.hi}</td><td class="r">${g.rides}</td><td class="r">${g.quality}×</td><td class="r">${esc(g.z2Max || "")}</td><td class="r">${g.maxRun}</td></tr>`).join("")}</table>
-    <p class="note">Jak trenér plánuje: 1) týdenní cíl zátěže podle cíle a tvé kondice (max. +10 % proti běžnému týdnu, po 3 týdnech růstu lehčí týden); 2) kvalita (intervaly) ${d.goals[1]?.quality === 2 ? "2×" : "1×"} týdně, ne den po kvalitě ani hokeji, typ se střídá (VO2 / práh / sweet spot); 3) zbytek Z2 – raději víkend a dny s dobrým počasím, bez víc dní za sebou, než cíl dovolí; 4) délky Z2 dopočítá ze zbývající zátěže; 5) ráno podle zotavení: 🟡 kvalita → Z2 nebo zkrácení, 🔴 volno / Z1. Běh dostane intervaly až když běháš pravidelně (6× za 60 dní).</p></details>`;
-  el.innerHTML = `<div class="head"><div><h1>Trenér · <span class="acc">${dayDm(r.date)}</span></h1><div class="sub">normy z ${rec.normDays} dní · cíl týdne ${p.weeklyTarget.lo}–${p.weeklyTarget.hi}</div></div></div>
-  <section class="card goalbar"><div class="gl"><span class="sl">Cíl tréninku</span><div class="seg">${d.goals.map((g) => `<button class="${d.goal === g.key ? "on" : ""}" data-goal="${g.key}">${esc(g.label)}</button>`).join("")}</div></div><p class="gtext">${esc(cur ? cur.text : "")}</p>${goalTable}<p class="note" id="goalMsg">Cíl je jedno nastavení (stejné jako v Nastavení) a platí, dokud ho nezměníš – ne jen na týden. Po změně se tréninky přepočítají a změny potvrdíš v „Návrh změn“.</p></section>
-  <div class="grid">
-    <div class="c7 col tcol">
-      ${card("t-load", "📈 Zátěž po týdnech", "TSS · plán", weekLoadsHtml(d.weeks))}
-      ${card("plan t-plan", "🗓️ Plán " + dm(p.from) + "–" + dm(p.to), "plán · Open-Meteo", `<p class="note top">Ikony 🚴 🏃 ${XC_SVG} mění sport, 🛋️ = volno. Kvalitu přesuneš nebo vyměníš za Z2 tlačítky u dne. Ve volném dni „＋ Přidat trénink“. Změny se objeví v návrhu změn.</p>` + p.days.map((x) => planDayHtml(x, { switcher: !paused, cons: d.constraints, plan: p.days, types: d.userTypes })).join("") + (p.warnings.length ? `<ul class="alerts">${p.warnings.map((w) => `<li>⚠️ ${esc(w)}</li>`).join("")}</ul>` : ""))}
-    </div>
-    <div class="c5 col tcol">
-      ${card("t-gate", "Dnešní brána", "Garmin · Open-Meteo", todayCard)}
-      ${card("t-prop", "✏️ Návrh změn", "", changes, 'id="propCard"')}
-      ${r.warnings.length ? card("", "⚠️ Upozornění", "", `<ul class="alerts">${r.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>`) : ""}
-      ${card("", "Tento týden · plán vs. hotovo", "", weekRows)}
-      ${card("", "Minimum týdne", "co držet i v náročném týdnu", floor + `<p class="note">Plný týden: ${full.rides} tréninky, kvalita ${full.quality ? `${full.quality.count} z ${full.quality.limit}` : DASH}, zátěž ${full.done} / cíl ${full.target.lo}–${full.target.hi}.</p>`)}
-      ${card("", "Průvodce intenzitou", "FTP", intens)}
-    </div>
-    ${card("c6", "😴 Zotavení", "Garmin", recTable)}
-    ${card("c6", "📊 Kondice, únava a forma", "intervals.icu", fitTable)}
+  const pending = prop && prop.items.length ? `<div class="tpend"><span><b>${prop.items.length} ${prop.items.length === 1 ? "změna čeká" : prop.items.length < 5 ? "změny čekají" : "změn čeká"}</b> · do kalendáře a intervals.icu jdou až po potvrzení</span>
+    <span class="btns"><button class="btn pri" id="applyAll">✅ Zapsat do intervals.icu</button><button class="btn" id="resetMine">↩ Vrátit moje úpravy</button></span>
+    <details class="tp-list"><summary>Co se změní</summary>${prop.items.map((c) => `<div class="tp-ch"><b>${dayDm(c.date)}</b> ${esc(c.action)} – ${esc(c.name)}${c.why ? `<small>${esc(c.why)}</small>` : ""}</div>`).join("")}</details><p class="note" id="applyMsg"></p></div>`
+    : `<div class="tpend ok"><span>✓ Kalendář odpovídá plánu</span><span class="btns">${mine.length ? '<button class="btn sm" id="resetMine">↩ Vrátit moje úpravy</button>' : ""}<button class="btn sm" id="newProp">↻ Přepočítat</button></span><p class="note" id="applyMsg"></p></div>`;
+  const planCard = card("c12 t-plan", `🗓️ Plán ${dm(p.from)}–${dm(p.to)}`, "plán · Open-Meteo", `${pending}${bars}<div class="tdays">${p.days.map(dayRow).join("")}</div>${p.warnings.length ? `<ul class="alerts">${p.warnings.map((w) => `<li>⚠️ ${esc(w)}</li>`).join("")}</ul>` : ""}<p class="note">Úpravy: tlačítko „Upravit“ u dne${matchMedia("(pointer: fine)").matches ? " nebo přetáhni trénink myší na jiný den" : ""}. Plán se hned přepočítá, do intervals.icu se zapíše až po potvrzení nahoře.</p>`);
+  // --- z čeho trenér vychází ---
+  const form = f.form, goalUp = d.goal === "zvyseni" || d.goal === "zavod";
+  const why = form == null ? "Formu zatím neznám." : form < -30 ? `Jsi hodně unavený (forma ${signed(form, 1)}) → týden výrazně lehčí, víc volna.` : form < -20 ? `Únava je vysoká (forma ${signed(form, 1)}) → týden lehčí.` : form > 15 && goalUp ? `Jsi odpočatý (forma ${signed(form, 1)})${f.ramp != null && f.ramp < 0 ? " a kondice klesá" : ""} → přidávám zátěž.` : form > 15 ? `Jsi odpočatý (forma ${signed(form, 1)}) – při cíli ${esc(d.goalLabel || "")} držím zátěž.` : `Forma ${signed(form, 1)} je v tréninkovém pásmu → plán drží zátěž.`;
+  const qn = p.days.filter((x) => x.kind === "quality").length;
+  const stateCard = card("t-state", "Z čeho trenér vychází", "intervals.icu · Garmin", `<div class="tstate">
+      <div><span>Kondice (CTL)</span><b class="num">${num(f.ctl, 1)}</b><small class="${f.ramp != null && f.ramp < -1 ? "warn" : ""}">${f.ramp != null ? `${signed(f.ramp, 1)} za týden` : ""}</small></div>
+      <div><span>Únava (ATL)</span><b class="num">${num(f.atl, 1)}</b><small>zátěž 7 dní ${thou(f.load7)}</small></div>
+      <div><span>Forma (TSB)</span><b class="num">${signed(form, 1)}</b><small class="${form == null ? "" : form < -20 || form > 20 ? "warn" : "good"}">${esc(formZoneName(form))}</small></div>
+      <div><span>Připravenost</span><b>${rec.emoji} ${esc(rec.stateLabel)}</b><small>VST, tep, spánek</small></div></div>
+    <div class="twhy"><b>Proto tento týden</b><p>${why} Cíl zátěže ${p.weeklyTarget.lo}–${p.weeklyTarget.hi}, ${qn ? `${qn}× kvalita` : "bez kvality"}, ${p.days.filter((x) => x.name).length} tréninků.</p></div>
+    <details class="gcmp"><summary>Pravidla trenéra</summary><p class="note">Týdenní zátěž z kondice a cíle (max. +10 % proti běžnému týdnu). Forma pod −20 → týden o 12 % lehčí, pod −30 o 25 %. Kvalita 1× (zima) / 2× (sezóna) týdně, nikdy dva dny po sobě ani po hokeji; když týden zaplní tvoje volby, dá se na kolový den. Ráno podle připravenosti: 🟡 kvalita → Z2 nebo zkrácení, 🔴 volno / Z1. Tvoje úpravy (přesun, délka, sport, vlastní jízda) mají přednost, zbytek týdne se dopočítá.</p></details>`);
+  // --- AI trenér ---
+  let hist = []; try { hist = JSON.parse(localStorage.getItem(COACH_KEY) || "[]"); } catch {}
+  const chatCard = card("t-chat", "💬 Řekni trenérovi", "AI · úpravy plánu", `<div class="tmsgs">${hist.length ? hist.slice(-6).map((m) => `<div class="msg ${m.role}"><p>${esc(m.text)}</p>${m.applied && m.applied.length ? `<small class="sub">${m.applied.map(esc).join(" · ")}</small>` : ""}</div>`).join("") : '<div class="empty">Napiš, co se mění – trenér upraví plán (např. „ve středu nestihnu, přesuň kvalitu na čtvrtek“).</div>'}</div>
+    <div class="sugg">${["Ve středu nestihnu, přesuň kvalitu na čtvrtek", "Tento týden mám jen 4 hodiny", "Jsem unavený", "V sobotu jedu 4 h s kamarádem"].map((s) => `<button class="btn sm" data-ask="${esc(s)}">${esc(s)}</button>`).join("")}</div>
+    <form class="chatform" id="askF"><textarea rows="1" placeholder="Napiš trenérovi…"></textarea><button class="btn pri" type="submit">➤</button></form>${hist.length ? '<button class="btn sm" id="askClr" style="margin-top:6px">Smazat rozhovor</button>' : ""}`);
+  // --- cíl, počasí, zátěž po týdnech, intenzita ---
+  const cur2 = d.goals.find((g) => g.key === d.goal);
+  const goalCard = card("t-goal", "🎯 Cíl tréninku", "", `<div class="seg">${d.goals.map((g) => `<button class="${d.goal === g.key ? "on" : ""}" data-goal="${g.key}">${esc(g.label)}</button>`).join("")}</div><p class="gtext">${esc(cur2 ? cur2.text : "")}</p><p class="note" id="goalMsg"></p>`);
+  const weatherCard = card("c12 t-weather", "🌤️ Počasí na trénink · 7 dní", "Open-Meteo", weatherList(p.days.map((x) => ({ label: x.isToday ? "Dnes" : dayDm(x.date), w: x.weather })).filter((x) => x.w)), 'id="pocasi"');
+  const loadsCard = card("t-loads", "📈 Zátěž po týdnech", "TSS", weekLoadsHtml(d.weeks));
+  const intens = card("t-int", "Průvodce intenzitou", "FTP", `<details><summary>Watty pro jednotlivé jednotky (FTP ${d.intensity.ftp} W)</summary><table class="t"><tr><th>Jednotka</th><th class="r">% FTP</th><th class="r">Watty</th></tr>${d.intensity.targets.map((x) => `<tr><td>${esc(x.name)}</td><td class="r">${x.pct[0]}–${x.pct[1]} %</td><td class="r">${x.w[0]}–${x.w[1]} W</td></tr>`).join("")}</table></details>`);
+  el.innerHTML = `<div class="head"><div><h1>Trenér</h1><div class="sub">cíl ${esc(d.goalLabel || "")} · zátěž týdne ${p.weeklyTarget.lo}–${p.weeklyTarget.hi}</div></div></div>
+  <div class="grid tgrid">
+    <div class="c7 col tcol">${todayCard}${planCard}</div>
+    <div class="c5 col tcol">${stateCard}${chatCard}${goalCard}${loadsCard}${intens}</div>
+    ${weatherCard}
   </div>`;
-  const after = async () => { cache.clear(); await route(); document.getElementById("propCard")?.scrollIntoView({ behavior: "smooth", block: "center" }); };
-  el.querySelectorAll("[data-goal]").forEach((b) => b.addEventListener("click", async () => {
-    if (b.classList.contains("on")) return;
-    el.querySelectorAll("[data-goal]").forEach((x) => (x.disabled = true));
-    el.querySelector("#goalMsg").textContent = "Přepočítávám tréninky…";
-    await api("settings", { method: "POST", body: JSON.stringify({ goal: b.dataset.goal }) });
-    after();
+  bindHours(el);
+  const keepScroll = async () => { const y = scrollY; cache.clear(); await route(); requestAnimationFrame(() => scrollTo(0, y)); };
+  const post = async (path, body, msgEl) => { try { await api(path, { method: "POST", body: JSON.stringify(body) }); await keepScroll(); } catch (e) { if (msgEl) msgEl.textContent = e.message; else alert(e.message); } };
+  el.querySelectorAll("[data-open]").forEach((b) => b.addEventListener("click", () => { tOpen = tOpen === b.dataset.open ? null : b.dataset.open; pageTrener(el).then(() => el.querySelector(`[data-day="${tOpen}"]`)?.scrollIntoView({ block: "nearest" })); }));
+  el.querySelectorAll("[data-shift]").forEach((s) => s.addEventListener("change", () => { if (s.value) { tOpen = null; post("plan/shift", { from: s.dataset.shift, to: s.value }); } }));
+  el.querySelectorAll("[data-kindset]").forEach((b) => b.addEventListener("click", () => {
+    const k = b.dataset.kindset, date = b.dataset.date;
+    if (k === "rest") post("plan/sport", { dates: [date], sport: "rest" });
+    else { const x = p.days.find((y) => y.date === date); (async () => { if (!x?.name) await api("plan/sport", { method: "POST", body: JSON.stringify({ dates: [date], sport: "ride" }) }); await post("plan/day", { date, type: k }); })(); }
   }));
-  el.querySelectorAll(".sw-sport button").forEach((b) => b.addEventListener("click", async () => {
-    if (b.classList.contains("on")) return;
-    const date = b.parentElement.dataset.date;
-    b.parentElement.querySelectorAll("button").forEach((x) => (x.disabled = true));
-    await api("plan/sport", { method: "POST", body: JSON.stringify({ dates: [date], sport: b.dataset.sport }) });
-    after();
-  }));
-  el.querySelectorAll(".ownf").forEach((f) => f.addEventListener("submit", async (e) => {
+  el.querySelectorAll(".tpanel .sw-sport button").forEach((b) => b.addEventListener("click", () => post("plan/sport", { dates: [b.parentElement.dataset.date], sport: b.dataset.sport })));
+  el.querySelectorAll("[data-len]").forEach((b) => b.addEventListener("click", () => post("plan/len", { date: b.dataset.len, min: +b.dataset.v })));
+  el.querySelectorAll(".ownf").forEach((f2) => f2.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const fd = new FormData(f);
+    const fd = new FormData(f2);
     const hv = String(fd.get("h") || "").trim().replace(",", ".");
     const m = /^(\d{1,2}):(\d{2})$/.exec(hv);
     const min = m ? +m[1] * 60 + +m[2] : Math.round(parseFloat(hv) * 60);
     if (!(min >= 20 && min <= 720)) { alert("Délku napiš v hodinách, např. 4 nebo 3:30."); return; }
-    f.querySelectorAll("button,input").forEach((x) => (x.disabled = true));
-    await api("plan/own", { method: "POST", body: JSON.stringify({ date: f.dataset.date, min, km: fd.get("km") ? +fd.get("km") : null, with: String(fd.get("with") || "").trim().toLowerCase() === "sám" ? null : String(fd.get("with") || "").trim() || null }) });
-    after();
+    tOpen = null;
+    post("plan/own", { date: f2.dataset.date, min, km: fd.get("km") ? +fd.get("km") : null, with: String(fd.get("with") || "").trim().toLowerCase() === "sám" ? null : String(fd.get("with") || "").trim() || null });
   }));
-  el.querySelectorAll("[data-type]").forEach((b) => b.addEventListener("click", async () => { b.disabled = true; await api("plan/day", { method: "POST", body: JSON.stringify({ date: b.dataset.date, type: b.dataset.type }) }); after(); }));
-  el.querySelectorAll("[data-move]").forEach((s) => s.addEventListener("change", async () => { if (!s.value) return; s.disabled = true; await api("plan/move", { method: "POST", body: JSON.stringify({ from: s.dataset.move, to: s.value }) }); after(); }));
-  el.querySelectorAll("[data-movefrom]").forEach((b) => b.addEventListener("click", async () => { b.disabled = true; await api("plan/move", { method: "POST", body: JSON.stringify({ from: b.dataset.movefrom, to: b.dataset.moveto }) }); after(); }));
-  el.querySelectorAll("[data-undo]").forEach((b) => b.addEventListener("click", async () => {
-    b.disabled = true;
-    await api("constraint", { method: "DELETE", body: JSON.stringify({ date: b.dataset.undo, kind: b.dataset.kind }) });
-    after();
-  }));
-  el.querySelectorAll("[data-skip]").forEach((b) => b.addEventListener("click", async () => { b.disabled = true; await api("constraint", { method: "POST", body: JSON.stringify({ date: b.dataset.skip, kind: "nepojedu", note: "dashboard" }) }); await api("plan/propose", { method: "POST" }); cache.clear(); route(); }));
-  const nb = el.querySelector("#newProp");
-  if (nb) nb.addEventListener("click", async () => { nb.disabled = true; await api("plan/propose", { method: "POST" }); cache.clear(); route(); });
-  const ab = el.querySelector("#applyBtn");
-  if (ab) ab.addEventListener("click", async () => {
-    ab.disabled = true;
-    const codes = [...el.querySelectorAll(".chg input:checked")].map((i) => i.value);
-    try { const res = await api(`proposal/${prop.id}/apply`, { method: "POST", body: JSON.stringify({ codes }) }); el.querySelector("#applyMsg").textContent = [...res.lines, res.verify].join(" · "); cache.clear(); }
-    catch (e) { el.querySelector("#applyMsg").textContent = e.message; }
+  // přetažení tréninku myší na jiný den (PC)
+  let dragFrom = null;
+  el.querySelectorAll(".tday").forEach((row) => {
+    row.addEventListener("dragstart", (e) => { dragFrom = row.dataset.day; row.classList.add("drag"); e.dataTransfer.effectAllowed = "move"; });
+    row.addEventListener("dragend", () => row.classList.remove("drag"));
+    row.addEventListener("dragover", (e) => { if (dragFrom && dragFrom !== row.dataset.day) { e.preventDefault(); row.classList.add("over"); } });
+    row.addEventListener("dragleave", () => row.classList.remove("over"));
+    row.addEventListener("drop", (e) => { e.preventDefault(); row.classList.remove("over"); if (dragFrom && dragFrom !== row.dataset.day) post("plan/shift", { from: dragFrom, to: row.dataset.day }); dragFrom = null; });
   });
+  el.querySelector("#applyAll")?.addEventListener("click", async (e) => {
+    e.currentTarget.disabled = true;
+    const msg = el.querySelector("#applyMsg");
+    msg.textContent = "Zapisuji do kalendáře a intervals.icu…";
+    try { const res = await api(`proposal/${prop.id}/apply`, { method: "POST", body: JSON.stringify({ codes: prop.items.map((c) => c.code) }) }); msg.textContent = [...res.lines, res.verify].join(" · "); setTimeout(keepScroll, 1500); }
+    catch (err) { msg.textContent = err.message; e.currentTarget.disabled = false; }
+  });
+  el.querySelector("#resetMine")?.addEventListener("click", () => { if (confirm("Vrátit všechny tvoje úpravy plánu (přesuny, délky, sporty, vlastní jízdy)?")) post("plan/reset", {}); });
+  el.querySelector("#newProp")?.addEventListener("click", () => post("plan/propose", {}));
+  el.querySelectorAll("[data-undo]").forEach((b) => b.addEventListener("click", async () => { b.disabled = true; await api("constraint", { method: "DELETE", body: JSON.stringify({ date: b.dataset.undo, kind: b.dataset.kind }) }); keepScroll(); }));
+  el.querySelectorAll("[data-skip]").forEach((b) => b.addEventListener("click", async () => { b.disabled = true; await api("constraint", { method: "POST", body: JSON.stringify({ date: b.dataset.skip, kind: "nepojedu", note: "dashboard" }) }); await api("plan/propose", { method: "POST" }); keepScroll(); }));
+  el.querySelectorAll("[data-goal]").forEach((b) => b.addEventListener("click", async () => { if (b.classList.contains("on")) return; el.querySelector("#goalMsg").textContent = "Přepočítávám plán…"; await api("settings", { method: "POST", body: JSON.stringify({ goal: b.dataset.goal }) }); keepScroll(); }));
+  // AI trenér
+  const ask = async (text) => {
+    text = text.trim(); if (!text) return;
+    hist.push({ role: "user", text });
+    const box = el.querySelector(".tmsgs"); box.insertAdjacentHTML("beforeend", `<div class="msg user"><p>${esc(text)}</p></div><div class="msg assistant"><span class="spin"></span></div>`);
+    try {
+      const res = await api("coach/ask", { method: "POST", body: JSON.stringify({ text }) });
+      hist.push({ role: "assistant", text: res.reply, applied: res.applied });
+    } catch (e) { hist.push({ role: "assistant", text: `Teď to nejde: ${e.message}` }); }
+    try { localStorage.setItem(COACH_KEY, JSON.stringify(hist.slice(-20))); } catch {}
+    keepScroll();
+  };
+  el.querySelector("#askF").addEventListener("submit", (e) => { e.preventDefault(); const ta = e.target.querySelector("textarea"); ask(ta.value); ta.value = ""; });
+  el.querySelector("#askF textarea").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(e.target.value); e.target.value = ""; } });
+  el.querySelectorAll("[data-ask]").forEach((b) => b.addEventListener("click", () => ask(b.dataset.ask)));
+  el.querySelector("#askClr")?.addEventListener("click", () => { try { localStorage.removeItem(COACH_KEY); } catch {} keepScroll(); });
 }
 
 
@@ -1534,7 +1594,7 @@ async function pageZotaveni(el) {
     const nn = M.normOf(n);
     const [stt, tn] = normState(v, nn, M.lowGood);
     return metricTile({ label: `${M.ico} ${M.name}` + (lr && lr.date !== d.date ? ` <small>(${dm(lr.date)})</small>` : ""), value: M.fmtBig(v), unit: M.hours ? "" : M.unit, state: stt, tone: tn,
-      spark: sparkRolling(d.rows.map((r) => M.val(r)), M.color, 60), href: `#/detail/${m}`,
+      spark: sparkRolling(d.rows.map((r) => M.val(r)), stateColor(v, nn, M.lowGood), 60), href: `#/detail/${m}`,
       foot: nn ? `norma ${M.fmt(nn.mean - nn.sd)}–${M.fmt(nn.mean + nn.sd)}${M.hours ? " h" : M.unit ? " " + M.unit : ""}` : "" });
   };
   const rc = d.recovery;
@@ -1823,7 +1883,12 @@ const GEAR_ICO = {
   shoe: '<path d="M3 16c0-3 1-6 2-8l4 2c1 .5 2 .5 3 0l1-1 7 4c1 .6 1 2.4 1 3v1H3z"/><path d="M3 18h18"/>',
   other: '<rect x="5" y="7" width="14" height="13" rx="2"/><path d="M9 7V5h6v2"/>',
 };
-const GEAR_COLOR = { bike: "var(--z2)", ski: "#3a8fd0", shoe: "var(--acc)", other: "var(--z7)" };
+GEAR_ICO.road = '<circle cx="5.5" cy="16" r="4"/><circle cx="18.5" cy="16" r="4"/><path d="M5.5 16 10 9h6l2.5 7M10 9l2.5 7h-7M16 9l-.8-3h2.6c1.3 0 1.6 1.4 1 2.4"/>';
+GEAR_ICO.mtb = '<circle cx="5.5" cy="16.5" r="4" stroke-width="2.6"/><circle cx="18.5" cy="16.5" r="4" stroke-width="2.6"/><path d="M5.5 16.5 9.5 10H15l3.5 6.5M9.5 10l2.5 6.5h-6.5M15 10l1.5-3.5M14 6.5h4.5M15.6 12.8l1.3 1"/>';
+GEAR_ICO.ski = '<path d="M2.5 19.5h15.5c1.6 0 2.6-.9 3.2-2.4M2.5 22h15.5c1.6 0 2.6-.9 3.2-2.4"/><path d="M8 2.5 10 17M15.5 2.5 13.5 17"/><circle cx="9.7" cy="14.6" r="1.1"/><circle cx="13.8" cy="14.6" r="1.1"/>';
+const GEAR_COLOR = { road: "var(--z2)", mtb: "var(--z3)", bike: "var(--z2)", ski: "#2aa3c9", shoe: "var(--acc)", other: "var(--z7)" };
+/** ikona a barva podle druhu a sportu: silnice ≠ MTB, běžky = lyže s hůlkami */
+const gearLook = (g) => { const df = (g.default_for || "").split(","); const k = g.kind === "bike" ? (df.includes("mtb") && !df.includes("ride") ? "mtb" : "road") : g.kind; return { ico: GEAR_ICO[k] || GEAR_ICO.other, color: GEAR_COLOR[k] || "var(--z1)" }; };
 const GEAR_SPORTS = [["ride", "Silnice"], ["mtb", "MTB"], ["indoor", "Trenažér"], ["run", "Běh"], ["xc_ski", "Běžky"], ["walk", "Chůze"], ["hike", "Turistika"]];
 let gearShow = "active"; // active | retired
 async function pageVybaveni(el) {
@@ -1842,8 +1907,9 @@ async function pageVybaveni(el) {
   const shown = gearShow === "retired" ? retired : active;
   const cardOf = (g) => {
     const sports = (g.default_for || "").split(",").filter(Boolean).map((s) => SPORT_NAME[s] || s);
-    return `<article class="gcard ${g.to_date ? "retired" : ""}" style="--gc:${GEAR_COLOR[g.kind] || "var(--z1)"}">
-      <div class="gc-h"><span class="gc-ico"><svg viewBox="0 0 24 24" aria-hidden="true">${GEAR_ICO[g.kind] || GEAR_ICO.other}</svg></span>
+    const look = gearLook(g);
+    return `<article class="gcard ${g.to_date ? "retired" : ""}" style="--gc:${look.color}">
+      <div class="gc-h"><span class="gc-ico"><svg viewBox="0 0 24 24" aria-hidden="true">${look.ico}</svg></span>
         <div class="gc-t"><b>${esc(g.name)}</b><span class="sub">${GEAR_KIND[g.kind]?.[1] || "Jiné"}${sports.length ? ` · výchozí pro ${esc(sports.join(", ").toLowerCase())}` : " · jen ručně"}${g.to_date ? ` · vyřazeno ${dm(g.to_date)}${g.to_date.slice(0, 4)}` : ""}</span></div>
         <button class="gc-edit" data-edit="${g.id}" aria-label="Upravit ${esc(g.name)}" title="Upravit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/></svg></button></div>
       <div class="gc-km"><span class="num">${thou(g.km)}</span><small>km</small><span class="gc-st">${g.n} ${g.kind === "ski" ? "jízd" : g.kind === "shoe" ? "aktivit" : "jízd"} · ${num(g.hours, 0)} h${g.up ? ` · ↑ ${thou(g.up)} m` : ""}</span></div>

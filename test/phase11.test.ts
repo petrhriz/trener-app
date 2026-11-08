@@ -119,7 +119,8 @@ describe("Zlepšit nemá kratší jízdy než Udržet (8. kolo)", () => {
   it("přidaná jízda jen doplní, ostatní se nezkracují", () => {
     const cal = (id: number, date: string) => ({ id, date, kind: "z2" as const, quality_type: null, name: "Z2 vytrvalost", indoor: 0, duration_min: 75, steps_json: null, steps_text: null, target_load: 80, reason: null, status: "planned", sport: "ride", goal: "zvyseni" });
     const constraints = [{ date: "2026-11-09", kind: "sport" as const, note: "ride" }, { date: "2026-11-11", kind: "sport" as const, note: "ride" }, { date: "2026-11-10", kind: "sport" as const, note: "run" }, { date: "2026-11-13", kind: "sport" as const, note: "run" }];
-    const mins = (goal: PlanInput["goal"]) => { const p = generatePlan(planInput({ goal, calendar: [cal(1, "2026-11-10"), cal(2, "2026-11-13")], constraints })); return ["2026-11-09", "2026-11-11"].map((d) => p.days.find((x) => x.date === d)!.durationMin ?? 0); };
+    // jen Z2 jízdy (kvalita má délku podle cíle – dávkování intervalů)
+    const mins = (goal: PlanInput["goal"]) => { const p = generatePlan(planInput({ goal, calendar: [cal(1, "2026-11-10"), cal(2, "2026-11-13")], constraints })); return ["2026-11-09", "2026-11-11"].map((d) => { const x = p.days.find((y) => y.date === d)!; return x.kind === "z2" || x.kind === "long" ? x.durationMin ?? 0 : 0; }); };
     const z = mins("zvyseni"), u = mins("udrzeni"), p = mins("pokles");
     for (let i = 0; i < 2; i++) { expect(z[i]!).toBeGreaterThanOrEqual(u[i]!); expect(u[i]!).toBeGreaterThanOrEqual(p[i]!); }
   });

@@ -94,3 +94,13 @@ describe("únava stáhne objem", () => {
     expect(tired.warnings.some((w) => w.startsWith("Únava"))).toBe(true);
   });
 });
+
+describe("kvalita i když týden zaplní tvoje volby sportu", () => {
+  it("kvalita se dá na kolový den", () => {
+    const cons = [{ date: "2026-11-09", kind: "sport" as const, note: "ride" }, { date: "2026-11-10", kind: "sport" as const, note: "run" }, { date: "2026-11-11", kind: "sport" as const, note: "ride" }, { date: "2026-11-13", kind: "sport" as const, note: "run" }];
+    const p = generatePlan({ today: "2026-11-08", ftp: 298, hr: null, goal: "udrzeni", ridesPerWeek: 3, startYesterday: { ctl: 44, atl: 22 }, startToday: null, acts: [], actsPower: [], past: () => null, calendar: [], constraints: cons, weather: new Map(), weatherOk: false, recovery: "green", p5: 340, weekLoads: [300, 300, 300, 300] });
+    const q = p.days.filter((d) => d.kind === "quality");
+    expect(q.length).toBe(1);
+    expect(q[0]!.sport).toBe("ride");
+  });
+});

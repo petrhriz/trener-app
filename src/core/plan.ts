@@ -36,7 +36,7 @@ export interface CalItem {
 export interface Constraint {
   date: string;
   /** sport = náhrada kola jiným sportem, note = ride | run | xc_ski | walk; typ = vynucený druh jednotky, note = z2 | quality */
-  kind: "nemuzu" | "hokej" | "bezky" | "nemoc" | "dovolena" | "nepojedu" | "sport" | "typ" | "jizda";
+  kind: "nemuzu" | "hokej" | "bezky" | "nemoc" | "dovolena" | "nepojedu" | "sport" | "typ" | "jizda" | "delka";
   note: string | null;
 }
 
@@ -174,6 +174,8 @@ export interface PlanDay {
   userRest?: boolean;
   /** vlastní jízda zadaná uživatelem (délka, s kým) */
   own?: OwnRide | null;
+  /** den upravený uživatelem (sport, druh, délka, volno, vlastní jízda) */
+  mine?: boolean;
 }
 
 export interface PlanResult {
@@ -220,6 +222,8 @@ interface Slot {
   replan?: boolean;
   /** druh zvolený uživatelem (přesun kvality / „místo toho Z2“) */
   userType?: "z2" | "quality";
+  /** délka zadaná uživatelem (min) – plán ji nemění */
+  userMin?: number;
   /** vlastní jízda (zadal jsi délku) – plán ji nemění, jen započítá zátěž */
   own?: OwnRide;
 }
@@ -408,6 +412,16 @@ export function generatePlan(inp: PlanInput): PlanResult {
         s.why.push("kvalita přesunutá sem (tvoje volba)");
       }
     }
+    // délka zadaná uživatelem (kratší / delší trénink)
+    const dl = cons.find((c) => c.kind === "delka");
+    if (dl && Number(dl.note) >= 20 && !s.own && ["z2", "long", "quality", "recovery"].includes(s.kind as string)) {
+      s.userMin = Math.round(Number(dl.note));
+      s.minutes = s.userMin;
+      s.fixedName = undefined;
+      s.workout = undefined;
+      s.changed = s.changed ?? (cal ? "upravit" : "nová");
+      s.why.push(`délka ${minHm(s.userMin)} (tvoje volba)`);
+    }
     // běh bez pravidelného běhání: žádné intervaly (riziko zranění), jen Z2
     if (s.sport === "run" && s.kind === "quality" && !inp.runExperienced && s.userType !== "quality") {
       s.kind = "z2";
@@ -573,6 +587,24 @@ export function generatePlan(inp: PlanInput): PlanResult {
         rides++;
       }
     }
+    // kvalita pořád chybí (týden zaplnily tvoje volby sportu / jízdy) → dát ji na kolový den se Z2,
+    // ne den po / před kvalitou nebo hokejem; tvůj den „místo toho Z2“ a vlastní jízdu nech být
+    if (qCount < limit) {
+      const conv = wSlots
+        .filter((s) => s.kind === "z2" && s.sport === "ride" && !s.own && s.userType !== "z2" && s.date !== T && !prevDayHard(s.date) && !nextDayHard(s.date) && !recentIllness(s.date))
+        .sort((a, b) => DOW_QUALITY_PREF.indexOf(dow(a.date)) - DOW_QUALITY_PREF.indexOf(dow(b.date)));
+      const c = conv[0];
+      if (c && (inp.recovery !== "red" || c.date !== addDays(T, 1))) {
+        c.kind = "quality";
+        c.qualityType = null;
+        c.fixedName = undefined;
+        c.workout = undefined;
+        c.minutes = c.userMin ?? 75;
+        c.changed = c.changed ?? (c.cal ? "upravit" : "nová");
+        c.why.push("kvalita týdne na kolový den");
+        qCount++;
+      }
+    }
     while (rides < ridesTarget) {
       const cand = empty().filter((s) => !recentIllness(s.date) && streakIf(s.date) <= maxRun);
       if (!cand.length) break;
@@ -610,9 +642,9 @@ export function generatePlan(inp: PlanInput): PlanResult {
     }
 
     // 4) délky podle týdenní zátěže (6.6 krok 1) – nové Z2 i Z2 přepočítávané pro nový cíl
-    const newZ2 = wSlots.filter((s) => (s.kind === "z2" || s.kind === "long") && ((!s.cal && !s.fixedName) || s.replan));
+    const newZ2 = wSlots.filter((s) => (s.kind === "z2" || s.kind === "long") && !s.userMin && ((!s.cal && !s.fixedName) || s.replan));
     const fixedLoad = wSlots
-      .filter((s) => (s.cal || s.fixedName) && !newZ2.includes(s))
+      .filter((s) => (s.cal || s.fixedName || s.userMin) && !newZ2.includes(s))
       .reduce((t, s) => {
         // stejný odhad jako ve výsledném plánu: zátěž z kalendáře jen u nezměněné jednotky
         // (u „běh místo kola“ by jinak zůstala zátěž původní jízdy a Z2 vyšly krátké)
@@ -629,7 +661,7 @@ export function generatePlan(inp: PlanInput): PlanResult {
     const hockeyLoad = wSlots.filter((s) => s.kind === "hockey" || s.kind === "xc_ski").length * 70;
     const qSlot = wSlots.find((s) => s.kind === "quality" && !s.fixedName);
     const qLoad = qSlot ? estimateLoad("quality", null, 75, inp.acts, T).load : 0;
-    if (qSlot) qSlot.minutes = 75;
+    if (qSlot && !qSlot.userMin) qSlot.minutes = 75;
     const daysInWeekPlanned = wSlots.length;
     const weekShare = Math.min(1, daysInWeekPlanned / 7 + (doneLoad > 0 ? 0 : 0));
     const share = pastActs.length || wSlots.length === 7 ? 1 : weekShare;
@@ -951,6 +983,7 @@ export function generatePlan(inp: PlanInput): PlanResult {
       sport: s.sport,
       userRest: !!s.userRest,
       own: s.own ?? null,
+      mine: !!(s.userPick || s.userType || s.userMin || s.own || s.userRest),
     };
   });
 

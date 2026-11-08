@@ -27,6 +27,7 @@ import { recomputeLoads } from "../sync/metrics";
 import { geocode } from "../sync/weather";
 import { verifyAccess } from "./access";
 import { accountsApi } from "./accounts";
+import { coachApi } from "./coach";
 import { OWNER_ID, sessionUser } from "./session";
 
 /** uid = přihlášený uživatel (zatím vždy 1 = vlastník; příprava na víc uživatelů, viz docs/multi-user.md) */
@@ -55,6 +56,7 @@ api.use("*", async (c, next) => {
 
 // účet, uživatelé, propojení Telegramu (src/api/accounts.ts)
 api.route("/", accountsApi);
+api.route("/", coachApi);
 
 api.route("/gear", gearApi);
 api.route("/", round6);
@@ -850,7 +852,7 @@ api.post("/proposal/:id/apply", async (c) => {
 
 api.post("/constraint", async (c) => {
   const { date, kind, note } = (await c.req.json()) as { date: string; kind: string; note?: string };
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !["nemuzu", "hokej", "bezky", "nemoc", "dovolena", "nepojedu", "sport", "typ", "jizda"].includes(kind)) return c.json({ error: "bad input" }, 400);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !["nemuzu", "hokej", "bezky", "nemoc", "dovolena", "nepojedu", "sport", "typ", "jizda", "delka"].includes(kind)) return c.json({ error: "bad input" }, 400);
   await addConstraint(c.env, date, kind, note ?? null);
   return c.json({ ok: true, label: `${kind} ${dm(date)}` });
 });
