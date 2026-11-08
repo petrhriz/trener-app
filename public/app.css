@@ -938,3 +938,36 @@ html:root[data-skin="k"] .stat, html:root[data-skin="k"] .mtile { border-radius:
 .chatform textarea { min-height: 40px; max-height: 120px; padding: 9px 12px; }
 .chatform .btn { height: 40px; }
 @media (max-width: 760px) { .chat:not(.aibox) { height: calc(100dvh - 230px - env(safe-area-inset-bottom) - env(safe-area-inset-top)); } }
+
+/* ======================= 9. kolo ======================= */
+/* aktivita: vybavení a „s kým“ na jednom řádku */
+.actsel { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-top: 8px; }
+.actsel .gearsel { margin-top: 0; }
+.actsel select { max-width: 210px; }
+/* Body Battery: kroužek vlevo, 4 čísla vedle (na mobilu 2 × 2) */
+.bbtop { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 16px; flex-wrap: nowrap; }
+.bbring { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.bbring small { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.bbkpis { grid-template-columns: repeat(4, minmax(0, 1fr)); min-width: 0; }
+@media (max-width: 760px) {
+  .bbtop { gap: 10px; }
+  .bbkpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .bbring .sring svg { width: 92px; height: 92px; }
+  .bbk { padding: 6px 9px; } .bbk b { font-size: 18px; }
+}
+/* detail metriky */
+.grid > .card.dhero { display: block; }
+.dh-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
+.dh-v { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.dh-ico { width: 56px; height: 56px; border-radius: 16px; display: grid; place-items: center; font-size: 30px; background: color-mix(in srgb, var(--mc) 16%, var(--card)); flex: none; }
+.dhero .nrange { align-items: flex-end; text-align: right; }
+.dgauge { margin-top: 16px; }
+.dg-track { position: relative; height: 10px; border-radius: 99px; background: var(--card2); }
+.dg-band { position: absolute; top: 0; bottom: 0; border-radius: 99px; background: color-mix(in srgb, var(--mc) 35%, transparent); }
+.dg-dot { position: absolute; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: var(--mc); border: 3px solid var(--card); box-shadow: 0 1px 4px rgba(0, 0, 0, .25); }
+.dg-dot.warn { background: var(--warn); }
+.dg-lab { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 6px; gap: 8px; }
+@media (max-width: 760px) { .dh-ico { width: 46px; height: 46px; font-size: 25px; border-radius: 13px; } .dh-v { gap: 10px; } .dhero .nrange small { display: none; } }
+/* 🤖 na PC: stejná výška jako přepínače vedle */
+@media (min-width: 761px) { .head > .aibtn { margin-left: 0; align-self: flex-end; width: 40px; height: 40px; font-size: 20px; border-radius: 12px; } }
+@media (min-width: 761px) { .head > :first-child { margin-right: auto; } }
