@@ -1202,7 +1202,7 @@ html:root[data-skin="k"] .stat, html:root[data-skin="k"] .mtile { border-radius:
 .td-t small { flex-basis: 100%; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tday.rest .td-t b { color: var(--muted); font-weight: 600; }
 .ttag { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 99px; background: var(--card2); color: var(--muted); }
-.ttag.q { background: var(--accbg); color: var(--acc); } .ttag.me { background: color-mix(in srgb, var(--z2) 15%, transparent); color: var(--z2); } .ttag.ch { background: var(--warnbg); color: var(--warn); }
+.ttag.q { background: var(--accbg); color: var(--acc); } .ttag.me { background: color-mix(in srgb, var(--z2) 15%, transparent); color: var(--z2); } .ttag.nz { background: var(--warnbg); color: var(--warn); }
 .td-n { font-size: 14px; font-weight: 700; text-align: right; display: flex; flex-direction: column; } .td-n small { font-size: 11.5px; color: var(--muted); font-weight: 500; }
 .td-w { font-size: 12px; color: var(--muted); }
 .td-btn { font: inherit; font-size: 13px; font-weight: 600; border: 1px solid var(--line); background: var(--card); color: var(--fg); border-radius: 10px; padding: 6px 10px; cursor: pointer; }
@@ -1279,3 +1279,54 @@ html, body { touch-action: manipulation; }
 /* štítek stavu se vejde do dlaždice */
 .mt-h em { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .mini-stats b small { font-size: 12px; font-weight: 500; color: var(--muted); }
+
+/* ===== 18. kolo ===== */
+/* karta Dnes v Trenérovi: barvy podle motivu (ne černá na světlém pozadí) */
+.tdark { background: color-mix(in srgb, var(--acc) 6%, var(--card)); color: var(--fg); border-color: color-mix(in srgb, var(--acc) 22%, var(--line)); }
+.tdark .td-d { color: var(--muted); }
+.tdark .td-d .good { color: var(--ok); } .tdark .td-d .warn { color: var(--warn); } .tdark .td-d .bad { color: var(--bad); }
+.tdark .td-p { color: var(--fg); opacity: .85; }
+.tdark .btn { background: var(--card); color: var(--fg); border-color: var(--line); }
+/* další údaje aktivity: všechny dlaždice stejně vysoké (text se nezalamuje) */
+.abasics > div { min-width: 0; }
+.abasics span, .abasics b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.abasics b small { font-size: 12px; font-weight: 500; color: var(--muted); }
+/* souhrn roku: 6 dlaždic ve 2 řadách po 3 */
+.mini-stats.yr6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* sbalené vysvětlivky */
+details.info { margin-top: 10px; }
+details.info > summary { cursor: pointer; list-style: none; font-size: 12.5px; color: var(--muted); font-weight: 600; display: inline-flex; gap: 4px; }
+details.info > summary::-webkit-details-marker { display: none; }
+details.info[open] > summary { color: var(--fg); }
+details.info > .note { margin-top: 6px; }
+/* Trenér: legenda teček jen na mobilu */
+.tdleg { display: none; gap: 14px; font-size: 11.5px; color: var(--muted); margin: 8px 0 2px; }
+.tdleg i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 0; }
+.tdleg i.me { background: var(--z2); } .tdleg i.nz { background: var(--warn); }
+.td-tg { display: none; }
+@media (max-width: 760px) {
+  .tdleg { display: flex; }
+  /* řádek dne: 1) ikona, název, štítky, tlačítko 2) délka · zátěž · watty 3) počasí */
+  .td-row { grid-template-columns: 50px minmax(0, 1fr) auto; grid-template-areas: "d m b" "d n n" "d w w"; row-gap: 3px; column-gap: 8px; padding: 10px 0; align-items: center; }
+  .td-date { line-height: 1.3; }
+  .td-main { gap: 7px; }
+  .td-ico { font-size: 17px; } .td-ico .emo { width: 19px; height: 19px; }
+  .td-t { flex-wrap: nowrap; overflow: hidden; }
+  .td-t b { font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .td-t > small { display: none; }
+  .ttag { flex: none; }
+  .ttag.me, .ttag.nz { font-size: 0; padding: 0; width: 8px; height: 8px; border-radius: 50%; }
+  .ttag.me { background: var(--z2); } .ttag.nz { background: var(--warn); }
+  .td-n { font-size: 13px; gap: 0; flex-wrap: nowrap; white-space: nowrap; overflow: hidden; }
+  .td-n small { font-size: 12px; }
+  .td-n small::before { content: "·"; margin: 0 6px; color: var(--muted); }
+  .td-tg { display: inline; overflow: hidden; text-overflow: ellipsis; }
+  .td-w { text-align: left; font-size: 12px; }
+  .td-w:empty { display: none; }
+  .td-btn { padding: 5px 10px; font-size: 12.5px; }
+  .td-btn.add span { display: none; }
+  .td-btn.add { min-width: 34px; font-size: 16px; padding: 2px 9px; }
+  .tday.rest .td-row { grid-template-areas: "d m b" "d w w"; }
+}
+.zleg svg.sqs { display: block; flex: none; }
+@media (max-width: 760px) { .abasics > div:last-child:nth-child(odd) { grid-column: 1 / -1; } }

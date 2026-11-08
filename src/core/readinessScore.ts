@@ -185,13 +185,13 @@ export function coaching(i: CoachingInput): Coaching {
     title = "Ranní data zatím nemám";
     text = "Počkej na synchronizaci hodinek (VST, klidový tep a spánek z noci).";
   } else if (band === "low") {
-    title = "Nedoregenerovaný – dnes volno";
+    title = "Neodpočatý – dnes volno";
     text = `${reasons ? cap(reasons) + ". " : ""}Volno, nebo jen Z1 do 45 min / procházka. Hlavně spánek.`;
   } else if (band === "mid") {
-    title = "Částečně zregenerovaný";
+    title = "Částečně odpočatý";
     text = `${reasons ? cap(reasons) + ". " : ""}Lehčí den: kvalitu změň na Z2, Z2 zkrať o třetinu.`;
   } else {
-    title = "Zregenerovaný";
+    title = "Odpočatý";
     text = "VST, klidový tep ani spánek nepřekročily hranice semaforu. Den na plánovaný trénink.";
   }
 

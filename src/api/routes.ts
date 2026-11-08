@@ -190,7 +190,7 @@ api.get("/year", async (c) => {
   const ctx = await loadCtx(c.env);
   const T = ctx.T;
   const year = T.slice(0, 4);
-  const yr = await first<{ km: number; n: number; up: number }>(c.env.DB, "SELECT SUM(distance_m)/1000.0 AS km, COUNT(*) AS n, SUM(elev_gain) AS up FROM activities WHERE date >= ? AND sport IN ('ride','mtb','indoor')", `${year}-01-01`);
+  const yr = await first<{ km: number; n: number; up: number; c100: number; longest: number }>(c.env.DB, "SELECT SUM(distance_m)/1000.0 AS km, COUNT(*) AS n, SUM(elev_gain) AS up, SUM(CASE WHEN distance_m >= 100000 THEN 1 ELSE 0 END) AS c100, MAX(distance_m)/1000.0 AS longest FROM activities WHERE date >= ? AND sport IN ('ride','mtb','indoor')", `${year}-01-01`);
   const last4 = await first<{ km: number }>(c.env.DB, "SELECT SUM(distance_m)/1000.0 AS km FROM activities WHERE date > ? AND sport IN ('ride','mtb','indoor')", addDays(T, -28));
   const doy = Math.round((Date.parse(T) - Date.parse(`${year}-01-01`)) / 86400_000) + 1;
   const daysInYear = (+year % 4 === 0 ? 366 : 365);
@@ -219,7 +219,7 @@ api.get("/year", async (c) => {
     elevYear: Math.round(bySport.reduce((t, s) => t + (s.up ?? 0), 0)),
     goal: { name: ctx.s.goal_name, date: ctx.s.goal_date, daysLeft: ctx.s.goal_date ? Math.round((Date.parse(ctx.s.goal_date) - Date.parse(T)) / 86400_000) : null },
     yearKm: {
-      year, km, goal, rides: yr?.n ?? 0, up: Math.round(yr?.up ?? 0),
+      year, km, goal, rides: yr?.n ?? 0, up: Math.round(yr?.up ?? 0), over100: yr?.c100 ?? 0, longest: Math.round(yr?.longest ?? 0),
       paceToday: goal ? Math.round((goal * doy) / daysInYear) : null,
       perWeekNeeded: goal ? Math.max(0, Math.round((goal - km) / weeksLeft)) : null,
       last4wPerWeek: Math.round((last4?.km ?? 0) / 4),

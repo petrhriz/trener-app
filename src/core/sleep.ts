@@ -135,7 +135,7 @@ export function sleepReport(night: SleepNight | null, history: SleepNight[]): Sl
   const bad = points.filter((p) => p.tone === "bad").length;
   const okc = points.filter((p) => p.tone === "ok").length;
   const verdict =
-    (score != null ? `Skóre ${score} – ${score >= 90 ? "výborný" : score >= 80 ? "dobrý" : score >= 60 ? "uspokojivý" : "špatný"} spánek` : "Spánek") +
+    (score != null ? `Skóre ${score} – ${score >= 90 ? "výborný" : score >= 80 ? "dobrý" : score >= 60 ? "průměrný" : "špatný"} spánek` : "Spánek") +
     (fb ? `, ${fb}` : bad ? ", část ukazatelů pod normou" : okc ? ", drobné rezervy" : ", vše v normě") +
     ".";
   return {

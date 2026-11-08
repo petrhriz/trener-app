@@ -195,7 +195,7 @@ describe("zotavení – osobní normy (kap. 4)", () => {
   it("hodnocení spánku podle skóre a Q", () => {
     expect(sleepRating(90, null)).toBe("Výborný");
     expect(sleepRating(59, null)).toBe("Špatný");
-    expect(sleepRating(null, "Q3")).toBe("Uspokojivý");
+    expect(sleepRating(null, "Q3")).toBe("Průměrný");
     expect(sleepRating(null, null)).toBeNull();
   });
 });

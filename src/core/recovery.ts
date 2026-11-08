@@ -74,9 +74,9 @@ export interface RecoveryResult {
 }
 
 export const STATE_LABEL: Record<State, string> = {
-  green: "Zregenerovaný",
-  yellow: "Částečně",
-  red: "Nedoregenerovaný",
+  green: "Odpočatý",
+  yellow: "Částečně odpočatý",
+  red: "Neodpočatý",
 };
 export const STATE_EMOJI: Record<State, string> = { green: "🟢", yellow: "🟡", red: "🔴" };
 
@@ -85,7 +85,7 @@ export function sleepRating(score: number | null, q: string | null): string | nu
   if (score != null) {
     if (score >= 90) return "Výborný";
     if (score >= 80) return "Dobrý";
-    if (score >= 60) return "Uspokojivý";
+    if (score >= 60) return "Průměrný";
     return "Špatný";
   }
   switch (q) {
@@ -94,7 +94,7 @@ export function sleepRating(score: number | null, q: string | null): string | nu
     case "Q2":
       return "Dobrý";
     case "Q3":
-      return "Uspokojivý";
+      return "Průměrný";
     case "Q4":
       return "Špatný";
   }
