@@ -1,0 +1,11 @@
+# Dashboard: HTML, skript a styly vždy ověřit u serveru (aplikace na ploše iPhonu jinak drží starou verzi)
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/app.js
+  Cache-Control: no-cache
+/app.css
+  Cache-Control: no-cache
+/manifest.webmanifest
+  Cache-Control: no-cache

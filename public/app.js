@@ -744,7 +744,7 @@ const normState = (v, n, lowGood = false) => {
   const better = up === !lowGood; // směr, který je dobrý
   const dir = up ? "nad normou ↑" : "pod normou ↓";
   if (better) return [dir, "good"];
-  return a <= 2 ? [`mírně ${up ? "nad" : "pod"} normou`, "warn"] : [`${dir} – výrazně`, "bad"];
+  return a <= 2 ? [`mírně ${up ? "nad" : "pod"} normou`, "warn"] : [`výrazně ${up ? "nad ↑" : "pod ↓"}`, "bad"];
 };
 
 // ---------- stránky ----------
@@ -772,8 +772,7 @@ async function pagePrehled(el) {
     ? card(`c8 dnes ${tone}`, "", "", `<div class="dn-top"><span class="badge ${paused ? "" : tone}">${paused ? (STATUS[d.status.kind]?.[0] || "") + " " + esc(d.status.label) : `${r.emoji} ${esc(r.label)}`}</span><span class="sl">${{ rano: "Ranní zhodnocení", den: "Zhodnocení dne", vecer: "Večerní zhodnocení" }[co.period]}</span></div>
       <h2 class="dn-title">${esc(co.title)}</h2><p class="dn-text">${esc(co.text)}</p>
       <div class="dn-grid"><div>${co.needs.length ? `<div class="sl">Co tělo potřebuje</div><ul class="needs">${co.needs.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}</div><div><div class="sl">Trénink</div>${todayLine}${t.name && !t.done?.length && !paused ? `<p class="note">Zítra: ${esc(t.tomorrow)}</p>` : ""}</div></div>`)
-    : card("c8 dnes", "", "", `<div class="dn-top"><span class="badge">🗓️ ${dayDm(d.date)}</span><span class="sl">náhled zpět</span></div>
-      ${d.acts.length ? d.acts.map((a) => `<a class="today-act" href="#/aktivita/${a.id}"><span class="ico">${SPORT_ICON[a.sport] || "🏅"}</span><div><b>${esc(a.name || SPORT_NAME[a.sport])}</b><div class="sub">${a.km ? `${num(a.km, 1)} km · ` : ""}${hmm(a.moving_s)} h · zátěž ${num(a.load)}</div></div><span class="go">→</span></a>`).join("") : `<p class="dn-text">Ten den bez aktivity.</p>`}`);
+    : ""; // zpětný den: bez horní karty, aktivita je dole
 
   // 2) Spánek (Garmin): skóre, délka, fáze, potřeba
   const sp = d.sleep;
@@ -1211,7 +1210,10 @@ function streamsChart(s, opts = {}) {
       segs.forEach((sg) => sg.forEach((q, k) => { const g = p.grade[q.i]; zpts.push({ x: q.x, y: q.y, z: g == null ? 2 : gradeIdx(g), gap: k === 0 && zpts.length > 0 }); }));
       // jako tep / výkon: barevná čára a pod ní jen jemný slábnoucí stín v barvě úseku
       const gc = GRADE_CLS.map((c) => c[2]);
-      svg += zoneFill(zpts, y0 + PH, gc, y0);
+      const gid2 = `${id}gs${pi}`;
+      defs += `<linearGradient id="${gid2}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--muted)" stop-opacity=".18"/><stop offset="1" stop-color="var(--muted)" stop-opacity=".03"/></linearGradient>`;
+      svg += segs.filter((sg) => sg.length > 1).map((sg) => `<path d="M${sg[0].x.toFixed(1)},${y0 + PH}${curvePath(sg, false)}L${sg[sg.length - 1].x.toFixed(1)},${y0 + PH}Z" fill="url(#${gid2})"/>`).join("");
+      svg += zoneFill(zpts, y0 + PH, gc.map((c, k) => (k === 2 ? "transparent" : c)), y0);
       let gi = 0;
       while (gi < zpts.length - 1) {
         let gj = gi;
@@ -1285,8 +1287,9 @@ function extraHtml(a) {
     a.calories ? ["🔥 Kalorie", `${thou(a.calories)} kcal`] : null,
     x.min_elev != null || x.max_elev != null ? ["⛰️ Výška min / max", `${num(x.min_elev)} / ${num(x.max_elev)} m n. m.`] : null,
     a.elevGain ? ["↕️ Stoupání / klesání", `${num(a.elevGain)} / ${num(x.elev_loss)} m`] : null,
-    a.minTemp != null || a.maxTemp != null ? ["🌡️ Teplota min / ⌀ / max", { html: `${num(a.minTemp)} / <span id="tAvg">…</span> / ${num(a.maxTemp)} °C` }] : null,
-    x.ana_te != null ? ["💥 Tréninkový efekt aerob. / anaerob.", `${num(a.aerobicTe ?? null, 1)} / ${num(x.ana_te, 1)}${x.te_label ? ` · ${TE_LABEL[x.te_label] || x.te_label}` : ""}`] : null,
+    a.minTemp != null || a.maxTemp != null ? ["🌡️ Teplota min / ⌀ / max", { html: `${num(a.minTemp)} / <em id="tAvg" class="tavg">…</em> / ${num(a.maxTemp)} °C` }] : null,
+    a.aerobicTe != null ? ["💚 Aerobní efekt", `${num(a.aerobicTe, 1)}${x.te_label ? ` · ${TE_LABEL[x.te_label] || x.te_label}` : ""}`] : null,
+    x.ana_te != null ? ["💥 Anaerobní efekt", num(x.ana_te, 1)] : null,
   ].filter(Boolean);
   return rows.length ? `<div class="abasics">${rows.map(([k, v]) => `<div><span>${k}</span><b>${v && typeof v === "object" ? v.html : esc(v)}</b></div>`).join("")}</div>` : `<div class="empty">Další údaje nemám.</div>`;
 }
@@ -1424,17 +1427,17 @@ async function drawMap(box, s, legBox, modeBox) {
         leg = `<span><i style="background:linear-gradient(90deg,${[0, 0.33, 0.66, 1].map(mix).join(",")});width:70px"></i>${MAP_MODES[mapMode][1].toLowerCase()} ${num(lo)}–${num(hi)} ${MAP_MODES[mapMode][2]}</span>`;
       }
       // tmavý lem pod trasou (jako Garmin) → barvy vyniknou i na pestrém podkladu
-      L.polyline(route.map((p) => [p[0], p[1]]), { color: "#15130f", weight: 9, opacity: 0.8, lineJoin: "round", lineCap: "round", interactive: false }).addTo(lineGroup);
+      L.polyline(route.map((p) => [p[0], p[1]]), { color: "#15130f", weight: 7, opacity: 0.75, lineJoin: "round", lineCap: "round", interactive: false }).addTo(lineGroup);
       // souvislé úseky stejné barvy jako jedna čára (méně prvků = plynulá mapa)
       let seg = [[route[0][0], route[0][1]]], c0 = col(route[1]?.[idx]);
       for (let i = 1; i < route.length; i++) {
         const c = col(route[i][idx]);
         seg.push([route[i][0], route[i][1]]);
-        if (c !== c0 || i === route.length - 1) { L.polyline(seg, { color: c0, weight: 5.5, opacity: 1, lineJoin: "round", lineCap: "round" }).addTo(lineGroup); seg = [[route[i][0], route[i][1]]]; c0 = c; }
+        if (c !== c0 || i === route.length - 1) { L.polyline(seg, { color: c0, weight: 4, opacity: 1, lineJoin: "round", lineCap: "round" }).addTo(lineGroup); seg = [[route[i][0], route[i][1]]]; c0 = c; }
       }
     } else {
-      L.polyline(route.map((p) => [p[0], p[1]]), { color: "#15130f", weight: 9, opacity: 0.8 }).addTo(lineGroup);
-      L.polyline(route.map((p) => [p[0], p[1]]), { color: "#e8650f", weight: 5.5 }).addTo(lineGroup);
+      L.polyline(route.map((p) => [p[0], p[1]]), { color: "#15130f", weight: 7, opacity: 0.75 }).addTo(lineGroup);
+      L.polyline(route.map((p) => [p[0], p[1]]), { color: "#e8650f", weight: 4 }).addTo(lineGroup);
     }
     L.circleMarker([route[0][0], route[0][1]], { radius: 6, color: "#fff", weight: 2, fillColor: "#23955a", fillOpacity: 1 }).addTo(lineGroup).bindTooltip("start");
     L.circleMarker([route[route.length - 1][0], route[route.length - 1][1]], { radius: 6, color: "#fff", weight: 2, fillColor: "#d03c48", fillOpacity: 1 }).addTo(lineGroup).bindTooltip("cíl");
@@ -1664,7 +1667,8 @@ let detRange = 30;
 async function pageDetail(el, which) {
   const M = METRICS[which] || METRICS.vst;
   if (![30, 90, 365].includes(detRange)) detRange = 30;
-  const [d, day] = await Promise.all([api("recovery" + (detRange === 365 ? "?hist=400" : "")), which === "bb" ? api("day").catch(() => null) : null]);
+  const q = [viewDate ? `date=${viewDate}` : "", detRange === 365 ? "hist=400" : ""].filter(Boolean).join("&");
+  const [d, day] = await Promise.all([api("recovery" + (q ? `?${q}` : "")), which === "bb" ? api("day" + (viewDate ? `?date=${viewDate}` : "")).catch(() => null) : null]);
   const all = d.rows;
   const nrm = M.normOf(d.norms);
   const u = M.hours ? " h" : M.unit ? " " + M.unit : "";
@@ -1763,7 +1767,7 @@ function powerCurveChartW(pc, W) {
   const keyPts = [5, 30, 60, 300, 1200, 3600].map((s) => { const m = maps.find((x) => x.c.id === "42d")?.m; const y = maps.find((x) => x.c.id === "1y")?.m; return { s, w: m?.get(s), y: y?.get(s) }; });
   return `<svg class="chart" id="${id}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><defs>${defs}</defs>${g}${paths}${ftp}<line class="cur" y1="${P.t}" y2="${H - P.b}"/><g class="dots"></g></svg>
    <div class="legend">${curves.map((c) => `<span><i style="background:${colors[c.id]}"></i>${names[c.id] || c.label}</span>`).join("")}</div>
-   <div class="mini-stats pc6">${keyPts.map((k) => `<div><b>${k.w ? num(k.w) : DASH}</b><span>${lab(k.s)} · rok ${k.y ? num(k.y) : DASH} W</span></div>`).join("")}</div>`;
+   <div class="mini-stats pc6">${keyPts.map((k) => `<div><b>${k.w ? num(k.w) : DASH}<small> W</small></b><span>${lab(k.s)} · rok ${k.y ? num(k.y) : DASH}</span></div>`).join("")}</div>`;
 }
 
 // zóny formy (TSB) jako v intervals.icu

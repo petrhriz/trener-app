@@ -6,7 +6,7 @@
   "description": "Osobní AI trenér cyklistiky a zdraví na Cloudflare Workers (Garmin, Telegram, dashboard)",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler d1 migrations apply trener-db --remote && wrangler deploy && node scripts/admin.mjs setup-webhook",
+    "deploy": "node scripts/stamp.mjs && wrangler d1 migrations apply trener-db --remote && wrangler deploy && node scripts/admin.mjs setup-webhook",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

@@ -1271,3 +1271,11 @@ html, body { touch-action: manipulation; }
 .aiweek input { flex: 1; min-width: 0; font: inherit; font-size: 15px; color: var(--fg); background: var(--card2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
 .aiweek .btn { white-space: nowrap; }
 @media (max-width: 760px) { .aiweek { flex-direction: column; } }
+
+/* ======================= 17. kolo ======================= */
+.chart text.bandl { font-weight: 500; font-size: 10.5px; opacity: .85; }
+/* průměrná teplota uvnitř hodnoty (bez zalomení řádku) */
+.abasics b em.tavg { font-style: normal; display: inline; font-size: inherit; color: inherit; }
+/* štítek stavu se vejde do dlaždice */
+.mt-h em { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.mini-stats b small { font-size: 12px; font-weight: 500; color: var(--muted); }
