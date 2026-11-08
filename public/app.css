@@ -1236,3 +1236,19 @@ html:root[data-skin="k"] .stat, html:root[data-skin="k"] .mtile { border-radius:
   .lacard > .ch { grid-column: 1 / -1; }
   .lacard .la-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); margin-top: 0; }
 }
+
+/* ======================= 15. kolo ======================= */
+/* Přehled: 4 dlaždice (VST, klidový tep, stres, kroky) */
+.mtiles.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 760px) { .mtiles.four { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* tmavý režim: mapa jen ztlumená (bez převrácení barev), víc než tlačítko ◐ ve světlém */
+.map.night .leaflet-tile-pane, .map.night.soft .leaflet-tile-pane { filter: brightness(.62) saturate(.7) contrast(.95); opacity: 1; }
+.map.night.soft .leaflet-tile-pane { filter: brightness(.45) saturate(.5); }
+.map.night { background: #1d1c1b; }
+/* legenda zón / sklonu: všechny čtverečky stejně velké */
+.zleg i { width: 10px !important; height: 10px !important; flex: none; border-radius: 2px; }
+.zleg { flex-wrap: wrap; row-gap: 4px; }
+/* 1. vs 2. polovina: dva sloupce čísel, název na jednom řádku */
+.halvest td:first-child b { white-space: nowrap; }
+/* mobil: žádné přiblížení dvojitým klepnutím */
+html, body { touch-action: manipulation; }

@@ -549,7 +549,7 @@ function dayStressHtml(d) {
   const s = d.stress;
   if (!s) return "";
   const tot = s.rest + s.low + s.med + s.high || 1;
-  const rows = [["Vysoký", s.high, "var(--z6)"], ["Střední", s.med, "var(--z4)"], ["Nízký", s.low, "var(--z3)"], ["Klid", s.rest, "var(--z2)"]];
+  const rows = [["Vysoký", s.high, "var(--bad)"], ["Střední", s.med, "var(--warn)"], ["Nízký", s.low, "color-mix(in srgb, var(--ok) 55%, var(--card))"], ["Klid", s.rest, "var(--ok)"]];
   return `<div class="sl" style="margin:14px 0 8px">Stres dne${s.level != null ? ` · průměr ${s.level}` : ""}</div><div class="strs">${rows.map(([l, v, c]) => `<div class="str"><span>${l}</span><div class="bal-t"><i class="bal-v" style="width:${(v / tot) * 100}%;background:${c}"></i></div><b>${Math.round((v / tot) * 100)} %</b><small>${hmm(v)} h</small></div>`).join("")}</div>`;
 }
 function dayEnergyHtml(d) {
@@ -737,7 +737,15 @@ function stateColor(v, n, lowGood = false) {
   const bad = lowGood ? z : -z; // kladné = horší směr
   return bad <= 1 ? "var(--ok)" : bad <= 2 ? "var(--warn)" : "var(--bad)";
 }
-const normState = (v, n, lowGood = false) => { const s = vsNorm(v, n); return !s ? ["", ""] : s === "v normě" ? ["v normě", "good"] : (s === "pod normou") === lowGood ? [s === "pod normou" ? "pod normou ↓" : "nad normou ↑", "good"] : [s === "pod normou" ? "pod normou ↓" : "nad normou ↑", "warn"]; };
+const normState = (v, n, lowGood = false) => {
+  if (v == null || !n || !n.sd) return ["", ""];
+  const z = (v - n.mean) / n.sd, a = Math.abs(z), up = z > 0;
+  if (a <= 1) return ["v normě", "good"];
+  const better = up === !lowGood; // směr, který je dobrý
+  const dir = up ? "nad normou ↑" : "pod normou ↓";
+  if (better) return [dir, "good"];
+  return a <= 2 ? [`mírně ${up ? "nad" : "pod"} normou`, "warn"] : [`${dir} – výrazně`, "bad"];
+};
 
 // ---------- stránky ----------
 let viewDate = null; // vybraný den na Přehledu a v Zotavení (null = dnes)
@@ -770,7 +778,7 @@ async function pagePrehled(el) {
   // 2) Spánek (Garmin): skóre, délka, fáze, potřeba
   const sp = d.sleep;
   const spTone = sp ? sp.scoreTone : "";
-  const sleepCard = card("c4 sleepmini", `<a href="#/detail/spanek">😴 Spánek →</a>`, "Garmin", sp ? `<a class="sm-wrap" href="#/detail/spanek">${scoreRing(sp.score, { grad: ["#a9c4ff", "#5b4fd6"], size: 104 })}<div class="sm-r"><div class="mt-v">${dur(sp.durationS).replace(/ (h|min)/g, "<small> $1</small>")}</div><div class="sub">${sp.start && sp.end ? `${sp.start}–${sp.end}` : ""}${sp.needMin ? ` · potřeba ${dur(sp.needMin * 60)}` : ""}</div><span class="chipt ${spTone}">${esc(sp.verdict.replace(/^Skóre \d+ – /, ""))}</span></div></a>
+  const sleepCard = card("c4 sleepmini", `<a href="#/detail/spanek">😴 Spánek →</a>`, "Garmin", sp ? `<a class="sm-wrap" href="#/detail/spanek">${scoreRing(sp.score, { grad: sp.score == null ? ["var(--z1)", "var(--z1)"] : sp.score >= 80 ? ["var(--ok)", "var(--ok)"] : sp.score >= 60 ? ["var(--warn)", "var(--warn)"] : ["var(--bad)", "var(--bad)"], size: 104 })}<div class="sm-r"><div class="mt-v">${dur(sp.durationS).replace(/ (h|min)/g, "<small> $1</small>")}</div><div class="sub">${sp.start && sp.end ? `${sp.start}–${sp.end}` : ""}${sp.needMin ? ` · potřeba ${dur(sp.needMin * 60)}` : ""}</div><span class="chipt ${spTone}">${esc(sp.verdict.replace(/^Skóre \d+ – /, ""))}</span></div></a>
     <div class="sbar">${sp.stages.map((x) => (x.secs ? `<i style="width:${(x.secs / Math.max(1, sp.stages.reduce((a, b) => a + b.secs, 0))) * 100}%;background:${STAGE_COLOR[x.key]}"></i>` : "")).join("")}</div>
     <div class="sm-st">${sp.stages.map((x) => `<span><i style="background:${STAGE_COLOR[x.key]}"></i>${esc(x.label)} <b>${dur(x.secs)}</b></span>`).join("")}</div>
     ${sp.nextNeedMin ? `<p class="note">Na dnešní noc potřebuješ ${dur(sp.nextNeedMin * 60)} (Garmin).</p>` : ""}` : `<div class="empty">Spánek pro tento den nemám.</div>`);
@@ -779,13 +787,11 @@ async function pagePrehled(el) {
   const hv = d.hrv, rh = d.rhr, st = d.stress, stp = d.steps, sn = d.strain, bb = d.bb;
   const [hvS, hvT] = normState(hv.today, hv.norm), [rhS, rhT] = normState(rh.today, rh.norm, true), [stS, stT] = normState(st.avg, st.norm, true);
   const bbNow = d.isToday ? bb.latest : bb.max;
-  const tiles = `<div class="mtiles c12">
+  const tiles = `<div class="mtiles four c12">
     ${metricTile({ label: "🫀 VST", value: num(hv.today), unit: "ms", state: hvS, tone: hvT, spark: sparkRolling(hv.series.map((x) => x.v), stateColor(hv.today, hv.norm), 56), href: "#/detail/vst", foot: hv.norm ? `norma ${num(hv.norm.mean - hv.norm.sd)}–${num(hv.norm.mean + hv.norm.sd)}` : "" })}
     ${metricTile({ label: "❤️ Klidový tep", value: num(rh.today), unit: "bpm", state: rhS, tone: rhT, spark: sparkRolling(rh.series.map((x) => x.v), stateColor(rh.today, rh.norm, true), 56), href: "#/detail/tep", foot: rh.norm ? `norma ${num(rh.norm.mean)} ± ${num(rh.norm.sd, 1)}` : "" })}
-    ${metricTile({ label: "🔋 Body Battery", value: num(bbNow), unit: d.isToday ? "teď" : "ráno", tone: bbNow == null ? "" : bbNow >= 50 ? "good" : bbNow >= 25 ? "warn" : "bad", state: bb.max != null ? `ráno ${num(bb.max)}` : "", spark: `<div class="prog bb"><i style="width:${clamp(bbNow || 0, 0, 100)}%"></i></div>`, href: "#/detail/bb", foot: `<span class="good">+${num(bb.charged)}</span> · <span class="bad">−${num(bb.drained)}</span>` })}
     ${metricTile({ label: "😮‍💨 Stres", value: num(st.avg), state: stS, tone: stT, spark: sparkRolling(st.series.map((x) => x.v), stateColor(st.avg, st.norm, true), 56), href: "#/detail/stres", foot: st.max != null ? `max ${num(st.max)}` : "" })}
     ${metricTile({ label: "👣 Kroky", value: thou(stp.today), state: stp.today != null ? `${num(Math.min(100, (stp.today / stp.goal) * 100))} %` : "", tone: (stp.today ?? 0) >= stp.goal ? "good" : "", spark: `<div class="prog"><i style="width:${clamp(((stp.today || 0) / stp.goal) * 100, 0, 100)}%"></i></div>`, href: "#/chuze", foot: `cíl ${thou(stp.goal)}${stp.floors != null ? ` · ${num(stp.floors)} pater` : ""}` })}
-    ${metricTile({ label: "🎯 Forma", value: signed(sn.form, 1), state: esc(sn.zone || ""), spark: formScale(sn.form), tone: sn.form == null ? "" : sn.form < -25 ? "bad" : sn.form < -10 ? "warn" : "good", href: "#/kondice", foot: `kondice ${num(sn.ctl, 1)} · únava ${num(sn.atl, 1)}` })}
   </div>`;
 
   // 4) průběh dne
@@ -1241,7 +1247,7 @@ function halvesHtml(h, a) {
     else if (h.spd) rows.push(["🚀 Průměrná rychlost", `${num(h.spd[0], 1)} km/h`, `${num(h.spd[1], 1)} km/h`, signed(h.spd[1] - h.spd[0], 1)]);
     if (h.ef) rows.push([h.w ? "⚖️ Výkon / tep <small>W na 1 tep</small>" : "⚖️ Rychlost / tep", num(h.ef[0], h.w ? 2 : 3), num(h.ef[1], h.w ? 2 : 3), h.ef[0] ? signed(((h.ef[1] - h.ef[0]) / h.ef[0]) * 100, 1) + " %" : ""]);
   }
-  const table = rows.length ? `<table class="t"><tr><th></th><th class="r">1. polovina</th><th class="r">2. polovina</th><th class="r">Změna</th></tr>${rows.map((r) => `<tr><td><b>${r[0]}</b></td><td class="r">${r[1]}</td><td class="r">${r[2]}</td><td class="r">${r[3]}</td></tr>`).join("")}</table>` : `<div class="empty">Na rozdělení na poloviny je aktivita krátká.</div>`;
+  const table = rows.length ? `<table class="t halvest"><tr><th></th><th class="r">1. polovina</th><th class="r">2. polovina</th></tr>${rows.map((r) => `<tr><td><b>${r[0]}</b></td><td class="r">${r[1]}</td><td class="r">${r[2]}</td><td hidden class="r">${r[3]}</td></tr>`).join("")}</table>` : `<div class="empty">Na rozdělení na poloviny je aktivita krátká.</div>`;
   const dec = a.icuDecoupling != null ? a.icuDecoupling : h ? h.dec : null;
   const decTone = dec == null ? "" : Math.abs(dec) < 5 ? "good" : dec <= 8 ? "warn" : "bad";
   const tiles = [
@@ -1600,7 +1606,7 @@ async function pageZotaveni(el) {
   const rc = d.recovery;
   const stTone = rc ? (rc.state === "green" ? "good" : rc.state === "yellow" ? "warn" : "bad") : "";
   const why = rc ? [...(rc.flags?.counted || []), ...(rc.reasons || [])] : [];
-  const sem = rc ? `<div class="semhead ${stTone}"><span class="badge ${stTone}">${rc.emoji} ${esc(rc.stateLabel)}</span><span>${esc(why.length ? why.join(", ") : "VST, klidový tep i spánek v tvé normě")}</span><span class="sub">ranní semafor${isToday ? "" : ` · ${dayDm(d.date)}`} · normy z ${rc.normDays} dní</span></div>` : "";
+  const sem = rc ? `<div class="semhead ${stTone}"><span class="badge ${stTone}">${rc.emoji} ${esc(rc.stateLabel)}</span><span>${esc(why.length ? why.join(", ") : "VST, klidový tep ani spánek nepřekročily hranice semaforu")}</span><span class="sub">ranní semafor${isToday ? "" : ` · ${dayDm(d.date)}`} · normy z ${rc.normDays} dní</span></div>` : "";
   el.innerHTML = `<div class="head"><div><h1>Zotavení</h1><div class="sub">Klikni na ukazatel – detail s historií a vysvětlením. Pravidelnost spánku (14 dní): ${esc(d.sleepReg.text)}</div></div>${dateNav(d.date, d.minDate, d.today, "znav")}</div><div class="grid">
    ${card("c12 semcard", "", "", sem + `<div class="mtiles six">${["vst", "tep", "spanek", "stres", "bb", "dech"].map(tile).join("")}</div><p class="note">Semafor = VST, klidový tep a spánek proti tvé normě (průměr 60 dní ± 1 směrodatná odchylka). Stres, Body Battery a dech jsou doplňkové.</p>`)}
    ${card("c12", `<a href="#/detail/spanek">😴 Spánek · noc na ${isToday ? "dnešek" : dayDm(d.date)} →</a>`, "Garmin", sleepBlock(d.sleep))}

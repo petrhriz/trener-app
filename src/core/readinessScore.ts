@@ -192,7 +192,7 @@ export function coaching(i: CoachingInput): Coaching {
     text = `${reasons ? cap(reasons) + ". " : ""}Lehčí den: kvalitu změň na Z2, Z2 zkrať o třetinu.`;
   } else {
     title = "Zregenerovaný";
-    text = "VST, klidový tep i spánek jsou v tvé normě. Den na plánovaný trénink.";
+    text = "VST, klidový tep ani spánek nepřekročily hranice semaforu. Den na plánovaný trénink.";
   }
 
   // co tělo potřebuje – konkrétně podle dat a plánu
