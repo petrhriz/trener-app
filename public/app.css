@@ -1266,3 +1266,8 @@ html, body { touch-action: manipulation; }
 .zleg { display: inline-flex; align-items: center; gap: 3px; margin-right: 12px; }
 .zleg b { margin-right: 4px; font-weight: 600; }
 .zleg i { width: 9px !important; height: 9px !important; border-radius: 2px; }
+/* AI návrh týdne */
+.aiweek { display: flex; gap: 8px; margin: 0 0 12px; }
+.aiweek input { flex: 1; min-width: 0; font: inherit; font-size: 15px; color: var(--fg); background: var(--card2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+.aiweek .btn { white-space: nowrap; }
+@media (max-width: 760px) { .aiweek { flex-direction: column; } }

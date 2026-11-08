@@ -104,3 +104,19 @@ describe("kvalita i když týden zaplní tvoje volby sportu", () => {
     expect(q[0]!.sport).toBe("ride");
   });
 });
+
+import { checkWeek } from "../src/core/weekCheck";
+describe("kontrola týdne od AI", () => {
+  const day = (date: string, kind: string, load: number, min = 60) => ({ date, kind, load, durationMin: min } as any);
+  const rules = { target: { lo: 250, hi: 280 }, qualityLimit: 1, maxRun: 2 };
+  it("v pořádku", () => {
+    expect(checkWeek([day("2026-11-09", "z2", 70), day("2026-11-10", "quality", 80), day("2026-11-11", "rest", 0), day("2026-11-12", "z2", 60), day("2026-11-13", "rest", 0), day("2026-11-14", "long", 70, 150), day("2026-11-15", "rest", 0)], rules)).toEqual([]);
+  });
+  it("najde chyby: dvě kvality po sobě, moc dní za sebou, zátěž mimo cíl", () => {
+    const v = checkWeek([day("2026-11-09", "quality", 70), day("2026-11-10", "quality", 70), day("2026-11-11", "z2", 30), day("2026-11-12", "z2", 30)], rules).map((x) => x.code);
+    expect(v).toContain("hard_hard");
+    expect(v).toContain("quality_many");
+    expect(v).toContain("streak");
+    expect(v).toContain("load_low");
+  });
+});

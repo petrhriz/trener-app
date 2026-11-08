@@ -952,7 +952,7 @@ async function pageTrener(el) {
     <span class="btns"><button class="btn pri" id="applyAll">✅ Zapsat do intervals.icu</button><button class="btn" id="resetMine">↩ Vrátit moje úpravy</button></span>
     <details class="tp-list"><summary>Co se změní</summary>${prop.items.map((c) => `<div class="tp-ch"><b>${dayDm(c.date)}</b> ${esc(c.action)} – ${esc(c.name)}${c.why ? `<small>${esc(c.why)}</small>` : ""}</div>`).join("")}</details><p class="note" id="applyMsg"></p></div>`
     : `<div class="tpend ok"><span>✓ Kalendář odpovídá plánu</span><span class="btns">${mine.length ? '<button class="btn sm" id="resetMine">↩ Vrátit moje úpravy</button>' : ""}<button class="btn sm" id="newProp">↻ Přepočítat</button></span><p class="note" id="applyMsg"></p></div>`;
-  const planCard = card("c12 t-plan", `🗓️ Plán ${dm(p.from)}–${dm(p.to)}`, "plán · Open-Meteo", `${pending}${bars}<div class="tdays">${p.days.map(dayRow).join("")}</div>${p.warnings.length ? `<ul class="alerts">${p.warnings.map((w) => `<li>⚠️ ${esc(w)}</li>`).join("")}</ul>` : ""}<p class="note">Úpravy: tlačítko „Upravit“ u dne${matchMedia("(pointer: fine)").matches ? " nebo přetáhni trénink myší na jiný den" : ""}. Plán se hned přepočítá, do intervals.icu se zapíše až po potvrzení nahoře.</p>`);
+  const planCard = card("c12 t-plan", `🗓️ Plán ${dm(p.from)}–${dm(p.to)}`, "plán · Open-Meteo", `${pending}<form class="aiweek" id="aiWeek"><input name="t" placeholder="Pokyn pro AI (nepovinné) – např. víc objemu o víkendu, ve středu nemám čas" autocomplete="off"><button class="btn" type="submit">🤖 AI návrh týdne</button></form>${bars}<div class="tdays">${p.days.map(dayRow).join("")}</div>${p.warnings.length ? `<ul class="alerts">${p.warnings.map((w) => `<li>⚠️ ${esc(w)}</li>`).join("")}</ul>` : ""}<p class="note">Úpravy: tlačítko „Upravit“ u dne${matchMedia("(pointer: fine)").matches ? " nebo přetáhni trénink myší na jiný den" : ""}. Plán se hned přepočítá, do intervals.icu se zapíše až po potvrzení nahoře.</p>`);
   // --- z čeho trenér vychází ---
   const form = f.form, goalUp = d.goal === "zvyseni" || d.goal === "zavod";
   const why = form == null ? "Formu zatím neznám." : form < -30 ? `Jsi hodně unavený (forma ${signed(form, 1)}) → týden výrazně lehčí, víc volna.` : form < -20 ? `Únava je vysoká (forma ${signed(form, 1)}) → týden lehčí.` : form > 15 && goalUp ? `Jsi odpočatý (forma ${signed(form, 1)})${f.ramp != null && f.ramp < 0 ? " a kondice klesá" : ""} → přidávám zátěž.` : form > 15 ? `Jsi odpočatý (forma ${signed(form, 1)}) – při cíli ${esc(d.goalLabel || "")} držím zátěž.` : `Forma ${signed(form, 1)} je v tréninkovém pásmu → plán drží zátěž.`;
@@ -1036,6 +1036,19 @@ async function pageTrener(el) {
     try { localStorage.setItem(COACH_KEY, JSON.stringify(hist.slice(-20))); } catch {}
     keepScroll();
   };
+  // AI návrh týdne: AI složí týden, server ho zkontroluje a případně opraví, změny čekají na „Zapsat“
+  el.querySelector("#aiWeek")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector("button"), t = e.target.querySelector("input").value.trim();
+    btn.disabled = true; btn.innerHTML = "<span class=\"spin\"></span> AI skládá týden…";
+    try {
+      const res = await api("coach/ai-week", { method: "POST", body: JSON.stringify({ text: t }) });
+      hist.push({ role: "user", text: `🤖 AI návrh týdne${t ? `: ${t}` : ""}` });
+      hist.push({ role: "assistant", text: res.ok ? `${res.reply} (zátěž ${res.load}, cíl ${res.target.lo}–${res.target.hi})` : res.reply, applied: [...(res.fixed || []).map((x) => `opraveno: ${x}`), ...(res.remaining || []).map((x) => `⚠️ ${x}`)] });
+      try { localStorage.setItem(COACH_KEY, JSON.stringify(hist.slice(-20))); } catch {}
+    } catch (err) { alert(err.message); }
+    keepScroll();
+  });
   el.querySelector("#askF").addEventListener("submit", (e) => { e.preventDefault(); const ta = e.target.querySelector("textarea"); ask(ta.value); ta.value = ""; });
   el.querySelector("#askF textarea").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(e.target.value); e.target.value = ""; } });
   el.querySelectorAll("[data-ask]").forEach((b) => b.addEventListener("click", () => ask(b.dataset.ask)));

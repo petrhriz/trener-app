@@ -123,3 +123,8 @@
 14. ✅ (9. 11. 2026, 8. kolo – `docs/plan-kolo8.md`) víc uživatelů (`src/lib/tenant.ts`, `src/api/accounts.ts`, migrace 0008,
    `docs/multi-user.md`), cron každou minutu se střídáním uživatelů, náhled na libovolný den historie, 🤖 AI na každé stránce,
    Zlepšit už nezkracuje jízdy, mobilní úpravy.
+15. ✅ (9. 11. 2026) Trenér: cíl týdne z kondice (nemocný týden se nepočítá, pojistka +30 %), interaktivní úpravy dnů
+   (`src/api/coach.ts`: přesun, délka, sport, vrácení), AI trenér z textu a **AI návrh týdne** podle kostry watt-mind/coach:
+   AI navrhne týden (JSON) → plán se s návrhem přepočítá v paměti → `core/weekCheck.ts` zkontroluje (zátěž v cíli, kvalita,
+   tvrdé dny po sobě, max. dní za sebou) → 1 oprava se zpětnou vazbou → deterministické oříznutí → zápis úprav;
+   do intervals.icu až po potvrzení. Opatrný pokyn (nemoc, únava) řeší kód: −20 % zátěže, bez kvality.
