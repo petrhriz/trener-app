@@ -170,7 +170,9 @@ app.all("/api/*", async (c) => {
   const si = await sessionInfo(c.env, c.req.header("cookie"));
   let uid = si?.uid ?? null;
   // odkaz pro náhled: jen čtení, bez klíčů a správy uživatelů, bez AI chatu
-  if (si?.ro && (c.req.method !== "GET" || /^\/api\/(secrets|users|status)\b/.test(new URL(c.req.url).pathname))) return c.json({ error: "Jen náhled – tady nic měnit nejde." }, 403);
+  // cesta dekódovaná stejně jako ji vidí router (jinak by /api/%75sers kontrolu obešlo)
+  const path = (() => { try { return decodeURIComponent(new URL(c.req.url).pathname).toLowerCase(); } catch { return null; } })();
+  if (si?.ro && (c.req.method !== "GET" || path == null || /^\/+api\/+(secrets|users|status)(?![a-z])/.test(path))) return c.json({ error: "Jen náhled – tady nic měnit nejde." }, 403);
   // admin token (skripty) smí za uživatele: hlavička x-uid
   const admin = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (uid == null && c.env.ADMIN_TOKEN && admin && safeEqual(admin, c.env.ADMIN_TOKEN)) uid = Number(c.req.header("x-uid") ?? OWNER_ID) || OWNER_ID;
@@ -195,11 +197,19 @@ async function routeTelegram(base: Env, update: any): Promise<void> {
   if (!chatId) return;
   const uid = await userIdForChat(base, chatId);
   if (uid == null) {
-    const m = /^\/start\s+(\d{6})\b/.exec(String(update.message?.text ?? "").trim());
+    const m = /^\/start\s+([A-Za-z0-9]{10})(?![A-Za-z0-9])/.exec(String(update.message?.text ?? "").trim());
     if (!m) return; // cizí chat ignorovat
-    const v = await base.KV.get(`tglink:${m[1]}`);
-    if (!v) return void (await tgCall(base, "sendMessage", { chat_id: chatId, text: "Kód neplatí. Vygeneruj nový v dashboardu → Nastavení → Telegram." }).catch(() => null));
-    await base.KV.delete(`tglink:${m[1]}`);
+    // nejvýš 5 špatných kódů za hodinu z jednoho chatu (hádání kódu)
+    const failKey = `tgfail:${chatId}`;
+    const fails = Number((await base.KV.get(failKey)) ?? 0);
+    if (fails >= 5) return;
+    const code = m[1]!.toUpperCase();
+    const v = await base.KV.get(`tglink:${code}`);
+    if (!v) {
+      await base.KV.put(failKey, String(fails + 1), { expirationTtl: 3600 });
+      return void (await tgCall(base, "sendMessage", { chat_id: chatId, text: "Kód neplatí. Vygeneruj nový v dashboardu → Nastavení → Telegram." }).catch(() => null));
+    }
+    await base.KV.delete(`tglink:${code}`);
     await base.DB.prepare("UPDATE users SET telegram_chat_id = ? WHERE id = ?").bind(chatId, Number(v)).run();
     forgetUser(Number(v));
     await tgCall(base, "sendMessage", { chat_id: chatId, text: "✅ Propojeno. Odteď ti sem budu posílat ranní zhodnocení, rozbory aktivit a plán. Napiš /menu." }).catch(() => null);

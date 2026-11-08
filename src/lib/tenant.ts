@@ -38,10 +38,14 @@ const QUAL = new RegExp(`(?<![\\w.'"$])(${TBL})\\.(?=[A-Za-z_])`, "g");
 const IDX = /\b(INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?)([A-Za-z_]\w*)/gi;
 
 export function rewriteSql(sql: string, prefix: string): string {
+  // textové hodnoty v apostrofech ('Ride from gear shop') se nepřepisují – jen SQL mimo ně
   return sql
-    .replace(IDX, (_m, a: string, n: string) => `${a}${prefix}${n}`)
-    .replace(KW, (_m, kw: string, sp: string, t: string) => `${kw}${sp}${prefix}${t}`)
-    .replace(QUAL, (_m, t: string) => `${prefix}${t}.`);
+    .split(/('(?:[^']|'')*')/)
+    .map((part, i) => (i % 2 ? part : part
+      .replace(IDX, (_m, a: string, n: string) => `${a}${prefix}${n}`)
+      .replace(KW, (_m, kw: string, sp: string, t: string) => `${kw}${sp}${prefix}${t}`)
+      .replace(QUAL, (_m, t: string) => `${prefix}${t}.`)))
+    .join("");
 }
 
 /** Příkazy migrace: bez komentářů, rozdělené po střednících na konci řádku. */
@@ -96,7 +100,11 @@ export async function ensureTenantSchema(base: Env, u: Pick<UserRow, "id" | "sch
   if (u.id === OWNER_ID || done >= TENANT_MIGRATIONS.length) return;
   const prefix = `u${u.id}_`;
   for (let i = done; i < TENANT_MIGRATIONS.length; i++) {
-    for (const st of splitSql(TENANT_MIGRATIONS[i]!.sql)) {
+    const stmts = splitSql(TENANT_MIGRATIONS[i]!.sql).map((st) => rewriteSql(st, prefix));
+    // celá migrace jednou dávkou (1 dotaz místo desítek); když něco už existuje (rozpracovaná migrace), po jednom
+    let batched = false;
+    try { await base.DB.batch(stmts.map((st) => base.DB.prepare(st))); batched = true; } catch { /* níže po jednom */ }
+    if (!batched) for (const st of splitSql(TENANT_MIGRATIONS[i]!.sql)) {
       try {
         await base.DB.prepare(rewriteSql(st, prefix)).run();
       } catch (e) {

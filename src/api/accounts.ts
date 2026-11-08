@@ -61,12 +61,12 @@ authApp.post("/join", async (c) => {
   const nm = String(name || un).trim().slice(0, 40);
   const r = await c.env.DB.prepare("INSERT INTO users (name, username, pass_hash, role, active, schema_ver, created_at) VALUES (?, ?, ?, 'user', 1, 0, ?)").bind(nm, un, await hashPassword(String(password)), new Date().toISOString()).run();
   const id = Number(r.meta.last_row_id);
-  await c.env.KV.delete(`invite:${token}`);
   await ensureTenantSchema(c.env, { id, schema_ver: 0 });
   forgetUser(id);
   // jméno v pozdravu; ostatní nastavení výchozí (bez cíle závodu vlastníka)
   const env = await envFor(c.env, id);
   if (env) await env.DB.batch([setSettingSql("first_name", nm.split(" ")[0]), setSettingSql("goal_name", null), setSettingSql("place_name", DEFAULTS.place_name)].map((s) => env.DB.prepare(s)));
+  await c.env.KV.delete(`invite:${token}`); // až teď: při chybě výše jde pozvánku použít znovu
   return c.json({ ok: true }, 200, { "Set-Cookie": await sessionCookie(c.env, id), "Cache-Control": "no-store" });
 });
 
@@ -100,7 +100,11 @@ accountsApi.post("/me/password", async (c) => {
 /** Kód pro propojení Telegramu: napiš botovi /start <kód>. */
 accountsApi.post("/me/telegram", async (c) => {
   const uid = c.get("uid");
-  const code = String(Math.floor(100000 + Math.random() * 900000));
+  // vlastník má Telegram v nastavení serveru (TELEGRAM_CHAT_ID) – propojení přes kód by nefungovalo
+  if (uid === OWNER_ID && baseOf(c.env).TELEGRAM_CHAT_ID) return c.json({ error: "Vlastník má Telegram propojený v nastavení serveru (TELEGRAM_CHAT_ID), tady se nepropojuje." }, 400);
+  // 10 znaků z kryptografického generátoru (bez 0/O/1/I), platí 30 min
+  const ABC = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const code = [...crypto.getRandomValues(new Uint8Array(10))].map((b) => ABC[b % ABC.length]).join("");
   await baseOf(c.env).KV.put(`tglink:${code}`, String(uid), { expirationTtl: 30 * 60 });
   return c.json({ code, bot: c.env.TELEGRAM_BOT_TOKEN ? "ano" : null });
 });

@@ -75,3 +75,12 @@ describe("ultrareview: vlastní jízda a souhlas", () => {
     expect(parseConsent("zapiš #2", ["#1", "#2"])).toEqual(["#2"]);
   });
 });
+
+import { rewriteSql } from "../src/lib/tenant";
+describe("ultrareview: server", () => {
+  it("přejmenování tabulek nemění text v apostrofech", () => {
+    const s = rewriteSql("INSERT INTO activities (id, name) VALUES ('1', 'Ride from gear shop')", "u3_");
+    expect(s).toBe("INSERT INTO u3_activities (id, name) VALUES ('1', 'Ride from gear shop')");
+    expect(rewriteSql("SELECT * FROM gear WHERE note = 'it''s on wellness'", "u3_")).toBe("SELECT * FROM u3_gear WHERE note = 'it''s on wellness'");
+  });
+});

@@ -53,7 +53,9 @@ function icuEventJson(ev: any): string {
 }
 
 export function dataSource(env: Env): DataSource {
-  return env.DATA_SOURCE === "intervals" ? new IntervalsClient(env) : new GarminClient(env);
+  // uživatel jen s intervals.icu (bez Garmin klíče) se stahuje z intervals.icu
+  const icuOnly = !env.GARMIN_API_KEY && !!env.INTERVALS_API_KEY && !!env.INTERVALS_ATHLETE_ID;
+  return env.DATA_SOURCE === "intervals" || icuOnly ? new IntervalsClient(env) : new GarminClient(env);
 }
 
 /** Aktivity → SQL (zátěž a kvalita spočítané hned při zápisu). */

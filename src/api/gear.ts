@@ -83,9 +83,11 @@ async function loadAll(db: D1Database) {
 }
 
 /** Upozornění na servis (plánovač, jednou za hodinu): vrací texty zpráv a posune notified_km. */
-export async function serviceAlerts(db: D1Database): Promise<string[]> {
+const escHtml = (s: string) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+/** upozornění na servis; notified_km zapíše až commit() po úspěšném odeslání (jinak by se upozornění ztratilo) */
+export async function serviceAlerts(db: D1Database): Promise<{ text: string; commit: () => Promise<void> }[]> {
   const { gear, links, acts, parts } = await loadAll(db);
-  const out: string[] = [];
+  const out: { text: string; commit: () => Promise<void> }[] = [];
   for (const p of parts) {
     const g = gear.find((x) => x.id === p.gear_id);
     if (!g || g.to_date) continue;
@@ -93,8 +95,10 @@ export async function serviceAlerts(db: D1Database): Promise<string[]> {
     const hit = nextAlert(p, km);
     if (hit == null) continue;
     const first = hit === p.interval_km;
-    out.push(`🔧 <b>${g.name} · ${p.name}</b>: ${Math.round(km)} km od ${p.since.slice(8, 10).replace(/^0/, "")}. ${p.since.slice(5, 7).replace(/^0/, "")}. – ${first ? "zkontroluj" : "pořád čeká na servis, zkontroluj"} (${p.action || "servis"} v dashboardu → Vybavení).`);
-    await run(db, "UPDATE gear_parts SET notified_km = ? WHERE id = ?", hit, p.id);
+    out.push({
+      text: `🔧 <b>${escHtml(g.name)} · ${escHtml(p.name)}</b>: ${Math.round(km)} km od ${p.since.slice(8, 10).replace(/^0/, "")}. ${p.since.slice(5, 7).replace(/^0/, "")}. – ${first ? "zkontroluj" : "pořád čeká na servis, zkontroluj"} (${escHtml(p.action || "servis")} v dashboardu → Vybavení).`,
+      commit: async () => { await run(db, "UPDATE gear_parts SET notified_km = ? WHERE id = ?", hit, p.id); },
+    });
   }
   return out;
 }

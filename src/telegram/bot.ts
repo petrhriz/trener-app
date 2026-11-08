@@ -12,7 +12,7 @@ import { addDays, dow, localNow } from "../lib/time";
 import { ownRideName, ownRideNote, parseOwnRide } from "../core/ownRide";
 import { answerQuestion, ruleAnswer } from "../llm/llm";
 import { encodeWorkoutFit } from "../plan/fit";
-import { addConstraint, applyChanges, getProposal, openProposal, parseConsent, saveProposal } from "../plan/proposals";
+import { addConstraint, applyChanges, claimProposal, finishProposal, getProposal, openProposal, parseConsent, saveProposal } from "../plan/proposals";
 import { activityReport, findActivity, fitnessTable, ftpCheckOf, planFor, readiness, recoveryFor, weatherMap, weekly } from "../report/build";
 import { loadCtx } from "../report/context";
 import { recomputeLoads, recomputeMetrics } from "../sync/metrics";
@@ -285,12 +285,17 @@ async function applyPicked(env: Env, pid: number, codes: string[]) {
     await run(env.DB, "UPDATE proposals SET status = 'rejected' WHERE id = ?", pid);
     return send(env, "Nic neměním.");
   }
+  if (!(await claimProposal(env, pid))) return; // druhé klepnutí – zápis už běží
   const items = p.items.filter((c) => codes.includes(c.code));
-  await send(env, `Zapisuji ${items.map((c) => c.code).join(", ")}: ${e(items.map((c) => `${dayDm(c.date)} ${c.name}`).join("; "))}.`);
-  const r = await applyChanges(env, items);
-  const rest = p.items.filter((c) => !codes.includes(c.code));
-  if (rest.length) await run(env.DB, "UPDATE proposals SET items = ? WHERE id = ?", JSON.stringify(rest), pid);
-  else await run(env.DB, "UPDATE proposals SET status = 'applied' WHERE id = ?", pid);
+  let r: Awaited<ReturnType<typeof applyChanges>>;
+  try {
+    await send(env, `Zapisuji ${items.map((c) => c.code).join(", ")}: ${e(items.map((c) => `${dayDm(c.date)} ${c.name}`).join("; "))}.`);
+    r = await applyChanges(env, items);
+    await finishProposal(env, pid, p.items.filter((c) => !codes.includes(c.code)));
+  } catch (err) {
+    await finishProposal(env, pid, null);
+    throw err;
+  }
   await send(env, `${e(r.lines.join("\n"))}\n${e(r.verify)}`);
 }
 

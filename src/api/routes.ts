@@ -19,7 +19,7 @@ import { STATUS_LABEL, coaching, strainScore, typicalWake, type StatusKind } fro
 import { weeklyLoadTarget } from "../core/fitness";
 import { round6 } from "./round6";
 import { addDays, dow, localNow, mondayOf } from "../lib/time";
-import { addConstraint, applyChanges, getProposal, openProposal, removeConstraint, saveProposal } from "../plan/proposals";
+import { addConstraint, applyChanges, claimProposal, finishProposal, getProposal, openProposal, removeConstraint, saveProposal } from "../plan/proposals";
 import { activityReport, eftpOf, ftpCheckOf, fitnessTable, recoveryFor, plannedFor, planFor, readiness, weatherMap, weekLoads, weekly } from "../report/build";
 import { weekTargetAdjusted, z2MaxMinutes } from "../core/plan";
 import { loadCtx } from "../report/context";
@@ -890,12 +890,16 @@ api.post("/proposal/:id/apply", async (c) => {
   const id = Number(c.req.param("id"));
   const { codes } = (await c.req.json()) as { codes: string[] };
   const p = await getProposal(c.env, id);
-  if (!p || p.status !== "open") return c.json({ error: "Návrh už neplatí – platí jen poslední." }, 409);
+  if (!p || p.status !== "open" || !(await claimProposal(c.env, id))) return c.json({ error: "Návrh už neplatí nebo se právě zapisuje – platí jen poslední." }, 409);
   const items = p.items.filter((x) => codes.includes(x.code));
-  const r = await applyChanges(c.env, items);
-  const rest = p.items.filter((x) => !codes.includes(x.code));
-  await c.env.DB.prepare(rest.length ? "UPDATE proposals SET items = ? WHERE id = ?" : "UPDATE proposals SET status = 'applied', items = ? WHERE id = ?").bind(JSON.stringify(rest), id).run();
-  return c.json(r);
+  try {
+    const r = await applyChanges(c.env, items);
+    await finishProposal(c.env, id, p.items.filter((x) => !codes.includes(x.code)));
+    return c.json(r);
+  } catch (e) {
+    await finishProposal(c.env, id, null);
+    throw e;
+  }
 });
 
 api.post("/constraint", async (c) => {

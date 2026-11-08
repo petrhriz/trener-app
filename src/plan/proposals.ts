@@ -61,6 +61,18 @@ export interface ApplyResult {
   verify: string;
 }
 
+/** zabrat otevřený návrh pro zápis (atomicky); false = už ho zapisuje / zapsal někdo jiný */
+export async function claimProposal(env: Env, id: number): Promise<boolean> {
+  const r = await env.DB.prepare("UPDATE proposals SET status = 'applying' WHERE id = ? AND status = 'open'").bind(id).run();
+  return (r.meta.changes ?? 0) === 1;
+}
+/** po zápisu: zbylé změny zůstanou otevřené, jinak hotovo */
+export async function finishProposal(env: Env, id: number, rest: Change[] | null): Promise<void> {
+  if (rest == null) await env.DB.prepare("UPDATE proposals SET status = 'open' WHERE id = ? AND status = 'applying'").bind(id).run();
+  else if (rest.length) await env.DB.prepare("UPDATE proposals SET status = 'open', items = ? WHERE id = ?").bind(JSON.stringify(rest), id).run();
+  else await env.DB.prepare("UPDATE proposals SET status = 'applied', items = '[]' WHERE id = ?").bind(id).run();
+}
+
 // ---- mazání událostí v intervals.icu: chyba se nezahazuje, nesmazané se zkouší znovu ----
 const DEL_QUEUE = "icu_delete_queue";
 /** smaže událost; true = smazáno (nebo už neexistuje – 404), false = nepovedlo se (zařadí do fronty) */

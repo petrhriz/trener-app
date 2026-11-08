@@ -51,7 +51,9 @@ export async function applySecrets(env: Env): Promise<void> {
     cache = { at: Date.now(), values };
     caches.set(uidOf(env), cache);
   }
-  for (const [k, v] of Object.entries(cache.values)) if (v) (env as any)[k] = v;
+  // klíč z dashboardu má přednost; smazaný se vrátí na původní hodnotu (soubor / wrangler secret)
+  const orig = fileValues.get(env as object) ?? {};
+  for (const k of EDITABLE_SECRETS) (env as any)[k] = cache.values[k] || orig[k];
 }
 
 export function invalidateSecrets() {
