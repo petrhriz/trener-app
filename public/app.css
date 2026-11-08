@@ -1252,3 +1252,17 @@ html:root[data-skin="k"] .stat, html:root[data-skin="k"] .mtile { border-radius:
 .halvest td:first-child b { white-space: nowrap; }
 /* mobil: žádné přiblížení dvojitým klepnutím */
 html, body { touch-action: manipulation; }
+
+/* ======================= 16. kolo ======================= */
+/* Z čeho trenér vychází: 4 čísla v jedné řadě, stejná velikost, připravenost slovem */
+.tstate { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.tstate > div { background: var(--card2); border-radius: 12px; padding: 10px 12px; min-width: 0; }
+.tstate b { font-size: 22px; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tstate b.tst-word.good { color: var(--ok); } .tstate b.tst-word.warn { color: var(--warn); } .tstate b.tst-word.bad { color: var(--bad); }
+.tstate small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1400px) and (min-width: 761px) { .tstate { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .tstate { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } .tstate b { font-size: 20px; } }
+/* legendy grafů průběhu: menší stejné čtverečky, každá legenda na svém řádku */
+.zleg { display: inline-flex; align-items: center; gap: 3px; margin-right: 12px; }
+.zleg b { margin-right: 4px; font-weight: 600; }
+.zleg i { width: 9px !important; height: 9px !important; border-radius: 2px; }

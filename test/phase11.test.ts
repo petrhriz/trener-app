@@ -109,9 +109,9 @@ describe("vlastní jízda", () => {
     expect(d.durationMin).toBe(240);
     expect(d.load).toBeGreaterThan(150);
     expect(p.changes.some((c) => c.date === "2026-11-14" && c.action === "nová")).toBe(true);
-    // ostatní Z2 v tom týdnu nesmí být delší než bez vlastní jízdy
-    const otherMin = (x: typeof p) => x.days.filter((y) => y.date !== "2026-11-14" && y.date <= "2026-11-15" && y.kind === "z2").reduce((t, y) => t + (y.durationMin ?? 0), 0);
-    expect(otherMin(p)).toBeLessThanOrEqual(otherMin(base));
+    // týden s vlastní jízdou nepřeroste cíl: zátěž ostatních dnů se o jízdu sníží
+    const week = (x: typeof p) => x.days.filter((y) => y.date <= "2026-11-15").reduce((t, y) => t + y.load, 0);
+    expect(week(p)).toBeLessThanOrEqual(Math.max(week(base), d.load) * 1.3);
   });
 });
 

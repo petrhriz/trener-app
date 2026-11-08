@@ -920,7 +920,9 @@ async function pageTrener(el) {
   // --- pruh zátěže: tento a příští týden (plán zasahuje do obou) ---
   const wk = d.weeks.weeks;
   const cur = wk.find((x) => x.current), next = wk.find((x) => x.future);
-  const bars = weekBar(cur && { ...cur, target: d.weeks.target }, "Tento týden") + (p.days.some((x) => x.date > (cur ? addDay(cur.from, 6) : "")) && next ? weekBar({ ...next, target: d.weeks.target }, "Příští týden") : "");
+  const wkLabel = (w) => `${dm(w.from)}–${dm(addDay(w.from, 6))}`;
+  const inPlan = (w) => w && p.days.some((x) => x.date >= w.from && x.date <= addDay(w.from, 6));
+  const bars = (inPlan(cur) ? weekBar({ ...cur, target: d.weeks.target }, `Tento týden · ${wkLabel(cur)}`) : "") + (inPlan(next) ? weekBar({ ...next, target: d.weeks.target }, `Příští týden · ${wkLabel(next)}`) : "");
   // --- dny ---
   const others = (x) => p.days.filter((y) => y.date !== x.date);
   const dayRow = (x) => {
@@ -959,7 +961,7 @@ async function pageTrener(el) {
       <div><span>Kondice (CTL)</span><b class="num">${num(f.ctl, 1)}</b><small class="${f.ramp != null && f.ramp < -1 ? "warn" : ""}">${f.ramp != null ? `${signed(f.ramp, 1)} za týden` : ""}</small></div>
       <div><span>Únava (ATL)</span><b class="num">${num(f.atl, 1)}</b><small>zátěž 7 dní ${thou(f.load7)}</small></div>
       <div><span>Forma (TSB)</span><b class="num">${signed(form, 1)}</b><small class="${form == null ? "" : form < -20 || form > 20 ? "warn" : "good"}">${esc(formZoneName(form))}</small></div>
-      <div><span>Připravenost</span><b>${rec.emoji} ${esc(rec.stateLabel)}</b><small>VST, tep, spánek</small></div></div>
+      <div><span>Připravenost</span><b class="tst-word ${tone}">${esc(({ green: "Dobrá", yellow: "Částečná", red: "Nízká" })[rec.state] || rec.stateLabel)}</b><small>${esc(rec.stateLabel)}</small></div></div>
     <div class="twhy"><b>Proto tento týden</b><p>${why} Cíl zátěže ${p.weeklyTarget.lo}–${p.weeklyTarget.hi}, ${qn ? `${qn}× kvalita` : "bez kvality"}, ${p.days.filter((x) => x.name).length} tréninků.</p></div>
     <details class="gcmp"><summary>Pravidla trenéra</summary><p class="note">Týdenní zátěž z kondice a cíle (max. +10 % proti běžnému týdnu). Forma pod −20 → týden o 12 % lehčí, pod −30 o 25 %. Kvalita 1× (zima) / 2× (sezóna) týdně, nikdy dva dny po sobě ani po hokeji; když týden zaplní tvoje volby, dá se na kolový den. Ráno podle připravenosti: 🟡 kvalita → Z2 nebo zkrácení, 🔴 volno / Z1. Tvoje úpravy (přesun, délka, sport, vlastní jízda) mají přednost, zbytek týdne se dopočítá.</p></details>`);
   // --- AI trenér ---
@@ -1234,7 +1236,7 @@ function streamsChart(s, opts = {}) {
     dots: Ys.filter(({ vals }) => vals[i] != null).map(({ Y, vals, p }) => ({ y: Y(vals[i]), c: p.grade ? (p.grade[i] == null ? p.color : GRADE_CLS[gradeIdx(p.grade[i])][2]) : p.zf ? p.zc[p.zf(vals[i])] : p.color })),
   }));
   const zl = (name, zc, lab) => `<span class="zleg"><b>${name}</b>${zc.map((c, i) => `<i style="background:${c}" title="${esc(lab(i))}"></i>`).join("")}</span>`;
-  const leg = `<div class="legend">${s.hrFloors && panels.some((p) => p.key === "hr") ? zl("tep Z1–Z5", HR_ZC, (i) => `Z${i + 1}`) : ""}${s.pwrTops && panels.some((p) => p.key === "w") ? zl("výkon Z1–Z7", PWR_ZC, (i) => `Z${i + 1}`) : ""}${panels.some((p) => p.key === "g") ? `<span class="zleg"><b>sklon</b>${GRADE_CLS.map((c) => `<i style="background:${c[2]}" title="${c[3]}"></i>`).join("")}</span><span class="sub">modrá klesání · šedá rovina · stoupání v barvách Garmin ClimbPro (1, 3, 6, 9, 12 %)</span>` : ""}<span class="sub">barvy podle tvých zón · zdroj ${esc(s.src || "intervals.icu")}</span></div>`;
+  const leg = `<div class="legend">${s.hrFloors && panels.some((p) => p.key === "hr") ? zl("tep Z1–Z5", HR_ZC, (i) => `Z${i + 1}`) : ""}${s.pwrTops && panels.some((p) => p.key === "w") ? zl("výkon Z1–Z7", PWR_ZC, (i) => `Z${i + 1}`) : ""}${panels.some((p) => p.key === "g") ? `<span class="zleg"><b>sklon</b>${GRADE_CLS.map((c) => `<i style="background:${c[2]}" title="${c[3]}"></i>`).join("")}</span>` : ""}<span class="sub">barvy podle tvých zón · zdroj ${esc(s.src || "intervals.icu")}</span></div>`;
   return `<svg class="chart streams" id="${id}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><defs>${defs}</defs>${svg}<line class="cur" y1="${P.t}" y2="${H - P.b}"/><g class="dots"></g>${xl}</svg>${opts.noLegend ? "" : leg}`;
 }
 
@@ -1270,10 +1272,10 @@ function extraHtml(a) {
     a.calories ? ["🔥 Kalorie", `${thou(a.calories)} kcal`] : null,
     x.min_elev != null || x.max_elev != null ? ["⛰️ Výška min / max", `${num(x.min_elev)} / ${num(x.max_elev)} m n. m.`] : null,
     a.elevGain ? ["↕️ Stoupání / klesání", `${num(a.elevGain)} / ${num(x.elev_loss)} m`] : null,
-    a.minTemp != null || a.maxTemp != null ? ["🌡️ Teplota min / max", `${num(a.minTemp)} / ${num(a.maxTemp)} °C`] : null,
+    a.minTemp != null || a.maxTemp != null ? ["🌡️ Teplota min / ⌀ / max", { html: `${num(a.minTemp)} / <span id="tAvg">…</span> / ${num(a.maxTemp)} °C` }] : null,
     x.ana_te != null ? ["💥 Tréninkový efekt aerob. / anaerob.", `${num(a.aerobicTe ?? null, 1)} / ${num(x.ana_te, 1)}${x.te_label ? ` · ${TE_LABEL[x.te_label] || x.te_label}` : ""}`] : null,
   ].filter(Boolean);
-  return rows.length ? `<div class="abasics">${rows.map(([k, v]) => `<div><span>${k}</span><b>${esc(v)}</b></div>`).join("")}</div>` : `<div class="empty">Další údaje nemám.</div>`;
+  return rows.length ? `<div class="abasics">${rows.map(([k, v]) => `<div><span>${k}</span><b>${v && typeof v === "object" ? v.html : esc(v)}</b></div>`).join("")}</div>` : `<div class="empty">Další údaje nemám.</div>`;
 }
 const TE_LABEL = { RECOVERY: "regenerace", AEROBIC_BASE: "aerobní základ", TEMPO: "tempo", LACTATE_THRESHOLD: "laktátový práh", VO2MAX: "VO2max", ANAEROBIC_CAPACITY: "anaerobní kapacita", SPEED: "rychlost" };
 
@@ -1524,6 +1526,8 @@ async function pageAktivita(el, id) {
       }
       el.querySelector("#zoomBtn")?.addEventListener("click", () => openFullscreen(`${a.title} · ${dayDm(a.date)}`, (w, h) => streamsChart(s, { sport: a.sport, W: w, H: h, only: STREAM_MAIN })));
       const hb = el.querySelector("#halves"); if (hb) { hb.className = ""; hb.innerHTML = halvesHtml(s.halves, a); }
+      // průměrná teplota z průběhu (Garmin ji v souhrnu nedává)
+      const ta = el.querySelector("#tAvg"); if (ta) { const tv = (s.temp || []).filter((v) => v != null); ta.textContent = tv.length ? num(tv.reduce((x, y) => x + y, 0) / tv.length) : "–"; }
       const lb = el.querySelector("#laps"); if (lb) { lb.innerHTML = lapsHtml(a, s); bindLaps(s); }
       const mb = el.querySelector("#map");
       if (mb && s.route) { mb.className = "map"; drawMap(mb, s, el.querySelector("#mapleg"), el.querySelector("#mapmode")).catch((e) => { mb.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }); }
@@ -1712,7 +1716,7 @@ function powerCurveChartW(pc, W) {
   const curves = pc.curves.filter((c) => c.points.length);
   const colors = { "42d": "var(--acc)", "90d": "var(--z2)", "1y": "var(--muted)" };
   const names = { "42d": "42 dní", "90d": "90 dní", "1y": "1 rok" };
-  const H = hScale(250, W), P = { l: 46, r: 12, t: 12, b: 28 };
+  const H = hScale(250, W), P = { l: 10, r: 12, t: 12, b: 28 };
   const secs = [...new Set(curves.flatMap((c) => c.points.map((p) => p.secs)))].sort((a, b) => a - b);
   const lmin = Math.log(secs[0]), lmax = Math.log(secs[secs.length - 1]);
   const X = (s) => P.l + ((Math.log(s) - lmin) / (lmax - lmin)) * (W - P.l - P.r);
@@ -1721,7 +1725,7 @@ function powerCurveChartW(pc, W) {
   const Y = (v) => P.t + (1 - (v - mn) / (mx - mn)) * (H - P.t - P.b);
   const id = uid("p");
   let g = "";
-  for (const v of niceTicks(mn, mx, 4)) g += `<line class="gl" x1="${P.l}" x2="${W - P.r}" y1="${Y(v)}" y2="${Y(v)}"/><text class="yl" x="${P.l - 6}" y="${Y(v) + 4}" text-anchor="end">${num(v)}</text>`;
+  for (const v of niceTicks(mn, mx, 4)) g += `<line class="gl" x1="${P.l}" x2="${W - P.r}" y1="${Y(v)}" y2="${Y(v)}"/>`;
   const lab = (s) => (s < 60 ? `${s} s` : s < 3600 ? `${s / 60} min` : `${s / 3600} h`);
   for (const s of [1, 5, 15, 60, 300, 1200, 3600, 7200, 14400].filter((s) => s >= secs[0] && s <= secs[secs.length - 1])) g += `<line class="gl v" x1="${X(s)}" x2="${X(s)}" y1="${P.t}" y2="${H - P.b}"/><text class="xl" x="${X(s)}" y="${H - 8}" text-anchor="middle">${lab(s)}</text>`;
   let paths = "", defs = "";

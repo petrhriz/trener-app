@@ -367,8 +367,10 @@ describe("plán na 7 dní (6.1)", () => {
     const p = generatePlan(planInput());
     for (const d of p.days) if (d.workout) expect(validate(d.workout)).toEqual([]);
   });
-  it("limit +10 % proti běžnému týdnu a lehký týden po 3 týdnech růstu", () => {
-    expect(weekTargetAdjusted({ lo: 400, hi: 500, mid: 450 }, [300, 310, 300, 320]).mid).toBe(352);
+  it("pojistka +30 % proti běžnému týdnu, nemocný týden se nepočítá, lehký týden po 3 týdnech růstu", () => {
+    expect(weekTargetAdjusted({ lo: 400, hi: 500, mid: 450 }, [300, 310, 300, 320]).mid).toBe(400);
+    // týden nemoci (60) nestáhne cíl: běžný týden = průměr ostatních
+    expect(weekTargetAdjusted({ lo: 300, hi: 340, mid: 320 }, [300, 310, 320, 60]).note).toBeNull();
     expect(weekTargetAdjusted({ lo: 400, hi: 500, mid: 450 }, [300, 330, 370]).note).toContain("Lehčí týden");
     expect(weekTargetAdjusted({ lo: 300, hi: 350, mid: 320 }, [400, 380, 410, 390]).note).toBeNull();
   });

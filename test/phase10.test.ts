@@ -98,8 +98,8 @@ describe("plán: rozložení a volby", () => {
   it("udržení: max. 2 dny tréninku za sebou", () => {
     for (const goal of ["udrzeni", "pokles"] as const) expect(maxStreak(trainDays(generatePlan(planInput({ goal }))))).toBeLessThanOrEqual(2);
   });
-  it("řízený pokles = méně tréninků než udržení", () => {
-    expect(trainDays(generatePlan(planInput({ goal: "pokles" }))).length).toBeLessThan(trainDays(generatePlan(planInput({ goal: "udrzeni" }))).length);
+  it("řízený pokles = nižší cíl zátěže než udržení", () => {
+    expect(generatePlan(planInput({ goal: "pokles" })).weeklyTarget.mid).toBeLessThan(generatePlan(planInput({ goal: "udrzeni" })).weeklyTarget.mid);
   });
   const base = generatePlan(planInput());
   const calendar = calFrom(base);

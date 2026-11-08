@@ -93,17 +93,16 @@ export function weekTargetAdjusted(
       return { lo: Math.round(mid * 0.9), hi: Math.round(mid * 1.1), mid, note: `Lehčí týden: 3 týdny růstu zátěže (${Math.round(a)} → ${Math.round(b)} → ${Math.round(c)}), cíl ${mid}.` };
     }
   }
-  // strop proti běžnému týdnu (větší z minulého týdne a průměru 4 týdnů – po lehkém / vynechaném týdnu
-  // se plán nesrazí na minimum). Strop závisí na cíli, jinak by po slabších týdnech vyšly
-  // Zlepšit / Udržet / Pokles stejně: Zlepšit +10 %, Udržet = běžný týden, Pokles −10 %.
-  const last = wl[wl.length - 1] ?? 0;
-  const avg4 = wl.length ? wl.reduce((a, b) => a + b, 0) / wl.length : 0;
-  const ref = Math.max(last, avg4);
-  const f = goal === "zvyseni" || goal === "zavod" ? 1.1 : goal === "udrzeni" ? 1.0 : 0.9;
-  if (ref > 0 && base.mid > ref * f) {
-    const mid = Math.round(ref * f);
-    const why = f > 1 ? `+10 % proti běžnému týdnu` : f === 1 ? `běžný týden (udržet)` : `−10 % proti běžnému týdnu (pokles)`;
-    return { lo: Math.round(mid * 0.9), hi: mid, mid, note: `Zátěž omezena: ${why} (${Math.round(ref)} → max. ${mid}).` };
+  // Cíl je podle kondice (CTL) a cíle – ne podle minulého týdne. Minulé týdny slouží jen jako pojistka
+  // proti příliš prudkému skoku (akutní : chronická zátěž ≤ ~1,3). Týdny výrazně slabší než ostatní
+  // (nemoc, dovolená – pod 60 % nejsilnějšího) se do „běžného týdne“ nepočítají, jinak by jeden
+  // nemocný týden stáhl plán na minimum.
+  const top = wl.length ? Math.max(...wl) : 0;
+  const normal = wl.filter((x) => x >= top * 0.6);
+  const ref = normal.length ? normal.reduce((a, b) => a + b, 0) / normal.length : 0;
+  if (ref > 0 && base.mid > ref * 1.3) {
+    const mid = Math.round(ref * 1.3);
+    return { lo: Math.round(mid * 0.9), hi: mid, mid, note: `Zátěž omezena na +30 % proti běžnému týdnu (${Math.round(ref)} → max. ${mid}) – prudší skok zvyšuje riziko přetížení.` };
   }
   return { ...base, note: null };
 }
@@ -111,8 +110,8 @@ export function weekTargetAdjusted(
 /** Nejdelší Z2 podle cíle a dne (min): Zlepšit jezdí déle, Pokles kratší. */
 export function z2MaxMinutes(goal: PlanInput["goal"], weekend: boolean, offSeason: boolean): number {
   const up = goal === "zvyseni" || goal === "zavod";
-  if (weekend) return offSeason ? (up ? 150 : goal === "pokles" ? 90 : 120) : up ? 210 : goal === "pokles" ? 120 : 180;
-  return up ? 120 : goal === "pokles" ? 75 : 90;
+  if (weekend) return offSeason ? (up ? 150 : goal === "pokles" ? 105 : 120) : up ? 210 : goal === "pokles" ? 150 : 180;
+  return up ? 120 : goal === "pokles" ? 80 : 90;
 }
 
 export type ChangeAction = "nová" | "upravit" | "přesunout" | "smazat";
@@ -550,7 +549,7 @@ export function generatePlan(inp: PlanInput): PlanResult {
 
     // 3) doplnit prázdné dny
     // řízený pokles: o jízdu méně, intenzitu (1 kvalita) držet – objem klesá, kvalita zůstává
-    const ridesTarget = Math.max(2, Math.min(4, inp.ridesPerWeek - (inp.goal === "pokles" ? 1 : 0)));
+    const ridesTarget = Math.max(2, Math.min(4, inp.ridesPerWeek));
     let rides = doneRides + wSlots.filter((s) => s.kind === "z2" || s.kind === "quality" || s.kind === "long" || s.kind === "recovery").length;
     const empty = () => wSlots.filter((s) => s.kind === "rest" && !s.cal && s.date !== T && !s.userRest);
 
@@ -629,22 +628,13 @@ export function generatePlan(inp: PlanInput): PlanResult {
       pick.why.push("Z2 objem");
       rides++;
     }
-    // řízený pokles: o jízdu méně – přebytečnou Z2, která se přepočítává kvůli změně cíle, smazat
-    while (inp.goal === "pokles" && rides > ridesTarget) {
-      const extra = [...wSlots].reverse().find((s) => s.replan && !s.userPick && (s.kind === "z2" || s.kind === "long"));
-      if (!extra) break;
-      extra.kind = "rest";
-      extra.minutes = 0;
-      extra.replan = false;
-      extra.changed = extra.cal ? "smazat" : null;
-      extra.why.push("řízený pokles: o jízdu méně");
-      rides--;
-    }
 
     // 4) délky podle týdenní zátěže (6.6 krok 1) – nové Z2 i Z2 přepočítávané pro nový cíl
     const newZ2 = wSlots.filter((s) => (s.kind === "z2" || s.kind === "long") && !s.userMin && ((!s.cal && !s.fixedName) || s.replan));
+    // nová kvalita (bez hotového workoutu) se počítá zvlášť jako qLoad – ne podruhé ve fixní zátěži
+    const qSlot0 = wSlots.find((s) => s.kind === "quality" && !s.fixedName);
     const fixedLoad = wSlots
-      .filter((s) => (s.cal || s.fixedName || s.userMin) && !newZ2.includes(s))
+      .filter((s) => (s.cal || s.fixedName || s.userMin) && !newZ2.includes(s) && s !== qSlot0)
       .reduce((t, s) => {
         // stejný odhad jako ve výsledném plánu: zátěž z kalendáře jen u nezměněné jednotky
         // (u „běh místo kola“ by jinak zůstala zátěž původní jízdy a Z2 vyšly krátké)
@@ -697,7 +687,7 @@ export function generatePlan(inp: PlanInput): PlanResult {
     const need = up ? remaining : Math.max(0, weeklyTarget.lo - doneLoad - fixedLoad - hockeyLoad - qLoad) * share;
     const est = (s: Slot) => estimateLoad(s.kind as Kind, null, s.minutes, inp.acts, T).load;
     let short = need - newZ2.reduce((t, s) => t + est(s), 0);
-    while (inp.goal !== "pokles" && newZ2.length && short > need * 0.08 && rides < inp.ridesPerWeek + (up ? 2 : 1)) {
+    while (newZ2.length && short > need * 0.08 && rides < inp.ridesPerWeek + (up ? 2 : 1)) {
       const cand = empty().filter((s) => !recentIllness(s.date) && streakIf(s.date) <= maxRun && s.userType !== "quality");
       if (!cand.length) break;
       cand.sort((a, b) => (dow(b.date) >= 6 ? 2 : 0) + (inp.weather.get(b.date)?.bad ? -2 : 0) - ((dow(a.date) >= 6 ? 2 : 0) + (inp.weather.get(a.date)?.bad ? -2 : 0)) || a.date.localeCompare(b.date));

@@ -68,10 +68,10 @@ describe("plán: změna cíle přepočítá i jednotky z kalendáře", () => {
       expect(d.durationMin).toBeLessThanOrEqual(180);
     }
   });
-  it("řízený pokles ubere jednu přepočítávanou jízdu", () => {
+  it("řízený pokles = nižší zátěž přepočítaného týdne (počet jízd zůstává)", () => {
     const p = generatePlan(planInput({ today: "2026-11-08", goal: "pokles", calendar }));
-    const rides = (x: typeof p) => x.days.filter((d) => d.name && d.date > "2026-11-08" && d.date <= "2026-11-15").length;
-    expect(rides(p)).toBeLessThan(rides(base));
+    const load = (x: typeof p) => x.days.filter((d) => d.date > "2026-11-08" && d.date <= "2026-11-15").reduce((t, d) => t + d.load, 0);
+    expect(load(p)).toBeLessThan(load(base));
   });
 });
 
