@@ -1587,7 +1587,7 @@ function energyHtml(d, isToday, sum = {}) {
   const when = last ? (isToday ? `teď · ${clock(Math.max(0, Math.round(last.m)))}${ago != null && ago > 45 ? ` (před ${ago >= 90 ? `${Math.round(ago / 60)} h` : `${ago} min`})` : ""}` : `večer · ${clock(Math.max(0, Math.round(last.m)))}`) : "";
   const top = `<div class="en-top">${batteryIcon(now)}<div class="en-side"><span>Body Battery</span><small>${esc(when)}</small></div></div>`;
   if (bbp.length < 2 && hrp.length < 5) return top + `<div class="empty">Průběh dne zatím nemám – Garmin pošle data po synchronizaci hodinek.</div>`;
-  return `<div class="en-wrap">${top}<div class="en-chart">` + sized((W) => energyChartW(d, bbp, hrp, isToday, W)) + `<div class="legend"><span><i style="background:linear-gradient(90deg,${BB_STOPS.map((x) => x[1]).join(",")})"></i>Body Battery</span><span><i style="background:linear-gradient(90deg,${HR_ZC.join(",")})"></i>tep ${hrp.length ? `${Math.min(...hrp.map((q) => q.v))}–${Math.max(...hrp.map((q) => q.v))}` : ""}</span><span><i class="bandsw" style="background:var(--srem)"></i>spánek</span></div></div></div>`;
+  return `<div class="en-wrap">${top}<div class="en-chart">` + sized((W) => energyChartW(d, bbp, hrp, isToday, W)) + `</div></div>`;
 }
 function energyChartW(d, bbp, hrp, isToday, W) {
   const H1 = 130, GAP = 10, H2 = 58, AX = 20, P = { l: 4, r: 4, t: 18 };
@@ -1642,13 +1642,28 @@ function energyChartW(d, bbp, hrp, isToday, W) {
   const nowL = nowM != null && nowM < 1440 ? `<line x1="${X(nowM)}" x2="${X(nowM)}" y1="${P.t}" y2="${y2 + H2}" stroke="var(--muted)" stroke-dasharray="2 4" opacity=".6"/>` : "";
   // bublina: čas, Body Battery (mezi body dopočtené) a tep
   const bbAt = (m) => { if (!bbp.length || m < bbp[0].m || m > bbp[bbp.length - 1].m) return null; for (let i = 1; i < bbp.length; i++) if (m <= bbp[i].m) { const a = bbp[i - 1], b = bbp[i]; return Math.round(a.v + ((b.v - a.v) * (m - a.m)) / (b.m - a.m || 1)); } return null; };
+  let marks = "";
+  for (const sp of daySpans(d)) {
+    const a = Math.max(0, sp.a), b = Math.min(1440, sp.b);
+    const ev = (d.bbEvents || []).find((e) => e.impact != null && Math.abs(minOfDay(d, e.start) - sp.a) < 30 && (sp.kind === "sleep" ? e.type === "SLEEP" : e.type !== "SLEEP"));
+    // bez události z Garminu: rozdíl naměřených bodů, jen když leží blízko začátku i konce (do 60 min), jinak by šlo o odhad
+    const near = (m, before) => bbp.filter((q) => (before ? q.m <= m + 10 && q.m >= m - 60 : q.m >= m - 10 && q.m <= m + 60)).sort((x, y) => Math.abs(x.m - m) - Math.abs(y.m - m))[0];
+    const pa = near(a, true), pb = near(b, false);
+    const va = bbAt(a), vb = bbAt(b);
+    const ch = ev ? ev.impact : pa && pb && pa !== pb ? pb.v - pa.v : null;
+    if (ch == null || !Math.round(ch)) continue;
+    const mid = (a + b) / 2, vm = bbAt(mid) ?? Math.max(va ?? 0, vb ?? 0);
+    const txt = `${ch > 0 ? "+" : "−"}${Math.abs(Math.round(ch))} %`, tw = txt.length * 7 + 14;
+    const cx = clamp(X(mid), P.l + tw / 2, W - P.r - tw / 2), cy = Math.max(P.t + 10, Y1(vm) - 20);
+    marks += `<g class="bbmark ${ch > 0 ? "up" : "down"}"><rect x="${(cx - tw / 2).toFixed(1)}" y="${(cy - 10).toFixed(1)}" width="${tw}" height="20" rx="10"/><text x="${cx.toFixed(1)}" y="${(cy + 4.5).toFixed(1)}" text-anchor="middle">${txt}</text></g>`;
+  }
   const base = hrp.length ? hrp : bbp;
   bindHover(id, W, (cx) => { let best = 0, bd = Infinity; base.forEach((q, i) => { const dd = Math.abs(X(q.m) - cx); if (dd < bd) { bd = dd; best = i; } }); return best; }, (i) => X(base[i].m), (i) => {
     const m = base[i].m, bv = bbAt(m), hv2 = hrp.length ? base[i].v : null;
     return { html: `<b>${clock(Math.max(0, Math.round(m)))}</b>${bv != null ? `<div><span class="sw" style="background:${bbColor(bv)}"></span>Body Battery <b>${bv}</b></div>` : ""}${hv2 != null ? `<div><span class="sw" style="background:${HR_ZC[hrZoneIdx(hv2, d.hrFloors ? d.hrFloors.slice(1) : [135, 165, 184, 202])]}"></span>tep <b>${hv2} bpm</b> · Z${hrZoneIdx(hv2, d.hrFloors ? d.hrFloors.slice(1) : [135, 165, 184, 202]) + 1}</div>` : ""}`,
       dots: [...(bv != null ? [{ y: Y1(bv), c: bbColor(bv) }] : []), ...(hv2 != null ? [{ y: Y2(hv2), c: HR_ZC[hrZoneIdx(hv2, d.hrFloors ? d.hrFloors.slice(1) : [135, 165, 184, 202])] }] : [])] };
   });
-  return `<svg class="chart" id="${id}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${g}${bbSvg}${hrSvg}${nowL}${ax}<line class="cur" y1="${P.t}" y2="${y2 + H2}"/><g class="dots"></g></svg>`;
+  return `<svg class="chart" id="${id}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${g}${bbSvg}${hrSvg}${nowL}${marks}${ax}<line class="cur" y1="${P.t}" y2="${y2 + H2}"/><g class="dots"></g></svg>`;
 }
 
 function bbPanel(d, isToday, sum = {}, part = null) {

@@ -1367,3 +1367,7 @@ details.info > .note { margin-top: 6px; }
   .en-wrap { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 20px; align-items: center; }
   .en-wrap .en-top { flex-direction: column; align-items: flex-start; gap: 10px; margin: 0; }
 }
+.bbmark rect { fill: var(--card); stroke-width: 1.5; }
+.bbmark text { font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.bbmark.up rect { stroke: #23955a; } .bbmark.up text { fill: #23955a; }
+.bbmark.down rect { stroke: #d63b47; } .bbmark.down text { fill: #d63b47; }
