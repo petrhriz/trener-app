@@ -507,7 +507,7 @@ function dayHrChart(d) {
 function dayHrChartW(d, W) {
   const floors = d.hrFloors ? d.hrFloors.slice(1) : [135, 165, 184, 202];
   const pts0 = (d.hr || []).filter((p) => p[1] != null && p[1] > 0).map(([t, v]) => ({ m: minOfDay(d, t), v })).filter((p) => p.m >= 0 && p.m <= 1440);
-  const H = hScale(210, W), P = { l: W < 500 ? 30 : 38, r: W < 500 ? 6 : 10, t: 24, b: 24 };
+  const H = hScale(200, W), P = { l: W < 500 ? 30 : 38, r: W < 500 ? 6 : 10, t: 24, b: 24 };
   const vals = pts0.map((p) => p.v);
   const mn = Math.max(30, Math.floor((Math.min(...vals) - 8) / 10) * 10), mx = Math.max(130, Math.ceil((Math.max(...vals) + 8) / 10) * 10);
   const Y = (v) => P.t + (1 - (v - mn) / (mx - mn)) * (H - P.t - P.b);
@@ -723,7 +723,14 @@ function scoreRing(v, { grad, label = "", sub = "", size = 116 }) {
 
 /** Dlaždice metriky: popisek, hodnota, stav proti normě, sparkline 30 dní. */
 function metricTile({ label, value, unit = "", state = "", tone = "", spark: sp = "", href = "", foot = "" }) {
-  return `<${href ? `a href="${href}"` : "div"} class="mtile ${tone}"><div class="mt-h"><span>${label}</span>${state ? `<em>${state}</em>` : ""}</div><div class="mt-v">${value}${unit ? `<small>${unit}</small>` : ""}</div>${sp}${foot ? `<div class="mt-f">${foot}</div>` : ""}</${href ? "a" : "div"}>`;
+  return `<${href ? `a href="${href}"` : "div"} class="mtile ${tone}"><div class="mt-h"><span>${label}</span>${state ? `<em>${state}</em>` : ""}</div><div class="mt-v">${value}${unit ? `<small>${unit}</small>` : ""}</div><div class="mt-vis">${sp}</div>${foot ? `<div class="mt-f">${foot}</div>` : ""}</${href ? "a" : "div"}>`;
+}
+/** malá stupnice zón formy (−35 … +25) s ukazatelem dneška – do dlaždice Forma */
+function formScale(f) {
+  if (f == null) return "";
+  const lo = -35, hi = 25, pos = (x) => clamp(((x - lo) / (hi - lo)) * 100, 0, 100);
+  const segs = [[-35, -30, "var(--z6)"], [-30, -10, "var(--z3)"], [-10, 5, "var(--z1)"], [5, 20, "var(--z2)"], [20, 25, "var(--z4)"]];
+  return `<div class="fscale"><div class="fs-t">${segs.map(([a, b, c]) => `<i style="left:${pos(a)}%;width:${pos(b) - pos(a)}%;background:${c}"></i>`).join("")}<b style="left:${pos(f)}%"></b></div></div>`;
 }
 const normState = (v, n, lowGood = false) => { const s = vsNorm(v, n); return !s ? ["", ""] : s === "v normě" ? ["v normě", "good"] : (s === "pod normou") === lowGood ? [s === "pod normou" ? "pod normou ↓" : "nad normou ↑", "good"] : [s === "pod normou" ? "pod normou ↓" : "nad normou ↑", "warn"]; };
 
@@ -773,7 +780,7 @@ async function pagePrehled(el) {
     ${metricTile({ label: "🔋 Body Battery", value: num(bbNow), unit: d.isToday ? "teď" : "ráno", tone: bbNow == null ? "" : bbNow >= 50 ? "good" : bbNow >= 25 ? "warn" : "bad", state: bb.max != null ? `ráno ${num(bb.max)}` : "", spark: `<div class="prog bb"><i style="width:${clamp(bbNow || 0, 0, 100)}%"></i></div>`, href: "#/detail/bb", foot: `<span class="good">+${num(bb.charged)}</span> · <span class="bad">−${num(bb.drained)}</span>` })}
     ${metricTile({ label: "😮‍💨 Stres", value: num(st.avg), state: stS, tone: stT, spark: sparkRolling(st.series.map((x) => x.v), "var(--m-stress)", 56), href: "#/detail/stres", foot: st.max != null ? `max ${num(st.max)}` : "" })}
     ${metricTile({ label: "👣 Kroky", value: thou(stp.today), state: stp.today != null ? `${num(Math.min(100, (stp.today / stp.goal) * 100))} %` : "", tone: (stp.today ?? 0) >= stp.goal ? "good" : "", spark: `<div class="prog"><i style="width:${clamp(((stp.today || 0) / stp.goal) * 100, 0, 100)}%"></i></div>`, href: "#/chuze", foot: `cíl ${thou(stp.goal)}${stp.floors != null ? ` · ${num(stp.floors)} pater` : ""}` })}
-    ${metricTile({ label: "🎯 Forma", value: signed(sn.form, 1), state: esc(sn.zone || ""), tone: sn.form == null ? "" : sn.form < -25 ? "bad" : sn.form < -10 ? "warn" : "good", href: "#/kondice", foot: `kondice ${num(sn.ctl, 1)} · únava ${num(sn.atl, 1)}` })}
+    ${metricTile({ label: "🎯 Forma", value: signed(sn.form, 1), state: esc(sn.zone || ""), spark: formScale(sn.form), tone: sn.form == null ? "" : sn.form < -25 ? "bad" : sn.form < -10 ? "warn" : "good", href: "#/kondice", foot: `kondice ${num(sn.ctl, 1)} · únava ${num(sn.atl, 1)}` })}
   </div>`;
 
   // 4) průběh dne
@@ -1472,7 +1479,7 @@ function bbPanel(d, isToday, sum = {}) {
   return top + (pts.length >= 2 ? sized((W) => bbLineW(d, pts, isToday, W)) : `<div class="empty">Průběh dne zatím nemám – Garmin pošle body po synchronizaci hodinek.</div>`);
 }
 function bbLineW(d, pts, isToday, W) {
-  const H = hScale(190, W), P = { l: W < 500 ? 28 : 36, r: W < 500 ? 10 : 14, t: 30, b: 24 };
+  const H = hScale(200, W), P = { l: W < 500 ? 28 : 36, r: W < 500 ? 10 : 14, t: 30, b: 24 };
   const Y = (v) => P.t + (1 - v / 100) * (H - P.t - P.b);
   const X = (m) => P.l + (clamp(m, 0, 1440) / 1440) * (W - P.l - P.r);
   let g = "";
@@ -1996,7 +2003,7 @@ async function pageKalendar(el) {
   const km = d.acts.reduce((t, a) => t + (a.km || 0), 0), load = d.acts.reduce((t, a) => t + (a.load || 0), 0), mins = d.acts.reduce((t, a) => t + (a.min || 0), 0);
   const ss = d.well.map((w) => w.sleep_score).filter((v) => v != null);
   const stepsOk = d.well.filter((w) => (w.steps || 0) >= d.stepsGoal).length;
-  const tile = (ico, v, l) => `<div class="ctile"><span>${ico}</span><b>${v}</b><small>${l}</small></div>`;
+  const tile = (ico, v, l) => `<div class="ctile"><small>${ico} ${l}</small><b>${v}</b></div>`;
   el.innerHTML = `<div class="head"><div><h1>Kalendář</h1><div class="sub">klik na aktivitu = detail · barva dne = zátěž</div></div>
     <div class="dnav"><button class="btn sm" data-m="${prev}">‹</button><b>${MONTHS[m - 1]} ${y}</b><button class="btn sm" data-m="${next}">›</button></div></div>
   <div class="ctiles">${tile("🏅", d.acts.length, "aktivit")}${tile("🛣️", thou(km), "km")}${tile("⏱️", hmm(mins * 60), "hodin")}${tile("🔥", thou(load), "zátěž")}${tile("🌙", ss.length ? num(ss.reduce((a, b) => a + b, 0) / ss.length) : DASH, "spánek ⌀ skóre")}${tile("👣", `${stepsOk}`, `dní ${num(d.stepsGoal / 1000)}k+ kroků`)}</div>
