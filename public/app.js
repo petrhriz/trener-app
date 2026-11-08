@@ -351,19 +351,33 @@ function barChartW({ W = 760, x, bars, height = 170, fmt = (v) => num(v), xfmt =
 }
 
 /** Sparkline (bez os) – volitelně s pásmem normy (průměr ± 1 SD) jako v Bevelu. */
-function spark(values, color = "var(--acc)", h = 34, nrm = null) {
+function spark(values, color = "var(--acc)", h = 34, nrm = null, rb = null) {
   const v = values.map((x) => (x == null ? null : +x));
   if (v.filter((x) => x != null).length < 2) return "";
-  return sized((W) => sparkW(v, color, h, nrm, W));
+  return sized((W) => sparkW(v, color, h, nrm, W, rb));
 }
-function sparkW(v, color, h, nrm, W) {
+/** sparkline posledních n dní s pásmem normy počítaným z celé řady (rollingNorm potřebuje předchozí dny) */
+function sparkRolling(all, color, h, n = 30) {
+  const rb = rollingNorm(all);
+  return spark(all.slice(-n), color, h, null, { lo: rb.lo.slice(-n), hi: rb.hi.slice(-n) });
+}
+function sparkW(v, color, h, nrm, W, rb = null) {
   const ok = v.filter((x) => x != null);
   const lo = nrm ? nrm.mean - nrm.sd : null, hi = nrm ? nrm.mean + nrm.sd : null;
-  const pad = 5, mn = Math.min(...ok, lo ?? Infinity), mx = Math.max(...ok, hi ?? -Infinity), sp = mx - mn || 1;
+  // osa podle dat (ne podle pásma) → křivka vždy vyplní výšku dlaždice, pásmo se ořízne
+  let mn = Math.min(...ok), mx = Math.max(...ok);
+  if (mx - mn < 1e-6) { mn -= 1; mx += 1; }
+  const pad = 5, sp = mx - mn;
   const X = (i) => pad + (i * (W - 2 * pad)) / (v.length - 1), Y = (x) => 4 + (1 - (x - mn) / sp) * (h - 8);
   const d = runs(v, X, Y).map((p) => curvePath(p)).join("");
   const li = v.length - 1 - [...v].reverse().findIndex((x) => x != null);
-  const band = nrm ? `<rect x="0" y="${Y(hi).toFixed(1)}" width="${W}" height="${Math.max(1, Y(lo) - Y(hi)).toFixed(1)}" rx="3" fill="${color}" opacity=".13"/>` : "";
+  const cY = (x) => Y(clamp(x, mn - sp * 0.08, mx + sp * 0.08));
+  let band = "";
+  if (rb) {
+    // pásmo normy den po dni (průměr ± 1 SD z předchozích 30 dní) – stejně jako v detailu
+    const idx = v.map((_, i) => i).filter((i) => rb.lo[i] != null && rb.hi[i] != null);
+    if (idx.length > 1) band = `<path d="${curvePath(idx.map((i) => ({ x: X(i), y: cY(rb.hi[i]) })))}${curvePath([...idx].reverse().map((i) => ({ x: X(i), y: cY(rb.lo[i]) })), false)}Z" fill="${color}" opacity=".14"/>`;
+  } else if (nrm) band = `<rect x="0" y="${cY(hi).toFixed(1)}" width="${W}" height="${Math.max(1, cY(lo) - cY(hi)).toFixed(1)}" rx="3" fill="${color}" opacity=".13"/>`;
   return `<svg class="spark" viewBox="0 0 ${W} ${h}" width="${W}" height="${h}">${band}<path d="${d}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${X(li).toFixed(1)}" cy="${Y(v[li]).toFixed(1)}" r="3.2" fill="${color}" stroke="var(--card2)" stroke-width="1.5"/></svg>`;
 }
 /**
@@ -748,10 +762,10 @@ async function pagePrehled(el) {
   const [hvS, hvT] = normState(hv.today, hv.norm), [rhS, rhT] = normState(rh.today, rh.norm, true), [stS, stT] = normState(st.avg, st.norm, true);
   const bbNow = d.isToday ? bb.latest : bb.max;
   const tiles = `<div class="mtiles c12">
-    ${metricTile({ label: "🫀 VST", value: num(hv.today), unit: "ms", state: hvS, tone: hvT, spark: spark(hv.series.map((x) => x.v), "var(--m-hrv)", 56, hv.norm), href: "#/detail/vst", foot: hv.norm ? `norma ${num(hv.norm.mean - hv.norm.sd)}–${num(hv.norm.mean + hv.norm.sd)}` : "" })}
-    ${metricTile({ label: "❤️ Klidový tep", value: num(rh.today), unit: "bpm", state: rhS, tone: rhT, spark: spark(rh.series.map((x) => x.v), "var(--m-rhr)", 56, rh.norm), href: "#/detail/tep", foot: rh.norm ? `norma ${num(rh.norm.mean)} ± ${num(rh.norm.sd, 1)}` : "" })}
+    ${metricTile({ label: "🫀 VST", value: num(hv.today), unit: "ms", state: hvS, tone: hvT, spark: sparkRolling(hv.series.map((x) => x.v), "var(--m-hrv)", 56), href: "#/detail/vst", foot: hv.norm ? `norma ${num(hv.norm.mean - hv.norm.sd)}–${num(hv.norm.mean + hv.norm.sd)}` : "" })}
+    ${metricTile({ label: "❤️ Klidový tep", value: num(rh.today), unit: "bpm", state: rhS, tone: rhT, spark: sparkRolling(rh.series.map((x) => x.v), "var(--m-rhr)", 56), href: "#/detail/tep", foot: rh.norm ? `norma ${num(rh.norm.mean)} ± ${num(rh.norm.sd, 1)}` : "" })}
     ${metricTile({ label: "🔋 Body Battery", value: num(bbNow), unit: d.isToday ? "teď" : "ráno", tone: bbNow == null ? "" : bbNow >= 50 ? "good" : bbNow >= 25 ? "warn" : "bad", state: bb.max != null ? `ráno ${num(bb.max)}` : "", spark: `<div class="prog bb"><i style="width:${clamp(bbNow || 0, 0, 100)}%"></i></div>`, href: "#/detail/bb", foot: `<span class="good">+${num(bb.charged)}</span> · <span class="bad">−${num(bb.drained)}</span>` })}
-    ${metricTile({ label: "😮‍💨 Stres", value: num(st.avg), state: stS, tone: stT, spark: spark(st.series.map((x) => x.v), "var(--m-stress)", 56, st.norm), href: "#/detail/stres", foot: st.max != null ? `max ${num(st.max)}` : "" })}
+    ${metricTile({ label: "😮‍💨 Stres", value: num(st.avg), state: stS, tone: stT, spark: sparkRolling(st.series.map((x) => x.v), "var(--m-stress)", 56), href: "#/detail/stres", foot: st.max != null ? `max ${num(st.max)}` : "" })}
     ${metricTile({ label: "👣 Kroky", value: thou(stp.today), state: stp.today != null ? `${num(Math.min(100, (stp.today / stp.goal) * 100))} %` : "", tone: (stp.today ?? 0) >= stp.goal ? "good" : "", spark: `<div class="prog"><i style="width:${clamp(((stp.today || 0) / stp.goal) * 100, 0, 100)}%"></i></div>`, href: "#/chuze", foot: `cíl ${thou(stp.goal)}${stp.floors != null ? ` · ${num(stp.floors)} pater` : ""}` })}
     ${metricTile({ label: "🎯 Forma", value: signed(sn.form, 1), state: esc(sn.zone || ""), tone: sn.form == null ? "" : sn.form < -25 ? "bad" : sn.form < -10 ? "warn" : "good", href: "#/kondice", foot: `kondice ${num(sn.ctl, 1)} · únava ${num(sn.atl, 1)}` })}
   </div>`;
@@ -1025,17 +1039,18 @@ function streamPanels(s, sport) {
 
 /** sklon v % na úseku ±50 m kolem bodu (vyhlazený, ať GPS výška nedělá skoky) */
 function gradeOf(alt, dist) {
+  // body průběhu bývají po ~90 m → okno aspoň ±80 m a vždy aspoň jeden bod na každé straně
   const n = alt.length, out = new Array(n).fill(null);
-  let a = 0, b = 0;
   for (let i = 0; i < n; i++) {
     if (dist[i] == null || alt[i] == null) continue;
-    while (a < i && (dist[a] == null || dist[i] - dist[a] > 50)) a++;
-    if (b < i) b = i;
-    while (b + 1 < n && dist[b + 1] != null && dist[b + 1] - dist[i] <= 50) b++;
-    const dd = (dist[b] ?? 0) - (dist[a] ?? 0);
-    if (dd >= 30 && alt[a] != null && alt[b] != null) out[i] = clamp(((alt[b] - alt[a]) / dd) * 100, -25, 25);
+    let a = i, b = i;
+    while (a > 0 && (a === i || dist[i] - dist[a] < 80) && dist[a - 1] != null && alt[a - 1] != null) a--;
+    while (b < n - 1 && (b === i || dist[b] - dist[i] < 80) && dist[b + 1] != null && alt[b + 1] != null) b++;
+    const dd = dist[b] - dist[a];
+    if (dd >= 40) out[i] = clamp(((alt[b] - alt[a]) / dd) * 100, -25, 25);
   }
-  return out;
+  // lehké vyhlazení (3 body), ať jeden skok výšky z GPS nebarví úsek
+  return out.map((g, i) => { const w = [out[i - 1], g, out[i + 1]].filter((x) => x != null); return g == null ? null : w.reduce((x, y) => x + y, 0) / w.length; });
 }
 /** třídy sklonu: barva a popis (klesání modře, rovina šedozeleně, stoupání žlutá → červená) */
 const GRADE_CLS = [
@@ -1255,6 +1270,10 @@ async function drawMap(box, s, legBox, modeBox) {
   const fitCtl = L.control({ position: "topleft" });
   fitCtl.onAdd = () => { const b = L.DomUtil.create("a", "leaflet-bar mapfit"); b.href = "#"; b.title = "Vycentrovat celou trasu"; b.setAttribute("role", "button"); b.innerHTML = "⤢"; L.DomEvent.on(b, "click", (e) => { L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e); fitAll(); }); return b; };
   fitCtl.addTo(map);
+  // ◐ zesvětlit podklad (trasa víc vynikne) – malé tlačítko na mapě pod ⤢
+  const softCtl = L.control({ position: "topleft" });
+  softCtl.onAdd = () => { const b = L.DomUtil.create("a", "leaflet-bar mapfit"); b.href = "#"; b.setAttribute("role", "button"); const upd = () => { b.innerHTML = soft ? "◑" : "◐"; b.title = soft ? "Podklad normální" : "Zesvětlit podklad (trasa víc vynikne)"; b.classList.toggle("on", soft); }; upd(); L.DomEvent.on(b, "click", (e) => { L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e); soft = !soft; box.classList.toggle("soft", soft); try { localStorage.setItem("mapSoft2", soft ? "1" : "0"); } catch {} upd(); }); return b; };
+  softCtl.addTo(map);
 
   const has = (k) => route.some((p) => p[MAP_MODES[k][0]] != null);
   const modes = Object.keys(MAP_MODES).filter(has);
@@ -1301,14 +1320,8 @@ async function drawMap(box, s, legBox, modeBox) {
     if (legBox) legBox.innerHTML = `<div class="legend">${leg}${key ? "" : `<span class="sub">Mapy.com: vlož klíč v Nastavení</span>`}</div>`;
   };
   if (modeBox) {
-    modeBox.innerHTML = `<div class="maptools">${modes.length > 1 ? `<div class="seg sm">${modes.map((k) => `<button data-mm="${k}" class="${k === mapMode ? "on" : ""}">${MAP_MODES[k][1]}</button>`).join("")}</div>` : "<span></span>"}<button class="btn sm" id="mapSoft" title="tlumený podklad = trasa víc vynikne">${soft ? "◐ Podklad zesvětlený" : "● Podklad normální"}</button></div>`;
+    modeBox.innerHTML = modes.length > 1 ? `<div class="seg sm mapseg">${modes.map((k) => `<button data-mm="${k}" class="${k === mapMode ? "on" : ""}">${MAP_MODES[k][1]}</button>`).join("")}</div>` : "";
     modeBox.querySelectorAll("[data-mm]").forEach((b) => b.addEventListener("click", () => { mapMode = b.dataset.mm; modeBox.querySelectorAll("[data-mm]").forEach((x) => x.classList.toggle("on", x === b)); draw(); }));
-    modeBox.querySelector("#mapSoft").addEventListener("click", (e) => {
-      soft = !soft;
-      box.classList.toggle("soft", soft);
-      e.currentTarget.textContent = soft ? "◐ Podklad zesvětlený" : "● Podklad normální";
-      try { localStorage.setItem("mapSoft2", soft ? "1" : "0"); } catch {}
-    });
   }
   draw();
   fitAll();
@@ -1353,15 +1366,15 @@ async function pageAktivita(el, id) {
   <div class="verdict goal">🎯 ${esc(a.goal)}${a.compliance != null ? `<span class="pill ok">splnění ${a.compliance} %</span>` : ""}</div>
   <div class="grid">
    ${card("c12", "", "", `<div class="abasics">${statsTop}</div>${a.basicsNote ? `<p class="note">${esc(a.basicsNote)}</p>` : ""}`)}
-   ${a.hasStreams ? `<div class="c7 col" id="mapCol">${card("", "🗺️ Trasa", "", `<div id="mapmode"></div><div id="map" class="map loading sm">Načítám mapu…</div><div id="mapleg"></div>`, 'id="mapCard"')}</div>` : ""}
-   <div class="${a.hasStreams ? "c5" : "c12"} col" id="zoneCol">
+   ${a.hasStreams ? `<div class="c7 col o-map" id="mapCol">${card("", "🗺️ Trasa", "", `<div id="mapmode"></div><div id="map" class="map loading sm">Načítám mapu…</div><div id="mapleg"></div>`, 'id="mapCard"')}</div>` : ""}
+   <div class="${a.hasStreams ? "c5" : "c12"} col o-zones" id="zoneCol">
    ${a.hrZones ? card("", "❤️ Tep – čas v zónách", "Garmin", zonesHtml(a.hrZones) + (a.hrZonesNote ? `<p class="note">${esc(a.hrZonesNote)}</p>` : "")) : ""}
    ${a.pwrZones ? card("", "⚡ Výkon – čas v zónách", "Garmin", zonesHtml(a.pwrZones) + (a.pwrZonesNote ? `<p class="note">${esc(a.pwrZonesNote)}</p>` : "")) : ""}
-   ${card("", "📋 Další údaje", "Garmin", extraHtml(a))}
    </div>
-   ${card("c12", "📈 Průběh", "", a.hasStreams ? `<button class="btn sm zoom" id="zoomBtn">⛶ Zvětšit</button><div id="streams" class="loading sm">Načítám průběh…</div><div id="streamsX"></div>` : `<div class="empty">Průběh nemám.</div>`)}
-   ${a.laps.show || a.hasStreams ? card("c12", "🔥 Okruhy", "", `<div id="laps">${lapsHtml(a, null)}</div>`) : ""}
-   ${a.hasStreams && a.sport !== "strength" && a.sport !== "mobility" ? card("c12", "⚖️ 1. vs. 2. polovina · vytrvalost", "Garmin · intervals.icu", `<div id="halves" class="loading sm">Počítám…</div>`) : ""}
+   ${card("c12 o-streams", "📈 Průběh", "", a.hasStreams ? `<button class="btn sm zoom" id="zoomBtn">⛶ Zvětšit</button><div id="streams" class="loading sm">Načítám průběh…</div><div id="streamsX"></div>` : `<div class="empty">Průběh nemám.</div>`)}
+   ${a.laps.show || a.hasStreams ? card("c12 o-laps", "🔥 Okruhy", "", `<div id="laps">${lapsHtml(a, null)}</div>`) : ""}
+   ${a.hasStreams && a.sport !== "strength" && a.sport !== "mobility" ? card("c7 o-halves", "⚖️ 1. vs. 2. polovina · vytrvalost", "Garmin · intervals.icu", `<div id="halves" class="loading sm">Počítám…</div>`) : ""}
+   ${card(a.hasStreams && a.sport !== "strength" && a.sport !== "mobility" ? "c5 o-extra" : "c12 o-extra", "📋 Další údaje", "Garmin", extraHtml(a))}
   </div>`;
   const cs = el.querySelector("#compSel");
   if (cs) cs.addEventListener("change", async () => {
@@ -1475,7 +1488,7 @@ async function pageZotaveni(el) {
     const nn = M.normOf(n);
     const [stt, tn] = normState(v, nn, M.lowGood);
     return metricTile({ label: `${M.ico} ${M.name}` + (lr && lr.date !== d.date ? ` <small>(${dm(lr.date)})</small>` : ""), value: M.fmtBig(v), unit: M.hours ? "" : M.unit, state: stt, tone: tn,
-      spark: spark(r30.map((r) => M.val(r)), M.color, 64, nn), href: `#/detail/${m}`,
+      spark: sparkRolling(d.rows.map((r) => M.val(r)), M.color, 60), href: `#/detail/${m}`,
       foot: nn ? `norma ${M.fmt(nn.mean - nn.sd)}–${M.fmt(nn.mean + nn.sd)}${M.hours ? " h" : M.unit ? " " + M.unit : ""}` : "" });
   };
   const rc = d.recovery;
@@ -1492,17 +1505,17 @@ async function pageZotaveni(el) {
 // ---------- detail metriky: jedna šablona pro všechny (Přehled / Zotavení → detail) ----------
 const hrsFmt = (v) => (v == null ? DASH : hmm(v * 3600));
 const METRICS = {
-  vst: { key: "hrv", name: "VST", ico: "🫀", full: "VST – variabilita srdečního tepu", unit: "ms", dec: 0, color: "var(--m-hrv)", lowGood: false, norm: "hrv",
+  vst: { key: "hrv", name: "VST", ico: "🫀", full: "Variabilita srdečního tepu", unit: "ms", dec: 0, color: "var(--m-hrv)", lowGood: false, norm: "hrv",
     about: "Průměrná variabilita tepu během noci (Garmin). Vyšší = nervový systém je odpočatý. Hodnoť ji vždy proti své normě, ne proti jiným lidem. Trenér ji bere do ranního semaforu: VST pod normou ukazuje na únavu, nemoc, stres nebo alkohol." },
   tep: { key: "rhr", name: "Klidový tep", ico: "❤️", full: "Klidový tep", unit: "bpm", dec: 0, color: "var(--m-rhr)", lowGood: true, norm: "rhr",
     about: "Nejnižší ustálený tep dne (Garmin). Nižší = lepší. Zvýšení o několik tepů nad normu několik dní po sobě bývá první známka únavy nebo nemoci – trenér ho proto hlídá v ranním semaforu." },
   spanek: { key: "sleep_s", name: "Spánek", ico: "😴", full: "Spánek", unit: "h", dec: 1, color: "var(--m-sleep)", lowGood: false, norm: "sleep", hours: true,
     about: "Délka spánku a fáze z Garminu, skóre spánku 0–100. Trenér bere délku spánku do ranního semaforu (proti tvému průměru); fáze a skóre jsou doplňkové." },
-  stres: { key: "stress", name: "Stres", ico: "😮‍💨", full: "Stres – průměr dne", unit: "", dec: 0, color: "var(--m-stress)", lowGood: true, norm: "stress",
+  stres: { key: "stress", name: "Stres", ico: "😮‍💨", full: "Stres", unit: "", dec: 0, color: "var(--m-stress)", lowGood: true, norm: "stress",
     about: "Garmin odhaduje stres z variability tepu během dne (0–100). Do 25 klid, 26–50 nízký, 51–75 střední, nad 75 vysoký. Jen doplňkový údaj – do semaforu nevstupuje." },
   bb: { key: "bb_max", name: "Body Battery", ico: "🔋", full: "Body Battery", unit: "", dec: 0, color: "var(--m-bb)", lowGood: false, norm: "bb",
     about: "Garmin odhaduje „energii“ 0–100 z VST, stresu, spánku a aktivit. Ráno = kolik se nabilo přes noc, přes den klesá. Garmin přes API posílá jen několik bodů denně (po synchronizaci hodinek), proto je průběh dne hrubý. Do semaforu nevstupuje – ten bere přímo VST, tep a spánek." },
-  dech: { key: "resp", name: "Dech", ico: "🫁", full: "Dechová frekvence ve spánku", unit: "/min", dec: 1, color: "var(--m-resp)", lowGood: true, norm: "resp",
+  dech: { key: "resp", name: "Dech", ico: "🫁", full: "Dech ve spánku", unit: "/min", dec: 1, color: "var(--m-resp)", lowGood: true, norm: "resp",
     about: "Průměrný počet nádechů za minutu během spánku (Garmin). U zdravého člověka je velmi stabilní; zvýšení o 1–2 dechy nad normu bývá spolu s vyšším tepem známka nemoci nebo přetížení. Doplňkový údaj – do semaforu nevstupuje." },
 };
 for (const M of Object.values(METRICS)) {

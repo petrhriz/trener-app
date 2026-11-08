@@ -69,7 +69,8 @@ api.get("/overview", async (c) => {
   const r = await readiness(ctx);
   const tw = ctx.well.find((w) => w.date === D) ?? null;
   // dlaždice: 30 dní (podrobnější graf s pásmem normy)
-  const last14 = ctx.well.filter((w) => w.date > addDays(D, -30) && w.date <= D);
+  // dlaždice: 90 dní – zobrazí se posledních 30, starší dny slouží pro pásmo normy den po dni
+  const last14 = ctx.well.filter((w) => w.date > addDays(D, -90) && w.date <= D);
   const series = (k: keyof (typeof ctx.well)[number]) => last14.map((w) => ({ date: w.date, v: (w as any)[k] ?? null }));
   const hist = ctx.well.filter((w) => w.date >= addDays(D, -60) && w.date < D);
   const nm = (k: "hrv" | "rhr" | "stress_avg" | "steps" | "bb_max" | "sleep_resp") => {

@@ -13,7 +13,8 @@ import { applySecrets } from "./lib/secrets";
 import { tgCall } from "./telegram/api";
 import { cmdPlan, cmdRano, cmdTyden, cmdZitra, handleUpdate } from "./telegram/bot";
 import { authApp } from "./api/accounts";
-import { sessionUser, userIdForChat } from "./api/session";
+import { createViewLink, sessionInfo, userIdForChat } from "./api/session";
+import { localNow } from "./lib/time";
 import { OWNER_ID, activeUsers, envFor, forgetUser, userForTick } from "./lib/tenant";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -53,6 +54,13 @@ app.use("/admin/*", async (c, next) => {
   await next();
 });
 app.get("/admin/secrets", (c) => c.json(secretStatus(c.env)));
+/** Odkaz pro náhled pro někoho dalšího: jednorázový, jen čtení, platí do dnešní půlnoci (nebo ?hours=N). */
+app.post("/admin/view-link", async (c) => {
+  const now = localNow(new Date(), c.env.TZ_NAME);
+  const h = Number(c.req.query("hours") ?? 0);
+  const until = h > 0 ? Date.now() + Math.min(h, 72) * 3600_000 : Date.now() + (1440 - now.minutes) * 60_000;
+  return c.json({ url: await createViewLink(c.env, Number(c.req.query("uid") ?? OWNER_ID), until), until: new Date(until).toISOString() });
+});
 app.get("/admin/phase0", async (c) => c.json(await runPhase0(c.env, { probes: c.req.query("probes") !== "0", telegram: c.req.query("telegram") !== "0" })));
 app.post("/admin/sync", async (c) => c.json(await syncTick(c.env, { force: c.req.query("force") === "1", backfillPages: Number(c.req.query("pages") ?? 4) })));
 app.post("/admin/scheduler", async (c) => c.json(await runScheduler(c.env)));
@@ -129,11 +137,24 @@ app.post("/admin/setup-webhook", async (c) => {
 });
 
 // ---- přihlášení do dashboardu odkazem z Telegramu ----
+const page = (body: string) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Trenér</title><body style="font-family:system-ui;padding:32px 20px;background:#f3f2ef;color:#1b1916;text-align:center;max-width:440px;margin:auto"><img src="/apple-touch-icon.png" width="72" height="72" style="border-radius:18px" alt="">${body}</body>`;
 app.get("/auth", async (c) => {
+  const t = c.req.query("t") ?? "";
+  // odkaz pro náhled: náhledy odkazů (Messenger, WhatsApp, iMessage…) by ho jinak spotřebovaly → nejdřív tlačítko
+  if (/^[A-Za-z0-9_-]{20,64}$/.test(t) && (await c.env.KV.get(`login:${t}`))?.startsWith("{")) {
+    return c.html(page(`<h2>Náhled aplikace Trenér</h2><p>Přístup jen pro čtení, platí do půlnoci a odkaz jde otevřít jen jednou.</p><form method="post" action="/auth"><input type="hidden" name="t" value="${t}"><button style="font:inherit;font-weight:700;font-size:17px;padding:12px 28px;border:0;border-radius:12px;background:#e0600f;color:#fff">Otevřít náhled</button></form>`), 200, { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
+  }
   const { consumeLogin } = await import("./api/session");
-  const cookie = await consumeLogin(c.env, c.req.query("t"));
+  const cookie = await consumeLogin(c.env, t);
   if (!cookie) return c.html(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><body style="font-family:system-ui;padding:24px;background:#121110;color:#f2efeb"><h2>Odkaz už neplatí</h2><p>Napiš botovi <b>/dashboard</b> a pošle ti nový (platí 15 minut, jen jednou).</p></body>`, 403);
   return new Response(null, { status: 302, headers: { Location: "/#/prehled", "Set-Cookie": cookie, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
+});
+app.post("/auth", async (c) => {
+  const f = await c.req.parseBody();
+  const { consumeLogin } = await import("./api/session");
+  const cookie = await consumeLogin(c.env, String(f.t ?? ""));
+  if (!cookie) return c.html(page(`<h2>Odkaz už neplatí</h2><p>Byl už jednou otevřený, nebo vypršel. Požádej o nový.</p>`), 403);
+  return new Response(null, { status: 303, headers: { Location: "/#/prehled", "Set-Cookie": cookie, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
 });
 app.get("/logout", async (c) => {
   const { logoutCookie } = await import("./api/session");
@@ -146,7 +167,10 @@ app.route("/auth", authApp);
 // ---- dashboard API: env podle přihlášeného uživatele (vlastní tabulky, KV a klíče) ----
 const apiRoot = new Hono<{ Bindings: Env }>().route("/api", api);
 app.all("/api/*", async (c) => {
-  let uid = await sessionUser(c.env, c.req.header("cookie"));
+  const si = await sessionInfo(c.env, c.req.header("cookie"));
+  let uid = si?.uid ?? null;
+  // odkaz pro náhled: jen čtení, bez klíčů a správy uživatelů, bez AI chatu
+  if (si?.ro && (c.req.method !== "GET" || /^\/api\/(secrets|users|status)\b/.test(new URL(c.req.url).pathname))) return c.json({ error: "Jen náhled – tady nic měnit nejde." }, 403);
   // admin token (skripty) smí za uživatele: hlavička x-uid
   const admin = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (uid == null && c.env.ADMIN_TOKEN && admin && safeEqual(admin, c.env.ADMIN_TOKEN)) uid = Number(c.req.header("x-uid") ?? OWNER_ID) || OWNER_ID;

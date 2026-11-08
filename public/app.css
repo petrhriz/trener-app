@@ -971,3 +971,35 @@ html:root[data-skin="k"] .stat, html:root[data-skin="k"] .mtile { border-radius:
 /* 🤖 na PC: stejná výška jako přepínače vedle */
 @media (min-width: 761px) { .head > .aibtn { margin-left: 0; align-self: flex-end; width: 40px; height: 40px; font-size: 20px; border-radius: 12px; } }
 @media (min-width: 761px) { .head > :first-child { margin-right: auto; } }
+/* hlavička detailu: vyvážené velikosti ikony, čísla a jednotky */
+.dh-row { align-items: center; }
+.dhero .dh-big { font-size: 44px; line-height: 1; }
+.dhero .dh-big small { font-size: 16px; font-weight: 600; margin-left: 5px; }
+.dhero .sub { margin-top: 4px; font-size: 13.5px; }
+.dh-ico { width: 54px; height: 54px; font-size: 27px; border-radius: 15px; }
+.dhero .nrange span { font-size: 13px; }
+.dhero .nrange b { font-size: 19px; }
+@media (max-width: 760px) {
+  .dhero .dh-big { font-size: 38px; } .dhero .dh-big small { font-size: 14px; }
+  .dh-ico { width: 46px; height: 46px; font-size: 23px; border-radius: 13px; }
+  .dhero .nrange span { font-size: 12px; } .dhero .nrange b { font-size: 16px; }
+}
+
+/* ======================= 10. kolo ======================= */
+/* detail aktivity: mobil mapa → průběh → zóny → okruhy → polovina → další údaje; PC zóny vedle mapy */
+@media (max-width: 760px) {
+  .o-map { order: 1; } .o-streams { order: 2; } .o-zones { order: 3; } .o-laps { order: 4; } .o-halves { order: 5; } .o-extra { order: 6; }
+}
+/* vybavení a „s kým“ vedle sebe */
+.actsel { display: grid; grid-template-columns: repeat(2, minmax(0, max-content)); gap: 8px 12px; }
+.actsel .gearsel { min-width: 0; gap: 6px; }
+.actsel select { max-width: 100%; min-width: 0; width: 100%; }
+@media (max-width: 760px) { .actsel { grid-template-columns: repeat(2, minmax(0, 1fr)); } .actsel select { padding: 7px 8px; font-size: 14px; } }
+/* hlavička detailu metriky: ikona stejně vysoká jako číslo + text pod ním */
+.dh-ico { width: 72px; height: 72px; font-size: 38px; border-radius: 18px; }
+.dhero .dh-big small { vertical-align: baseline; }
+@media (max-width: 760px) { .dh-ico { width: 62px; height: 62px; font-size: 32px; border-radius: 16px; } }
+/* mapa: přepínač ukazatele přes celou šířku, ◐ zesvětlení jako tlačítko na mapě */
+.mapseg { display: flex; width: 100%; margin-bottom: 10px; }
+.mapseg button { flex: 1; text-align: center; padding: 7px 4px; }
+.leaflet-bar.mapfit.on { background: #fdeadb; }
