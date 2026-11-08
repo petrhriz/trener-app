@@ -1818,7 +1818,7 @@ async function pageDetail(el, which) {
   const hero = M.hours
     ? card("c12", `Noc na ${last ? dayDm(last.date) : "dnešek"}`, "Garmin", sleepBlock(d.sleep))
     : which === "bb"
-      ? card("c12", `Body Battery · ${day && day.date !== d.today ? dayDm(day.date) : "dnes"}`, "Garmin", day ? bbPanel(day, day.date === d.today, { max: last?.date === d.today ? last.bb_max : null, min: last?.date === d.today ? last.bb_min : null }) + dayEnergyHtml(day) : `<div class="empty">Průběh dne nemám.</div>`)
+      ? card("c12 energy", `Energie a tep · ${day && day.date !== d.today ? dayDm(day.date) : "dnes"}`, "Garmin", day ? `<div class="energy">${energyHtml(day, day.date === d.today, { latest: last?.date === d.today ? last.bb_latest ?? null : null })}</div>` + dayEnergyHtml(day) : `<div class="empty">Průběh dne nemám.</div>`)
       : dheroHtml(M, lastV, last, d.today, st, tone, nLo, nHi, okV, u);
   const main = M.hours
     ? barChart({ x: rows.map((r) => r.date), xfmt: dm, mode: "stack", height: 220, yfmt: (v) => num(v) + " h", refLine: nrm ? nrm.mean : null,
@@ -1827,9 +1827,9 @@ async function pageDetail(el, which) {
       + `<div class="legend"><span><i style="background:var(--sdeep)"></i>hluboký</span><span><i style="background:var(--srem)"></i>REM</span><span><i style="background:var(--slight)"></i>lehký</span><span><i style="background:var(--sawake)"></i>bdění</span><span class="sub">čárkovaně = tvůj průměr</span></div>`
     : which === "bb"
       ? barChart({ x: rows.map((r) => r.date), xfmt: dm, mode: "range", maxV: 100, height: 210,
-          bars: rows.map((r) => ({ lo: r.bb_min, hi: r.bb_max, color: (r.bb_max ?? 0) >= 75 ? "var(--z3)" : (r.bb_max ?? 0) >= 50 ? "var(--z4)" : "var(--bad)" })),
+          bars: rows.map((r) => ({ lo: r.bb_min, hi: r.bb_max, color: bbColor(r.bb_max ?? 0) })),
           tipFn: (i) => { const r = rows[i]; return `<b>${dayDm(r.date)}</b><div>ráno ${num(r.bb_max)} → minimum ${num(r.bb_min)}</div><div>nabito +${num(r.bb_charged)} · vybito −${num(r.bb_drained)}</div>${r.load ? `<div>zátěž ${num(r.load)}</div>` : ""}`; } })
-        + `<div class="legend"><span><i style="background:var(--z3)"></i>ráno ≥ 75</span><span><i style="background:var(--z4)"></i>50–74</span><span><i style="background:var(--bad)"></i>pod 50</span><span class="sub">sloupec = od minima dne po ranní maximum</span></div>`
+        + `<div class="legend"><span><i style="background:${bbColor(85)}"></i>ráno ≥ 70</span><span><i style="background:${bbColor(60)}"></i>50–69</span><span><i style="background:${bbColor(35)}"></i>25–49</span><span><i style="background:${bbColor(10)}"></i>pod 25</span><span class="sub">sloupec = od minima dne po ranní maximum</span></div>`
       : lineChart({ x: rows.map((r) => r.date), xfmt: dm, height: 320, fmt: (v) => M.fmt(v) + u, bandSeries: { lo: rn.lo, hi: rn.hi, color: M.color, name: "normální rozsah (± 1 SD za 30 dní)" }, avgLine: avg != null ? { v: avg, label: `⌀ ${M.fmt(avg)}${u}`, color: M.color } : null, series: [{ name: M.name, values: vals, color: M.color, width: 2.4, points: true }], minSpan: M.key === "stress" ? 10 : M.key === "resp" ? 1.5 : 4 });
   let extra = "";
   if (M.hours) extra = card("c12", "Skóre spánku", "Garmin", lineChart({ x: rows.map((r) => r.date), xfmt: dm, height: 170, fmt: (v) => num(v), series: [{ name: "skóre", values: rows.map((r) => r.sleep_score), color: "var(--srem)", width: 2.2, points: true }], minSpan: 10 }) + `<p class="note">Pravidelnost (14 dní): ${esc(d.sleepReg.text)}</p>`);
@@ -2285,7 +2285,7 @@ async function pageKalendar(el) {
     if (!w) return "";
     if (calShow === "sleep" && w.sleep_score != null) { const t = w.sleep_score >= 80 ? "good" : w.sleep_score >= 60 ? "warn" : "bad"; return `<span class="cm ${t}" title="skóre spánku"><i>🌙</i>${w.sleep_score}</span>`; }
     if (calShow === "steps" && w.steps != null) return `<span class="cm ${w.steps >= d.stepsGoal ? "good" : ""}" title="kroky"><i>👣</i>${num(w.steps / 1000, 1)}k</span>`;
-    if (calShow === "bb" && w.bb_max != null) { const t = w.bb_max >= 75 ? "good" : w.bb_max >= 50 ? "warn" : "bad"; return `<span class="cm ${t}" title="Body Battery ráno"><i>🔋</i>${w.bb_max}</span>`; }
+    if (calShow === "bb" && w.bb_max != null) return `<span class="cm" style="color:${bbColor(w.bb_max)}" title="Body Battery ráno"><i>🔋</i>${w.bb_max}</span>`;
     return "";
   };
   // zátěž dne → podbarvení buňky (čím víc, tím sytější)
