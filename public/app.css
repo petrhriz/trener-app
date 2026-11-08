@@ -1360,7 +1360,6 @@ details.info > .note { margin-top: 6px; }
 .en-side b { font-size: 26px; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .en-side small { font-size: 12px; color: var(--muted); }
 .battery .bat-n { font-size: 26px; font-weight: 700; fill: var(--fg); font-variant-numeric: tabular-nums; }
-.battery .bat-u { font-size: 14px; font-weight: 600; }
 .energy .legend i { width: 14px; }
 .battery .bat-n.on { fill: #fff; }
 @media (min-width: 761px) {
@@ -1373,3 +1372,6 @@ details.info > .note { margin-top: 6px; }
 .bbmark.down rect { stroke: #d63b47; } .bbmark.down text { fill: #d63b47; }
 text.bbmark { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
 text.bbmark.up { fill: #23955a; } text.bbmark.down { fill: #d63b47; }
+/* 23. kolo: baterie – číslo přesně uprostřed */
+.battery .bat-n { text-anchor: middle; dominant-baseline: central; font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.battery .bat-u { font-size: inherit; font-weight: inherit; }

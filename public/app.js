@@ -1573,10 +1573,26 @@ function bbColor(v) {
   }
   return BB_STOPS[BB_STOPS.length - 1][1];
 }
+// baterie: obrys jako v iOS (tenký, zaoblený pól), uvnitř šrafovaná prázdná část a plná výplň v barvě křivky
+// Body Battery podle aktuálních procent se slabou září; číslo přesně uprostřed celé baterie – na výplni tmavým odstínem
 function batteryIcon(v) {
-  const w = 132, h = 58, fw = Math.max(v ? 10 : 0, ((w - 12) * clamp(v ?? 0, 0, 100)) / 100);
-  const onFill = (v ?? 0) >= 55; // číslo do volné části baterie, u plné bíle do výplně
-  return `<svg class="battery" viewBox="0 0 ${w + 14} ${h + 4}" width="${w + 14}" height="${h + 4}" role="img" aria-label="Body Battery ${v ?? "–"} %"><rect x="1.5" y="2" width="${w}" height="${h}" rx="15" style="fill:var(--card2);stroke:var(--line)" stroke-width="2"/><rect x="${w + 5}" y="${h / 2 - 9}" width="7" height="22" rx="3.5" style="fill:var(--line)"/>${v != null ? `<rect x="7.5" y="8" width="${fw.toFixed(1)}" height="${h - 12}" rx="10" fill="${bbColor(v)}"/>` : ""}<text x="${(onFill ? 7.5 + fw / 2 : (7.5 + fw + w) / 2).toFixed(1)}" y="${h / 2 + 12}" text-anchor="middle" class="bat-n${onFill ? " on" : ""}">${v ?? "–"}<tspan class="bat-u" dx="1">%</tspan></text></svg>`;
+  const W = 150, H = 66, VW = W + 12, VH = H + 4, id = uid("bat");
+  const x0 = 7, y0 = 7, iw = W - 11, ih = H - 11; // vnitřek
+  const fw = v == null ? 0 : Math.max(12, (iw * clamp(v, 0, 100)) / 100);
+  const c = v == null ? "var(--muted)" : bbColor(v);
+  const dark = v == null ? "var(--fg)" : "#" + [1, 3, 5].map((k) => Math.round(parseInt(c.slice(k, k + 2), 16) * 0.4).toString(16).padStart(2, "0")).join("");
+  const cx = ((1.5 + W + 8) / 2).toFixed(1), cy = (1 + H / 2).toFixed(1);
+  const num = (fill) => `<text x="${cx}" y="${cy}" class="bat-n" style="fill:${fill}">${v ?? "–"}&#8239;%</text>`;
+  return `<svg class="battery" viewBox="0 0 ${VW} ${VH}" width="${VW}" height="${VH}" role="img" aria-label="Body Battery ${v ?? "–"} %"><defs>
+<pattern id="${id}p" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="7" style="stroke:var(--line);stroke-width:2px"/></pattern>
+<filter id="${id}f" x="-30%" y="-40%" width="160%" height="180%"><feGaussianBlur stdDeviation="6"/></filter>
+<clipPath id="${id}c"><rect x="${x0}" y="${y0}" width="${fw}" height="${ih}" rx="12"/></clipPath></defs>
+${fw ? `<rect x="${x0}" y="${y0 + 2}" width="${fw}" height="${ih - 4}" rx="12" style="fill:${c}" opacity=".22" filter="url(#${id}f)"/>` : ""}
+<rect x="1.5" y="1.5" width="${W - 1}" height="${H - 1}" rx="17" style="fill:var(--card);stroke:var(--muted);stroke-opacity:.45;stroke-width:2px"/>
+<rect x="${x0}" y="${y0}" width="${iw}" height="${ih}" rx="12" fill="url(#${id}p)"/>
+${fw ? `<rect x="${x0}" y="${y0}" width="${fw}" height="${ih}" rx="12" style="fill:${c}"/>` : ""}
+<path d="M${W + 4} ${H / 2 - 8} a4 4 0 0 1 4 4 v10 a4 4 0 0 1 -4 4 z" style="fill:var(--muted);fill-opacity:.45"/>
+${num("var(--fg)")}<g clip-path="url(#${id}c)">${num(dark)}</g></svg>`;
 }
 function energyHtml(d, isToday, sum = {}) {
   const bbp = (d.bb || []).map(([t, v]) => ({ m: minOfDay(d, t), v })).filter((q) => q.m >= -1 && q.m <= 1441);
