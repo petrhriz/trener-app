@@ -193,7 +193,7 @@ const cleanPart = (b: any) => ({
   interval_km: Number(b.interval_km) > 0 ? Number(b.interval_km) : null,
   repeat_km: Number(b.repeat_km) > 0 ? Number(b.repeat_km) : null,
   start_km: Number(b.start_km) > 0 ? Number(b.start_km) : 0,
-  since: /^d{4}-d{2}-d{2}$/.test(b.since ?? "") ? `${b.since} 00:00:00` : null,
+  since: /^\d{4}-\d{2}-\d{2}$/.test(b.since ?? "") ? `${b.since} 00:00:00` : null,
 });
 
 gearApi.post("/:id/parts", async (c) => {
@@ -226,7 +226,7 @@ gearApi.post("/parts/:pid/reset", async (c) => {
   if (!p) return c.json({ error: "Díl nemám." }, 404);
   const body = (await c.req.json().catch(() => ({}))) as { note?: string; date?: string };
   const km = partKm(p, acts, gear, links);
-  const at = /^d{4}-d{2}-d{2}$/.test(body.date ?? "") ? `${body.date} 23:59:59` : nowLocal(c.env.TZ_NAME);
+  const at = /^\d{4}-\d{2}-\d{2}$/.test(body.date ?? "") ? `${body.date} 23:59:59` : nowLocal(c.env.TZ_NAME);
   await run(c.env.DB, "INSERT INTO gear_service (part_id, gear_id, at, km, note) VALUES (?, ?, ?, ?, ?)", id, p.gear_id, at, km, body.note ? String(body.note).slice(0, 200) : null);
   await run(c.env.DB, "UPDATE gear_parts SET since = ?, start_km = 0, notified_km = 0 WHERE id = ?", at, id);
   return c.json({ ok: true, km });

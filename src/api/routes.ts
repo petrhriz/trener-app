@@ -830,6 +830,20 @@ api.post("/settings", async (c) => {
   const body = (await c.req.json()) as Partial<Settings>;
   const allowed = Object.keys(DEFAULTS) as (keyof Settings)[];
   const before = await getSettings(c.env.DB);
+  // povinné údaje (časy zpráv, místo, tréninky týdně, cíl) nesmí být prázdné ani ve špatném tvaru – null by
+  // v plánovači zpráv spadl (hm(null)) a ranní / večerní zprávy by tiše přestaly chodit
+  const bad = (k: keyof Settings, v: unknown): string | null => {
+    if (["morning_from", "morning_to", "evening_time", "weekly_time"].includes(k)) return typeof v === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? null : "čas ve tvaru HH:MM";
+    if (k === "rides_per_week") return Number.isInteger(v) && (v as number) >= 2 && (v as number) <= 5 ? null : "tréninky týdně 2–5";
+    if (k === "place_name") return typeof v === "string" && v.trim() ? null : "místo nesmí být prázdné";
+    if (k === "goal") return ["udrzeni", "zvyseni", "pokles", "zavod"].includes(v as string) ? null : "neznámý cíl";
+    if (k === "goal_date") return v == null || (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) ? null : "datum cíle";
+    if (k === "goal_ctl" || k === "ftp" || k === "year_km_goal") return v == null || (typeof v === "number" && isFinite(v) && v > 0) ? null : "kladné číslo";
+    if (k === "ride_temps") { const t = v as any; return t && [t.cold, t.hot, t.ideal].every((x) => typeof x === "number" && isFinite(x)) ? null : "teploty musí být čísla"; }
+    return null;
+  };
+  const errs = allowed.filter((k) => k in body).map((k) => bad(k, (body as any)[k])).filter(Boolean);
+  if (errs.length) return c.json({ error: `Neuloženo: ${errs.join(", ")}.` }, 400);
   for (const k of allowed) if (k in body) await setSetting(c.env.DB, k, (body as any)[k]);
   const after = await getSettings(c.env.DB);
   // jiné místo pro počasí → dohledat souřadnice a předpověď stáhnout znovu

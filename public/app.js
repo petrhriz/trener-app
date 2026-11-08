@@ -677,7 +677,7 @@ function openStatusModal(cur, onDone) {
   ov.className = "modal";
   let kind = cur.kind;
   const durs = [["", "Do odvolání"], ["0", "Jen dnes"], ["2", "3 dny"], ["6", "Týden"], ["13", "2 týdny"], ["date", "Do data…"]];
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localToday();
   const render = () => {
     ov.innerHTML = `<div class="modal-in"><div class="ch"><h2>Jak se máš?</h2><button class="btn sm" data-x>✕</button></div>
       <div class="stgrid">${Object.entries(STATUS).map(([k, [i, l, t]]) => `<button class="stopt st-${t} ${k === kind ? "on" : ""}" data-k="${k}"><span>${i}</span>${l}</button>`).join("")}</div>
@@ -885,6 +885,19 @@ function weekLoadsHtml(w) {
 
 // ---------- Trenér: dnešek, plán týdne (interaktivní), z čeho trenér vychází, AI trenér ----------
 const COACH_KEY = "coachAsk";
+/** krátká hláška dole na obrazovce (chyba akce, kterou jinak nic neukáže) */
+function toast(text) {
+  let t = document.getElementById("toast");
+  if (!t) { t = document.createElement("div"); t.id = "toast"; t.setAttribute("role", "status"); document.body.appendChild(t); }
+  t.textContent = text; t.classList.add("on");
+  clearTimeout(toast.tm); toast.tm = setTimeout(() => t.classList.remove("on"), 5000);
+}
+/** chyba akce: ukázat a tlačítko znovu povolit */
+const fail = (err, btn) => { if (btn) btn.disabled = false; toast(`Nepovedlo se: ${err?.message || err}`); };
+// pojistka: chyba v akci, kterou nic nezachytilo, se aspoň ukáže
+window.addEventListener("unhandledrejection", (e) => { const m = e.reason?.message || String(e.reason || ""); if (m) toast(`Nepovedlo se: ${m}`); });
+/** dnešní datum v místním čase (ne UTC – kolem půlnoci by vyšel včerejšek) */
+const localToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 let tOpen = null; // otevřený den (panel úprav)
 function tSportIco(s) { return ({ run: "🏃", xc_ski: XC_SVG, walk: "🚶" })[s] || "🚴"; }
 /** Pruh zátěže týdne: hotovo (plně) + plán (světle) proti cílovému pásmu. */
@@ -1007,20 +1020,24 @@ async function pageTrener(el) {
     row.addEventListener("drop", (e) => { e.preventDefault(); row.classList.remove("over"); if (dragFrom && dragFrom !== row.dataset.day) post("plan/shift", { from: dragFrom, to: row.dataset.day }); dragFrom = null; });
   });
   el.querySelector("#applyAll")?.addEventListener("click", async (e) => {
-    e.currentTarget.disabled = true;
+    const btn = e.currentTarget; // po await už currentTarget neplatí
+    btn.disabled = true;
     const msg = el.querySelector("#applyMsg");
     msg.textContent = "Zapisuji do kalendáře a intervals.icu…";
     try { const res = await api(`proposal/${prop.id}/apply`, { method: "POST", body: JSON.stringify({ codes: prop.items.map((c) => c.code) }) }); msg.textContent = [...res.lines, res.verify].join(" · "); setTimeout(keepScroll, 1500); }
-    catch (err) { msg.textContent = err.message; e.currentTarget.disabled = false; }
+    catch (err) { msg.textContent = err.message; btn.disabled = false; }
   });
   el.querySelector("#resetMine")?.addEventListener("click", () => { if (confirm("Vrátit všechny tvoje úpravy plánu (přesuny, délky, sporty, vlastní jízdy)?")) post("plan/reset", {}); });
   el.querySelector("#newProp")?.addEventListener("click", () => post("plan/propose", {}));
-  el.querySelectorAll("[data-undo]").forEach((b) => b.addEventListener("click", async () => { b.disabled = true; await api("constraint", { method: "DELETE", body: JSON.stringify({ date: b.dataset.undo, kind: b.dataset.kind }) }); keepScroll(); }));
-  el.querySelectorAll("[data-skip]").forEach((b) => b.addEventListener("click", async () => { b.disabled = true; await api("constraint", { method: "POST", body: JSON.stringify({ date: b.dataset.skip, kind: "nepojedu", note: "dashboard" }) }); await api("plan/propose", { method: "POST" }); keepScroll(); }));
-  el.querySelectorAll("[data-goal]").forEach((b) => b.addEventListener("click", async () => { if (b.classList.contains("on")) return; el.querySelector("#goalMsg").textContent = "Přepočítávám plán…"; await api("settings", { method: "POST", body: JSON.stringify({ goal: b.dataset.goal }) }); keepScroll(); }));
+  el.querySelectorAll("[data-undo]").forEach((b) => b.addEventListener("click", async () => { b.disabled = true; try { await api("constraint", { method: "DELETE", body: JSON.stringify({ date: b.dataset.undo, kind: b.dataset.kind }) }); keepScroll(); } catch (err) { fail(err, b); } }));
+  el.querySelectorAll("[data-skip]").forEach((b) => b.addEventListener("click", async () => { b.disabled = true; try { await api("constraint", { method: "POST", body: JSON.stringify({ date: b.dataset.skip, kind: "nepojedu", note: "dashboard" }) }); await api("plan/propose", { method: "POST" }); keepScroll(); } catch (err) { fail(err, b); } }));
+  el.querySelectorAll("[data-goal]").forEach((b) => b.addEventListener("click", async () => { if (b.classList.contains("on")) return; const gm = el.querySelector("#goalMsg"); gm.textContent = "Přepočítávám plán…"; try { await api("settings", { method: "POST", body: JSON.stringify({ goal: b.dataset.goal }) }); keepScroll(); } catch (err) { gm.textContent = `Nepovedlo se: ${err.message}`; } }));
   // AI trenér
+  let asking = false;
   const ask = async (text) => {
-    text = text.trim(); if (!text) return;
+    text = text.trim(); if (!text || asking) return;
+    asking = true;
+    el.querySelectorAll("#askF textarea, #askF button, [data-ask]").forEach((x) => (x.disabled = true));
     hist.push({ role: "user", text });
     const box = el.querySelector(".tmsgs"); box.insertAdjacentHTML("beforeend", `<div class="msg user"><p>${esc(text)}</p></div><div class="msg assistant"><span class="spin"></span></div>`);
     try {
@@ -1028,6 +1045,7 @@ async function pageTrener(el) {
       hist.push({ role: "assistant", text: res.reply, applied: res.applied });
     } catch (e) { hist.push({ role: "assistant", text: `Teď to nejde: ${e.message}` }); }
     try { localStorage.setItem(COACH_KEY, JSON.stringify(hist.slice(-20))); } catch {}
+    asking = false;
     keepScroll();
   };
   // AI návrh týdne: AI složí týden, server ho zkontroluje a případně opraví, změny čekají na „Zapsat“
@@ -1310,7 +1328,7 @@ function lapsHtml(a, s) {
     const rows = sp[mode];
     const best = Math.max(...rows.map((r) => r.kmh));
     const hasW = rows.some((r) => r.w), hasCad = rows.some((r) => r.cad);
-    const pace = (kmh) => `${Math.floor(60 / kmh)}:${String(Math.round(((60 / kmh) % 1) * 60)).padStart(2, "0")}`;
+    const pace = (kmh) => { const t = Math.round(3600 / kmh); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
     // jednotky jen v záhlaví, čísla zarovnaná; kadence na mobilu skrytá (class hm)
     body = `<div class="tscroll"><table class="t splits"><tr><th>km</th><th class="r">čas</th><th class="r">${run ? "min/km" : "km/h"}</th>${hasW ? '<th class="r">W</th>' : ""}<th class="r">tep</th>${hasCad ? `<th class="r hm">${run ? "kr/min" : "ot/min"}</th>` : ""}<th class="r">↑ m</th></tr>${rows.map((r) => `<tr class="${r.kmh === best ? "iv" : ""}"><td><b>${num(r.km, r.km % 1 ? 1 : 0)}</b></td><td class="r">${mmss(r.s)}</td><td class="r">${run ? pace(r.kmh) : num(r.kmh, 1)}</td>${hasW ? `<td class="r"><b>${num(r.w)}</b></td>` : ""}<td class="r">${num(r.hr)}</td>${hasCad ? `<td class="r hm">${num(r.cad)}</td>` : ""}<td class="r">${num(r.up)}</td></tr>`).join("")}</table></div><p class="note">Okruhy spočítané z průběhu aktivity, zvýrazněný je nejrychlejší. Výkon a tep = průměr okruhu.</p>`;
   }
@@ -1325,9 +1343,12 @@ function loadLeaflet() {
   leafletP = new Promise((res, rej) => {
     const css = document.createElement("link");
     css.rel = "stylesheet"; css.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";
+    // kontrola pravosti souborů z CDN (SRI) – změněný soubor prohlížeč nespustí
+    css.integrity = "sha384-c6Rcwz4e4CITMbu/NBmnNS8yN2sC3cUElMEMfP3vqqKFp7GOYaaBBCqmaWBjmkjb"; css.crossOrigin = "anonymous";
     document.head.appendChild(css);
     const js = document.createElement("script");
     js.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
+    js.integrity = "sha384-NElt3Op+9NBMCYaef5HxeJmU4Xeard/Lku8ek6hoPTvYkQPh3zLIrJP7KiRocsxO"; js.crossOrigin = "anonymous";
     js.onload = () => res(window.L); js.onerror = () => rej(new Error("Mapu se nepodařilo načíst."));
     document.head.appendChild(js);
   });
@@ -1922,7 +1943,7 @@ function loadOverviewHtml(days) {
 function vo2Html(v) {
   if (!v.rows.length) return `<div class="empty">VO2max nemám.</div>`;
   const tile = (k, name, ico) => { const x = v[k]; return stat(`${ico} ${name}`, x ? num(x.v) : DASH, "", x ? `naposledy změřeno ${dm(x.date)}${x.date.slice(0, 4)}` : "zatím nemám", ""); };
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localToday();
   // okno od prvního měření (max. 6 měsíců, min. 30 dní) – ať graf není poloprázdný
   const firstIn = v.rows.find((r) => r.date >= addDay(today, -180))?.date ?? addDay(today, -30);
   const from = [addDay(firstIn, -3), addDay(today, -30)].sort()[0];
@@ -2130,18 +2151,17 @@ async function pageVybaveni(el) {
       e.preventDefault();
       const fd = new FormData(f);
       const body = { name: fd.get("name"), kind: fd.get("kind"), start_km: fd.get("start_km"), from_date: fd.get("from_date"), to_date: fd.get("to_date"), note: fd.get("note"), default_for: fd.getAll("df") };
-      await api(f.dataset.id ? `gear/${f.dataset.id}` : "gear", { method: f.dataset.id ? "PUT" : "POST", body: JSON.stringify(body) });
-      close(); reload();
+      try { await api(f.dataset.id ? `gear/${f.dataset.id}` : "gear", { method: f.dataset.id ? "PUT" : "POST", body: JSON.stringify(body) }); close(); reload(); } catch (err) { fail(err); }
     });
-    f.querySelector("[data-del]")?.addEventListener("click", async () => { if (!confirm("Smazat vybavení? Aktivity zůstanou.")) return; await api(`gear/${f.dataset.id}`, { method: "DELETE" }); close(); reload(); });
+    f.querySelector("[data-del]")?.addEventListener("click", async () => { if (!confirm("Smazat vybavení? Aktivity zůstanou.")) return; try { await api(`gear/${f.dataset.id}`, { method: "DELETE" }); close(); reload(); } catch (err) { fail(err); } });
   };
   el.querySelector("#gearAdd").addEventListener("click", () => openForm(null));
   el.querySelectorAll("[data-edit]").forEach((b) => b.addEventListener("click", () => openForm(list.find((g) => String(g.id) === b.dataset.edit))));
   el.querySelectorAll("[data-gs]").forEach((b) => b.addEventListener("click", () => { gearShow = b.dataset.gs; pageVybaveni(el); }));
-  el.querySelectorAll("[data-reset]").forEach((b) => b.addEventListener("click", async () => { if (!confirm(`Zapsat „${b.textContent.replace("✓ ", "")}“ k dnešku? Km dílu začnou od nuly.`)) return; b.disabled = true; await api(`gear/parts/${b.dataset.reset}/reset`, { method: "POST", body: "{}" }); reload(); }));
-  el.querySelectorAll("[data-pdel]").forEach((b) => b.addEventListener("click", async () => { if (!confirm("Smazat díl i s historií servisu?")) return; await api(`gear/parts/${b.dataset.pdel}`, { method: "DELETE" }); reload(); }));
-  el.querySelectorAll("[data-preset]").forEach((b) => b.addEventListener("click", async () => { b.disabled = true; await api(`gear/${b.dataset.gid}/parts`, { method: "POST", body: b.dataset.preset }); reload(); }));
-  el.querySelectorAll(".pform").forEach((f) => f.addEventListener("submit", async (e) => { e.preventDefault(); const fd = new FormData(f); await api(`gear/${f.dataset.gid}/parts`, { method: "POST", body: JSON.stringify(Object.fromEntries(fd)) }); reload(); }));
+  el.querySelectorAll("[data-reset]").forEach((b) => b.addEventListener("click", async () => { if (!confirm(`Zapsat „${b.textContent.replace("✓ ", "")}“ k dnešku? Km dílu začnou od nuly.`)) return; b.disabled = true; try { await api(`gear/parts/${b.dataset.reset}/reset`, { method: "POST", body: "{}" }); reload(); } catch (err) { fail(err, b); } }));
+  el.querySelectorAll("[data-pdel]").forEach((b) => b.addEventListener("click", async () => { if (!confirm("Smazat díl i s historií servisu?")) return; try { await api(`gear/parts/${b.dataset.pdel}`, { method: "DELETE" }); reload(); } catch (err) { fail(err); } }));
+  el.querySelectorAll("[data-preset]").forEach((b) => b.addEventListener("click", async () => { b.disabled = true; try { await api(`gear/${b.dataset.gid}/parts`, { method: "POST", body: b.dataset.preset }); reload(); } catch (err) { fail(err, b); } }));
+  el.querySelectorAll(".pform").forEach((f) => f.addEventListener("submit", async (e) => { e.preventDefault(); const fd = new FormData(f); try { await api(`gear/${f.dataset.gid}/parts`, { method: "POST", body: JSON.stringify(Object.fromEntries(fd)) }); reload(); } catch (err) { fail(err); } }));
 }
 
 /** Aktivity s jedním vybavením (klik na vybavení). */
@@ -2194,7 +2214,8 @@ async function pageVyziva(el) {
 }
 
 async function pageNastaveni(el) {
-  const [s, st, sec] = await Promise.all([api("settings"), api("status"), api("secrets").catch(() => [])]);
+  const [s, st0, sec] = await Promise.all([api("settings"), api("status").catch(() => null), api("secrets").catch(() => [])]);
+  const st = st0 || { state: {}, counts: {}, logs: [], source: "", llm: false, model: "" };
   const SEC_LABEL = { GARMIN_API_KEY: ["Garmin API klíč", "Garmin Connect → Nastavení → Personal API"], INTERVALS_API_KEY: ["intervals.icu API klíč", "intervals.icu → Settings → Developer Settings"], INTERVALS_ATHLETE_ID: ["intervals.icu ID sportovce", "např. i696761 (Settings, vpravo nahoře)"], TOMTOM_API_KEY: ["TomTom API klíč (jemná mapa, volitelné)", "zdarma na developer.tomtom.com → Dashboard → Keys (Map Display API); bez klíče se použije jemná mapa CARTO"], MAPY_API_KEY: ["Mapy.com API klíč (mapové podklady)", "zdarma na developer.mapy.com → Můj účet → API klíč; omez ho na doménu trener-app.trener-app.workers.dev"] };
   const secCard = card("c12", "🔑 Připojení (API klíče)", "šifrovaně", `<div class="form-grid">${sec.map((x) => `<label>${SEC_LABEL[x.key]?.[0] || x.key}<input type="password" autocomplete="off" data-sec="${x.key}" placeholder="${x.source ? `nastaveno (${x.source === "dashboard" ? "zde" : "ze souboru"}) ${x.hint}` : "nenastaveno"}"><small class="sub">${SEC_LABEL[x.key]?.[1] || ""}</small></label>`).join("")}</div>
     <div class="btns"><button class="btn pri" id="secSave">Uložit vyplněné</button><button class="btn" id="secTest">Otestovat připojení</button><span class="note" id="secMsg"></span></div>
@@ -2225,7 +2246,7 @@ async function pageNastaveni(el) {
      <label class="chk"><input type="checkbox" name="icu_sync" ${s.icu_sync ? "checked" : ""}> Zápis plánu do intervals.icu</label>
    </div><div class="btns"><button class="btn pri" type="submit">Uložit</button><span class="note" id="saved"></span></div></form>`)}
    ${card("c4", "Zóny tepu", s.hr_zones ? s.hr_zones.source : "", s.hr_zones ? kv([...s.hr_zones.floors.map((v, i) => [`Z${i + 1} od`, v + " bpm"]), ["Max", s.hr_zones.max + " bpm"], ["LTHR", (s.hr_zones.lthr ?? DASH) + " bpm"], ["Klidový", (s.hr_zones.rest ?? DASH) + " bpm"]]) : '<div class="empty">Nemám.</div>')}
-   ${card("c6", "Stav synchronizace", st.source, kv([
+   ${st0 ? card("c6", "Stav synchronizace", st.source, kv([
      ["Poslední sync", st.state.last_sync_ok ? new Date(st.state.last_sync_ok).toLocaleString("cs-CZ") : DASH],
      ["Aktivity", `${st.counts.acts} (od ${st.counts.a_from ? dm(st.counts.a_from) + st.counts.a_from.slice(0, 4) : DASH})`],
      ["Dny wellness / noci", `${st.counts.days} / ${st.counts.nights}`],
@@ -2233,8 +2254,7 @@ async function pageNastaveni(el) {
      ["Backfill wellness", bw.done ? "hotovo" : bw.cursor ?? DASH],
      ["Naplánované jednotky", st.counts.planned],
      ["LLM", st.llm ? esc(st.model) : "nedostupné"],
-   ]))}
-   ${card("c6", "Události", "Cloudflare", `<p class="note">Jeden cron (každých 5 min), sync po malých dávkách. Detail v docs/limits.md.</p><table class="t"><tr><th>Kdy</th><th>Událost</th></tr>${st.logs.slice(0, 8).map((l) => `<tr><td class="sub">${new Date(l.at).toLocaleString("cs-CZ")}</td><td>${esc(l.level)}: ${esc(l.msg)}</td></tr>`).join("")}</table>`)}
+   ])) + card("c6", "Události", "Cloudflare", `<p class="note">Jeden cron (každých 5 min), sync po malých dávkách. Detail v docs/limits.md.</p><table class="t"><tr><th>Kdy</th><th>Událost</th></tr>${st.logs.slice(0, 8).map((l) => `<tr><td class="sub">${new Date(l.at).toLocaleString("cs-CZ")}</td><td>${esc(l.level)}: ${esc(l.msg)}</td></tr>`).join("")}</table>`) : ""}
    ${await accountCard(el)}
    ${secCard}
    ${card("c12", "Vzhled a účet", "", `<div class="sl" style="margin-bottom:6px">Motiv</div><div class="skins">${SKINS.map(([k, l, d2]) => `<button class="skinopt ${getSkin() === k ? "on" : ""}" data-skin="${k}"><span class="sk-sw sk-${k}"></span><b>${l}</b><small>${d2}</small></button>`).join("")}</div><div class="sl" style="margin:14px 0 6px">Světlý / tmavý (platí pro oba motivy)</div><div class="btns" style="margin-top:0">${["auto", "light", "dark"].map((t) => `<button class="btn" data-theme="${t}">${{ auto: "Podle systému", light: "Světlý", dark: "Tmavý" }[t]}</button>`).join("")}<a class="btn" href="/logout">Odhlásit</a></div>`)}
@@ -2243,21 +2263,30 @@ async function pageNastaveni(el) {
     e.preventDefault();
     const fd = new FormData(e.target);
     const body = {};
-    for (const k of ["ftp", "year_km_goal", "rides_per_week", "goal_ctl"]) body[k] = fd.get(k) ? Number(fd.get(k)) : null;
-    for (const k of ["goal", "goal_name", "goal_date", "place_name", "morning_from", "morning_to", "evening_time", "weekly_time", "garmin_key_created"]) body[k] = fd.get(k) || null;
+    // volitelné údaje: prázdné = smazat (null); povinné (časy zpráv, místo, tréninky týdně): prázdné se neposílá → zůstane uložená hodnota
+    for (const k of ["ftp", "year_km_goal", "goal_ctl"]) body[k] = fd.get(k) ? Number(fd.get(k)) : null;
+    for (const k of ["goal_name", "goal_date", "garmin_key_created"]) body[k] = fd.get(k) || null;
+    for (const k of ["goal", "place_name", "morning_from", "morning_to", "evening_time", "weekly_time"]) if (String(fd.get(k) ?? "").trim()) body[k] = String(fd.get(k)).trim();
+    if (fd.get("rides_per_week")) body.rides_per_week = Number(fd.get("rides_per_week"));
     for (const k of ["llm_enabled", "llm_polish", "icu_sync", "floor_strength"]) body[k] = fd.get(k) === "on";
-    body.ride_temps = { cold: Number(fd.get("t_cold") ?? 3), hot: Number(fd.get("t_hot") ?? 30), ideal: Number(fd.get("t_ideal") ?? 18) };
-    const r = await api("settings", { method: "POST", body: JSON.stringify(body) });
-    cache.clear();
-    el.querySelector("#saved").textContent = r.proposal ? `Uloženo. Cíl změněn – ${r.proposal.count} změn v plánu čeká na potvrzení v Trenérovi.` : "Uloženo.";
+    const numOr = (k, d) => { const v = String(fd.get(k) ?? "").trim(); return v !== "" && isFinite(+v) ? +v : d; };
+    body.ride_temps = { cold: numOr("t_cold", s.ride_temps?.cold ?? 3), hot: numOr("t_hot", s.ride_temps?.hot ?? 30), ideal: numOr("t_ideal", s.ride_temps?.ideal ?? 18) };
+    const sv = el.querySelector("#saved");
+    try {
+      const r = await api("settings", { method: "POST", body: JSON.stringify(body) });
+      cache.clear();
+      sv.textContent = r.proposal ? `Uloženo. Cíl změněn – ${r.proposal.count} změn v plánu čeká na potvrzení v Trenérovi.` : "Uloženo.";
+    } catch (err) { sv.textContent = `Nepovedlo se: ${err.message}`; }
   });
   el.querySelectorAll("[data-theme]").forEach((b) => b.addEventListener("click", () => setTheme(b.dataset.theme)));
   el.querySelectorAll("[data-skin]").forEach((b) => b.addEventListener("click", () => { setSkin(b.dataset.skin); el.querySelectorAll("[data-skin]").forEach((x) => x.classList.toggle("on", x === b)); }));
   el.querySelector("#secSave")?.addEventListener("click", async () => {
     const msg = el.querySelector("#secMsg");
     let n = 0;
-    for (const inp of el.querySelectorAll("[data-sec]")) if (inp.value.trim()) { await api("secrets", { method: "POST", body: JSON.stringify({ key: inp.dataset.sec, value: inp.value.trim() }) }); inp.value = ""; n++; }
-    msg.textContent = n ? `Uloženo (${n}). Otestuj připojení.` : "Nic k uložení.";
+    try {
+      for (const inp of el.querySelectorAll("[data-sec]")) if (inp.value.trim()) { await api("secrets", { method: "POST", body: JSON.stringify({ key: inp.dataset.sec, value: inp.value.trim() }) }); inp.value = ""; n++; }
+      msg.textContent = n ? `Uloženo (${n}). Otestuj připojení.` : "Nic k uložení.";
+    } catch (err) { msg.textContent = `${n ? `Uloženo ${n}, další klíč ` : ""}nepovedlo se uložit: ${err.message}`; }
     cache.clear();
   });
   el.querySelector("#secTest")?.addEventListener("click", async () => { const msg = el.querySelector("#secMsg"); msg.textContent = "Zkouším…"; try { const r = await api("secrets/test", { method: "POST" }); msg.textContent = `Garmin: ${r.garmin} · intervals.icu: ${r.intervals}`; } catch (e) { msg.textContent = e.message; } });
@@ -2349,9 +2378,11 @@ function chatUi(root, { key = CHAT_KEY, sugg = [], page = null } = {}) {
     box.scrollTop = box.scrollHeight;
     sg.style.display = hist.length ? "none" : "";
   };
+  let sending = false;
   const send = async (text) => {
     text = text.trim();
-    if (!text) return;
+    if (!text || sending) return;
+    sending = true;
     hist.push({ role: "user", content: text });
     saveChat(hist, key); draw(true); inp.value = ""; inp.style.height = "auto";
     try {
@@ -2360,6 +2391,7 @@ function chatUi(root, { key = CHAT_KEY, sugg = [], page = null } = {}) {
       use(r.ai);
       if (r.action) cache.clear();
     } catch (e) { hist.push({ role: "assistant", content: `Teď to nejde: ${e.message}` }); }
+    sending = false;
     saveChat(hist, key); draw();
   };
   draw();
@@ -2406,7 +2438,13 @@ function addAiButton(el) {
 }
 
 // ---------- účty: přihlášení, registrace z pozvánky ----------
+/** smazat uložené konverzace (chat, trenér, panely AI) – při odhlášení a změně účtu */
+function clearChats() { try { for (const k of Object.keys(localStorage)) if (k === CHAT_KEY || k === COACH_KEY || k.startsWith("chatPage:")) localStorage.removeItem(k); } catch {} }
+document.addEventListener("click", (e) => { if (e.target.closest('a[href="/logout"]')) { clearChats(); try { localStorage.removeItem("chatOwner"); } catch {} } });
+// po startu: patří uložené konverzace jinému účtu (přihlášení odkazem z Telegramu apod.)? → smazat
+api("me").then((m) => { try { const o = localStorage.getItem("chatOwner"); if (o != null && o !== String(m.uid)) clearChats(); localStorage.setItem("chatOwner", String(m.uid)); } catch {} }).catch(() => {});
 async function postAuth(path, body) {
+  clearChats();
   const r = await fetch("/auth/" + path, { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
@@ -2457,8 +2495,8 @@ async function accountCard(el) {
       catch (e) { msg.textContent = e.message; }
     });
     el.querySelector("#tgLink")?.addEventListener("click", async () => {
-      const r = await api("me/telegram", { method: "POST" });
-      el.querySelector("#tgMsg").innerHTML = `Napiš botovi v Telegramu: <b>/start ${r.code}</b> (platí 30 min)`;
+      const tm = el.querySelector("#tgMsg");
+      try { const r = await api("me/telegram", { method: "POST" }); tm.innerHTML = `Napiš botovi v Telegramu: <b>/start ${esc(r.code)}</b> (platí 30 min)`; } catch (err) { tm.textContent = `Nepovedlo se: ${err.message}`; }
     });
     el.querySelector("#invBtn")?.addEventListener("click", async () => {
       try {

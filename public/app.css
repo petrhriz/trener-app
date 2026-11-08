@@ -1375,3 +1375,7 @@ text.bbmark.up { fill: #23955a; } text.bbmark.down { fill: #d63b47; }
 /* 23. kolo: baterie – číslo přesně uprostřed */
 .battery .bat-n { text-anchor: middle; dominant-baseline: central; font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .battery .bat-u { font-size: inherit; font-weight: inherit; }
+/* hláška o chybě akce */
+#toast { position: fixed; left: 50%; bottom: calc(86px + env(safe-area-inset-bottom)); transform: translate(-50%, 20px); max-width: min(92vw, 520px); background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: 13.5px; box-shadow: 0 6px 20px rgba(0,0,0,.18); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 1000; }
+#toast.on { opacity: 1; transform: translate(-50%, 0); }
+@media (min-width: 761px) { #toast { bottom: 28px; } }
