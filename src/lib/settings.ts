@@ -11,6 +11,8 @@ export interface Settings {
   goal_name: string | null;
   goal_date: string | null;
   year_km_goal: number | null;
+  /** cílová kondice (CTL) k datu cíle; null = návrh +4 body týdně */
+  goal_ctl: number | null;
   morning_from: string;
   morning_to: string;
   evening_time: string;
@@ -44,6 +46,7 @@ export const DEFAULTS: Settings = {
   goal_name: "120 km pod 4 h i s kopci (volitelné)",
   goal_date: null,
   year_km_goal: null,
+  goal_ctl: null,
   morning_from: "05:30",
   morning_to: "11:00",
   evening_time: "20:00",

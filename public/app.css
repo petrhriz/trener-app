@@ -1330,3 +1330,25 @@ details.info > .note { margin-top: 6px; }
 }
 .zleg svg.sqs { display: block; flex: none; }
 @media (max-width: 760px) { .abasics > div:last-child:nth-child(odd) { grid-column: 1 / -1; } }
+
+/* ===== 19. kolo: výpočty jako v TrainingPeaks ===== */
+.an-v { display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; line-height: 1.4; margin-bottom: 10px; }
+.an-v i { flex: none; width: 9px; height: 9px; border-radius: 50%; margin-top: 5px; background: var(--muted); }
+.an-v.good i { background: var(--ok); } .an-v.warn i { background: var(--warn); } .an-v.bad i { background: var(--bad); }
+.insights { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.insights .an-v { margin-bottom: 6px; }
+.an-big { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.an-big b { font-size: 30px; font-variant-numeric: tabular-nums; } .an-big b small { font-size: 15px; color: var(--muted); font-weight: 500; }
+.an-big span { font-size: 12.5px; color: var(--muted); flex: 1; min-width: 160px; }
+.an-list > div { display: grid; grid-template-columns: 10px 64px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.an-list i { width: 9px; height: 9px; border-radius: 50%; }
+.an-list .d { color: var(--muted); font-size: 12px; } .an-list .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .an-list .r { color: var(--muted); font-size: 12px; }
+.an-weeks { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.an-weeks > div { background: var(--card2); border-radius: 9px; padding: 6px 4px; text-align: center; border-bottom: 3px solid var(--muted); }
+.an-weeks > div.good { border-color: var(--ok); } .an-weeks > div.warn { border-color: var(--warn); } .an-weeks > div.bad { border-color: var(--bad); }
+.an-weeks b { display: block; font-size: 14px; font-variant-numeric: tabular-nums; } .an-weeks span { font-size: 11px; color: var(--muted); }
+.an-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 6px; }
+.an-row > div { background: var(--card2); border-radius: 10px; padding: 7px 9px; min-width: 0; }
+.an-row span { display: block; font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.an-row b { font-size: 16px; font-variant-numeric: tabular-nums; } .an-row b small { font-size: 11px; color: var(--muted); font-weight: 500; }
+@media (max-width: 760px) { .an-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } .an-weeks { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

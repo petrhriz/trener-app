@@ -23,6 +23,7 @@ import { addConstraint, applyChanges, getProposal, openProposal, removeConstrain
 import { activityReport, eftpOf, ftpCheckOf, fitnessTable, recoveryFor, plannedFor, planFor, readiness, weatherMap, weekLoads, weekly } from "../report/build";
 import { weekTargetAdjusted, z2MaxMinutes } from "../core/plan";
 import { loadCtx } from "../report/context";
+import { compliance, ctlPlan, efficiency, intensityVerdict, intensityWeeks, monotonyWeeks, weeklyCompliance } from "../core/analytics";
 import { recomputeLoads } from "../sync/metrics";
 import { geocode } from "../sync/weather";
 import { verifyAccess } from "./access";
@@ -229,6 +230,37 @@ api.get("/year", async (c) => {
   });
 });
 
+/** výpočty jako v TrainingPeaks: splnění plánu, 80/20, kondice k cíli, Efficiency Factor, monotónnost a strain */
+async function analyticsOf(env: Env, ctx: Awaited<ReturnType<typeof loadCtx>>) {
+  const T = ctx.T;
+  const [plans, reviews] = await Promise.all([
+    all<any>(env.DB, "SELECT date, kind, name, duration_min, target_load, status FROM planned_workouts WHERE date >= ? AND date <= ? ORDER BY date", addDays(T, -28), T),
+    all<{ week_from: string; data: string }>(env.DB, "SELECT week_from, data FROM weekly_reviews ORDER BY week_from DESC LIMIT 8"),
+  ]);
+  const comp = compliance(plans, ctx.acts as any, T);
+  const weeks = weeklyCompliance(reviews.map((x) => { try { return { week_from: x.week_from, data: JSON.parse(x.data) }; } catch { return { week_from: x.week_from, data: null }; } }));
+  const last = ctx.metrics.find((m) => m.date === T) ?? ctx.metrics[ctx.metrics.length - 1];
+  return {
+    compliance: { ...comp, weeks },
+    intensity: { weeks: intensityWeeks(ctx.acts as any, T), verdict: intensityVerdict(ctx.acts as any, T) },
+    ctlPlan: ctlPlan(last?.ctl ?? null, ctx.s.goal_ctl ?? null, ctx.s.goal_date, T),
+    ef: efficiency(ctx.acts as any, ctx.s.ftp),
+    monotony: monotonyWeeks(ctx.metrics.map((m) => ({ date: m.date, load: m.load })), T),
+  };
+}
+/** krátké postřehy pro trenéra (Trenér → Z čeho trenér vychází) */
+function insightsOf(a: Awaited<ReturnType<typeof analyticsOf>>) {
+  const out: { tone: string; text: string }[] = [];
+  const c = a.compliance;
+  if (c.count >= 3 && c.loadPct != null && c.loadPct < 70) out.push({ tone: "warn", text: `Plán za 4 týdny splněný na ${c.loadPct} % – možná je moc těžký, zvaž lehčí cíl nebo méně tréninků.` });
+  if (a.intensity.verdict && a.intensity.verdict.tone !== "good") out.push({ tone: a.intensity.verdict.tone, text: a.intensity.verdict.text });
+  if (a.monotony.tone !== "good") out.push({ tone: a.monotony.tone, text: a.monotony.text });
+  if (a.ctlPlan && a.ctlPlan.tone !== "good") out.push({ tone: a.ctlPlan.tone, text: a.ctlPlan.text });
+  if (a.ef.trend != null && a.ef.trend <= -3) out.push({ tone: "warn", text: a.ef.text });
+  return out;
+}
+api.get("/analytics", async (c) => c.json(await analyticsOf(c.env, await loadCtx(c.env))));
+
 api.get("/coach", async (c) => {
   const ctx = await loadCtx(c.env);
   const r = await readiness(ctx);
@@ -242,7 +274,9 @@ api.get("/coach", async (c) => {
   const longPlanned = r.plan.days.some((d) => d.date <= addDays(mon, 6) && dow(d.date) >= 6 && (d.durationMin ?? 0) >= 90);
   const pz = powerZones(ftp, ctx.s.power_zones_pct);
   const open = await openProposal(c.env);
+  const insights = await analyticsOf(c.env, ctx).then(insightsOf).catch(() => []);
   return c.json({
+    insights,
     readiness: r,
     floor: [
       { label: "Dlouhá jízda o víkendu (≥ 1:30)", done: longRide, planned: longPlanned },
