@@ -175,6 +175,106 @@ export function intervalWorkout(c: Ctx, spec: IntervalSpec): Workout {
   return { blocks };
 }
 
+// ---------- jiné sporty (kroky podle tepu, syntaxe „Z2 HR“) ----------
+
+export type OtherSport = "run" | "xc_ski" | "walk";
+export const SPORT_LABEL: Record<string, string> = { ride: "Kolo", run: "Běh", xc_ski: "Běžky", walk: "Chůze" };
+export const SPORT_ICON: Record<string, string> = { ride: "🚴", run: "🏃", xc_ski: "🎿", walk: "🚶" };
+/** typ události v intervals.icu */
+export const ICU_TYPE: Record<string, string> = { ride: "Ride", run: "Run", xc_ski: "NordicSki", walk: "Walk" };
+
+const r5 = (x: number) => Math.round(x / 5) * 5;
+
+/** Délka náhradní jednotky z délky jízdy: běh je na minutu náročnější, chůze lehčí. */
+export function otherMinutes(sport: OtherSport, bikeMin: number, kind: "z2" | "quality" | "long" | "recovery"): number {
+  if (sport === "run") return Math.max(30, Math.min(kind === "long" ? 90 : 75, r5(bikeMin * 0.6)));
+  if (sport === "walk") return Math.max(45, Math.min(150, r5(bikeMin * 1.3)));
+  return Math.max(45, Math.min(kind === "long" ? 180 : 120, r5(bikeMin)));
+}
+
+/**
+ * Náhrada za kolo. Běh: kroky na čas bez lapů (lapy jen u kola). Běžky: bez struktury – buď pocitově lehce,
+ * nebo kvalita naplno (v zimě v bundě se hodinky hlídat nedají).
+ */
+export function otherWorkout(sport: OtherSport, kind: "z2" | "quality" | "long" | "recovery", minutes: number): { workout: Workout; name: string } {
+  const L = SPORT_LABEL[sport]!;
+  if (sport === "xc_ski") {
+    const q = kind === "quality";
+    return {
+      name: q ? "Běžky – kvalita naplno" : "Běžky – pocitově lehce",
+      workout: { blocks: [{ label: q ? "Kvalita" : "Lehce", kind: q ? "work" : "main", steps: [{ dur_s: minutes * 60, hr: q ? "Z4 HR" : "Z2 HR" }] }] },
+    };
+  }
+  if (sport === "walk" || kind === "recovery") {
+    return {
+      name: sport === "walk" ? "Chůze – svižně" : `${L} – Z1 regenerace`,
+      workout: { blocks: [{ label: sport === "walk" ? "Chuze" : "Z1", kind: "cooldown", steps: [{ dur_s: minutes * 60, hr: sport === "walk" ? "Z1 HR" : "Z1 HR" }] }] },
+    };
+  }
+  if (kind === "quality") {
+    const reps = sport === "run" ? 5 : 4;
+    const work = sport === "run" ? 240 : 360;
+    const warm = sport === "run" ? 15 : 20;
+    const core = (reps * (work + 180)) / 60;
+    const cool = Math.max(10, r5(minutes - warm - core));
+    return {
+      name: `${L} – ${reps}×${work / 60} min Z4`,
+      workout: {
+        blocks: [
+          { label: "Rozjeti", kind: "warmup", steps: [{ dur_s: warm * 60, hr: "Z2 HR" }] },
+          { label: "Intervaly", kind: "work", reps, steps: [{ dur_s: work, hr: "Z4 HR" }, { dur_s: 180, hr: "Z1 HR" }] },
+          { label: "Vyjeti", kind: "cooldown", steps: [{ dur_s: cool * 60, hr: "Z1 HR" }] },
+        ],
+      },
+    };
+  }
+  const main = Math.max(10, minutes - 15);
+  return {
+    name: kind === "long" ? `${L} – Z2 dlouhá` : `${L} – Z2`,
+    workout: {
+      blocks: [
+        { label: "Rozjeti", kind: "warmup", steps: [{ dur_s: 600, hr: "Z1 HR" }] },
+        { label: "Z2", kind: "main", steps: [{ dur_s: main * 60, hr: "Z2 HR" }] },
+        { label: "Vyjeti", kind: "cooldown", steps: [{ dur_s: 300, hr: "Z1 HR" }] },
+      ],
+    },
+  };
+}
+
+/**
+ * Kroky workoutu z intervals.icu (workout_doc.steps) → náš Workout, aby šly pojmenovat lapy a hodnotit pásma.
+ * Výkon v W nebo v % FTP; první krok = rozjetí, poslední = vyjetí, opakování a kroky nad 80 % FTP = intervaly.
+ */
+export function workoutFromIcu(steps: any[] | null | undefined, ftp: number | null): Workout | null {
+  if (!Array.isArray(steps) || !steps.length) return null;
+  const f = ftp ?? 250;
+  const watts = (p: any): [number, number] | null => {
+    if (!p) return null;
+    const lo = p.start ?? p.value;
+    const hi = p.end ?? p.value;
+    if (typeof lo !== "number" || typeof hi !== "number") return null;
+    const k = p.units === "%ftp" ? f / 100 : 1;
+    return [Math.round(lo * k), Math.round(hi * k)];
+  };
+  const mk = (s: any): Step => {
+    const w = watts(s.power);
+    const st: Step = { dur_s: Number(s.duration ?? 0) };
+    if (w) [st.lo, st.hi] = w;
+    else st.hr = "Z2 HR";
+    if (s.until_lap_press) st.lap = true;
+    return st;
+  };
+  const blocks: Block[] = steps.map((s, i) => {
+    if (s.reps && Array.isArray(s.steps)) return { label: "Interval", kind: "work", reps: s.reps, steps: s.steps.map(mk) };
+    const st = mk(s);
+    if (i === 0) return { label: "Rozjeti", kind: "warmup", steps: [st] };
+    if (i === steps.length - 1) return { label: "Z2 a dojezd", kind: "cooldown", steps: [st] };
+    if ((st.lo ?? 0) >= 0.8 * f) return { label: "Interval", kind: "work", steps: [st] };
+    return st.dur_s <= 600 ? { label: "Pauza", kind: "pause", steps: [st] } : { label: "Z2", kind: "main", steps: [st] };
+  });
+  return { blocks };
+}
+
 /** Název jednotky podle 7.2 (bez délky, bez „Venku“, trenažér s předponou). */
 export function workoutName(base: string, indoor: boolean): string {
   return indoor ? `Trenažér – ${base}` : base;

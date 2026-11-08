@@ -22,6 +22,17 @@ export interface Settings {
   garmin_key_created: string | null;
   rides_per_week: number;
   dashboard_url: string | null;
+  /** stav jako v Bevelu: aktivní / nemocný / zraněný / dovolená; until = poslední den (null = do odvolání) */
+  status: { kind: "active" | "sick" | "injured" | "vacation"; from: string | null; until: string | null };
+  /** síla v minimu týdne */
+  floor_strength: boolean;
+  /** místo pro počasí na Přehledu */
+  place_name: string;
+  /** osobní hranice počasí: pocitově °C – pod „cold“ zima, nad „hot“ vedro, okno co nejblíž „ideal“ */
+  ride_temps: { cold: number; hot: number; ideal: number };
+  /** souřadnice místa pro počasí (dohledané z place_name); null = výchozí z wrangler.jsonc */
+  place_lat: number | null;
+  place_lon: number | null;
 }
 
 export const DEFAULTS: Settings = {
@@ -44,7 +55,22 @@ export const DEFAULTS: Settings = {
   garmin_key_created: null,
   rides_per_week: 3,
   dashboard_url: null,
+  status: { kind: "active", from: null, until: null },
+  floor_strength: false,
+  place_name: "Hostomice",
+  ride_temps: { cold: 3, hot: 30, ideal: 18 },
+  place_lat: null,
+  place_lon: null,
 };
+
+/** Platný stav k datu (po „until“ automaticky zpět aktivní). */
+export function statusOn(s: Settings, date: string): Settings["status"] {
+  const st = s.status ?? DEFAULTS.status;
+  if (st.kind === "active") return st;
+  if (st.until && date > st.until) return { kind: "active", from: null, until: null };
+  if (st.from && date < st.from) return { kind: "active", from: null, until: null };
+  return st;
+}
 
 export async function getSettings(db: D1Database): Promise<Settings> {
   const rows = await all<{ key: string; value: string }>(db, "SELECT key, value FROM settings");

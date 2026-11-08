@@ -64,16 +64,21 @@ describe("čas Europe/Prague a přechod letního času", () => {
 
 // ---------- kondice ----------
 describe("kondice / únava / forma (6.4)", () => {
-  it("vzorce a forma ráno = CTL(D−1) − ATL(D−1)", () => {
+  it("vzorce a forma = CTL(D) − ATL(D) jako intervals.icu; kotvy z intervals.icu platí", () => {
     const loads = new Map([["2026-01-02", 100]]);
     const s = computeMetrics(loads, "2026-01-01", "2026-01-03", { ctl: 50, atl: 60 });
-    expect(s[0]!.form).toBe(-10);
     const ctl1 = 50 + (0 - 50) * 0.0235;
     const atl1 = 60 + (0 - 60) * 0.1331;
     expect(s[0]!.ctl).toBeCloseTo(ctl1, 2);
     expect(s[1]!.ctl).toBeCloseTo(ctl1 + (100 - ctl1) * 0.0235, 2);
     expect(s[1]!.atl).toBeCloseTo(atl1 + (100 - atl1) * 0.1331, 2);
-    expect(s[1]!.form).toBeCloseTo(ctl1 - atl1, 2);
+    expect(s[0]!.form).toBeCloseTo(ctl1 - atl1, 2);
+    expect(s[1]!.form).toBeCloseTo(s[1]!.ctl - s[1]!.atl, 2);
+    const a = computeMetrics(loads, "2026-01-01", "2026-01-03", { ctl: 50, atl: 60 }, new Map([["2026-01-02", { ctl: 44.9, atl: 25.5, ramp: -4.1 }]]));
+    expect(a[1]!.ctl).toBe(44.9);
+    expect(a[1]!.form).toBeCloseTo(19.4, 2);
+    expect(a[1]!.ramp).toBe(-4.1);
+    expect(a[2]!.ctl).toBeCloseTo(44.9 - 44.9 * 0.0235, 2);
   });
   it("ramp rate = CTL(D) − CTL(D−7)", () => {
     const s = computeMetrics(new Map(), "2026-01-01", "2026-01-10", { ctl: 50, atl: 50 });
@@ -100,7 +105,7 @@ describe("kondice / únava / forma (6.4)", () => {
   it("výhled", () => {
     const p = project({ ctl: 50, atl: 50 }, "2026-01-01", [0, 100]);
     expect(p[0]!.date).toBe("2026-01-02");
-    expect(p[0]!.form).toBe(0);
+    expect(p[0]!.form).toBeCloseTo(p[0]!.ctl - p[0]!.atl, 1);
   });
 });
 

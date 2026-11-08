@@ -1,5 +1,5 @@
 // Inkrementální přepočet daily_metrics: zapisují se jen změněné řádky.
-import { computeMetrics } from "../core/fitness";
+import { type Anchor, computeMetrics } from "../core/fitness";
 import { activityLoad } from "../core/load";
 import { all, execAll, upsertSql } from "../lib/db";
 import type { Settings } from "../lib/settings";
@@ -8,7 +8,13 @@ export async function recomputeMetrics(db: D1Database, today: string): Promise<n
   const loads = await all<{ date: string; load: number }>(db, "SELECT date, SUM(COALESCE(load, 0)) AS load FROM activities GROUP BY date ORDER BY date");
   if (!loads.length) return 0;
   const map = new Map(loads.map((r) => [r.date, r.load]));
-  const series = computeMetrics(map, loads[0]!.date, today);
+  const icu = await all<{ date: string; icu_ctl: number; icu_atl: number; icu_ramp: number | null }>(
+    db,
+    "SELECT date, icu_ctl, icu_atl, icu_ramp FROM wellness WHERE icu_ctl IS NOT NULL AND icu_atl IS NOT NULL",
+  );
+  const anchors = new Map<string, Anchor>(icu.map((r) => [r.date, { ctl: r.icu_ctl, atl: r.icu_atl, ramp: r.icu_ramp }]));
+  // kde intervals.icu hodnotu má, platí ta; jinak (např. před první synchronizací dne) pokračuje výpočet
+  const series = computeMetrics(map, loads[0]!.date, today, { ctl: 0, atl: 0 }, anchors);
   const existing = new Map(
     (await all<{ date: string; load: number; ctl: number; atl: number; form: number; ramp: number | null }>(db, "SELECT * FROM daily_metrics")).map((r) => [r.date, r]),
   );

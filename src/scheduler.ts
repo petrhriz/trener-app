@@ -9,6 +9,7 @@ import { loadCtx, parseAct } from "./report/context";
 import { syncTick } from "./sync/sync";
 import { cmdRano, cmdTyden, cmdZitra, send } from "./telegram/bot";
 import { activityMessage } from "./telegram/render";
+import { serviceAlerts } from "./api/gear";
 
 export async function runScheduler(env: Env, at = new Date()): Promise<string[]> {
   const log: string[] = [];
@@ -31,8 +32,8 @@ export async function runScheduler(env: Env, at = new Date()): Promise<string[]>
   await job("stavy", async () => {
     await run(
       env.DB,
-      `UPDATE planned_workouts SET status = CASE WHEN EXISTS (SELECT 1 FROM activities a WHERE a.date = planned_workouts.date AND a.sport IN ('ride','mtb','indoor')) THEN 'done' ELSE 'missed' END, updated_at = ?
-       WHERE status = 'planned' AND kind != 'rest' AND (date < ? OR (date = ? AND EXISTS (SELECT 1 FROM activities a WHERE a.date = planned_workouts.date AND a.sport IN ('ride','mtb','indoor'))))`,
+      `UPDATE planned_workouts SET status = CASE WHEN EXISTS (SELECT 1 FROM activities a WHERE a.date = planned_workouts.date AND a.sport IN ('ride','mtb','indoor','run','xc_ski','walk','hike') AND a.moving_s >= 1200) THEN 'done' ELSE 'missed' END, updated_at = ?
+       WHERE status = 'planned' AND kind != 'rest' AND (date < ? OR (date = ? AND EXISTS (SELECT 1 FROM activities a WHERE a.date = planned_workouts.date AND a.sport IN ('ride','mtb','indoor','run','xc_ski','walk','hike') AND a.moving_s >= 1200)))`,
       new Date().toISOString(),
       T,
       T,
@@ -62,9 +63,9 @@ export async function runScheduler(env: Env, at = new Date()): Promise<string[]>
     if (!rows.length) return;
     const ctx = await loadCtx(env, at);
     for (const r of rows) {
-      const bike = ["ride", "mtb", "indoor"].includes(r.sport);
+      // počkat na doplnění z intervals.icu (lapy, spárovaný workout), nejdéle 30 min
       const age = Date.now() - Date.parse(r.seen_at);
-      if (bike && r.enrich_state !== 1 && age < 30 * 60_000) continue;
+      if (r.enrich_state !== 1 && age < 30 * 60_000) continue;
       if (!(await once(env.DB, `akt:${r.id}`))) continue;
       const a = ctx.acts.find((x) => x.id === r.id) ?? parseAct(r);
       await send(env, activityMessage(activityReport(ctx, a), env.PUBLIC_URL));
@@ -95,6 +96,16 @@ export async function runScheduler(env: Env, at = new Date()): Promise<string[]>
         await run(env.DB, "INSERT INTO weekly_reviews (week_from, data, created_at) VALUES (?, ?, ?) ON CONFLICT(week_from) DO UPDATE SET data = excluded.data", mon, JSON.stringify(w), new Date().toISOString());
         await cmdTyden(env);
         log.push("týden odeslán");
+      }
+    });
+  }
+
+  // servis vybavení (řetěz, vosk…): jednou za hodinu, mezi 7 a 21 h
+  if (now.hh >= 7 && now.hh <= 21 && !(await wasSent(env.DB, `servis:${T}:${now.hh}`)) && (await once(env.DB, `servis:${T}:${now.hh}`))) {
+    await job("servis", async () => {
+      for (const msg of await serviceAlerts(env.DB)) {
+        await send(env, msg);
+        log.push("servis upozornění");
       }
     });
   }

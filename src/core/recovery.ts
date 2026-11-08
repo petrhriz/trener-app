@@ -221,7 +221,7 @@ export function evaluateRecovery(inp: RecoveryInput): RecoveryResult {
     else if (rhr.flag === "yellow") rhr.expected = true;
   }
   const inds: [string, Indicator][] = [
-    ["HRV", hrv],
+    ["VST", hrv],
     ["klidový tep", rhr],
     ["spánek", sleep],
   ];
@@ -245,7 +245,7 @@ export function evaluateRecovery(inp: RecoveryInput): RecoveryResult {
   } else if (red > 0 || yellow + red >= 3) state = "red";
   else if (yellow >= 2 || (hrvYellow2Days && !hrv.expected)) {
     state = "yellow";
-    if (hrvYellow2Days && yellow < 2) reasons.push("HRV pod normou druhý den po sobě");
+    if (hrvYellow2Days && yellow < 2) reasons.push("VST pod normou druhý den po sobě");
   }
 
   return {

@@ -24,6 +24,40 @@ export interface WellRow {
   fitness_age: number | null;
   wake_time: string | null;
   intensity_min: number | null;
+  deep_s: number | null;
+  light_s: number | null;
+  rem_s: number | null;
+  awake_s: number | null;
+  awake_count: number | null;
+  sleep_stress: number | null;
+  sleep_hr: number | null;
+  sleep_resp: number | null;
+  sleep_need_min: number | null;
+  sleep_feedback: string | null;
+  sleep_sub: string | null;
+  sleep_start: string | null;
+  bb_charged: number | null;
+  bb_drained: number | null;
+  bb_latest: number | null;
+  stress_max: number | null;
+  stress_dist: string | null;
+  respiration: number | null;
+  floors_up: number | null;
+  floors_down: number | null;
+  sleep_resp_lo: number | null;
+  sleep_resp_hi: number | null;
+  next_sleep_need_min: number | null;
+}
+
+/** Spárovaný workout z intervals.icu */
+export interface IcuEvent {
+  id: number;
+  name: string | null;
+  description: string | null;
+  load: number | null;
+  moving_time: number | null;
+  type: string | null;
+  steps: any[] | null;
 }
 
 export interface MetricRow {
@@ -45,6 +79,13 @@ export interface FullAct extends ActRow {
   garmin_load: number | null;
   duration_s: number | null;
   avg_power: number | null;
+  icu_id: string | null;
+  icu_event: IcuEvent | null;
+  icu_compliance: number | null;
+  icu_eftp: number | null;
+  icu_strain: number | null;
+  icu_intensity: number | null;
+  calories: number | null;
 }
 
 export interface Ctx {
@@ -64,7 +105,7 @@ export interface Ctx {
 
 export function parseAct(r: any): FullAct {
   const j = (v: unknown) => (typeof v === "string" && v ? JSON.parse(v) : null);
-  return { ...r, hr_z: j(r.hr_z), pwr_z: j(r.pwr_z), mmp: j(r.mmp), laps: j(r.laps) };
+  return { ...r, hr_z: j(r.hr_z), pwr_z: j(r.pwr_z), mmp: j(r.mmp), laps: j(r.laps), icu_event: j(r.icu_event), extra: j(r.extra) };
 }
 
 export async function loadCtx(env: Env, at?: Date): Promise<Ctx> {

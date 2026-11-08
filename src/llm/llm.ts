@@ -6,6 +6,7 @@ import { logEvent } from "../lib/db";
 import { getSettings } from "../lib/settings";
 
 const STYLE = `Jsi osobní trenér cyklistiky. Piš česky, krátce, celými větami, bez vaty a spekulací. Tykej.
+Variabilitu srdeční frekvence (v kontextu „hrv“) nazývej česky VST, ne HRV.
 Formát čísel: desetinná čárka (1,07), mezera před jednotkou (183 W, 77 ms), záporná čísla se znakem „−“.
 Používej POUZE čísla z dodaného JSON kontextu. Žádné nové číslo nevymýšlej ani nepočítej. Co v kontextu není, napiš „nemám“.
 Rozhodnutí (semafor, plán, zátěž) už udělal program – jen je vysvětli. Nejsi lékař: při příznacích nemoci, bolesti na hrudi nebo závrati doporuč odpočinek a lékaře.
@@ -67,6 +68,49 @@ export async function answerQuestion(env: Env, question: string, context: Record
     return null;
   }
   return ans;
+}
+
+const CHAT_STYLE = `Jsi osobní trenér cyklistiky a zdraví (také běh a běžky) a odpovídáš v chatu. Piš česky, tykej, věcně a srozumitelně.
+Variabilitu srdeční frekvence nazývej VST. Desetinná čárka, mezera před jednotkou.
+Otázky na sportovce (trénink, plán, spánek, zotavení, zátěž, aktivity) odpovídej z dat v KONTEXTU – čísla ber jen odtud, nic nevymýšlej; co v datech není, řekni „to v datech nemám“.
+Když je v KONTEXTU „stranka_kterou_vidi“, uživatel se ptá na tu stránku dashboardu – vysvětli čísla z ní a co z nich plyne.
+Obecné otázky (technika, výživa, vybavení, vosk na běžky…) odpovídej z obecných znalostí, stručně.
+Rozhodnutí o plánu dělá program – vysvětli ho, případně navrhni změnu, kterou si uživatel udělá v Trenérovi.
+Nejsi lékař: při bolesti na hrudi, závrati nebo horečce doporuč klid a lékaře. Odpověď max. 8 vět nebo krátký seznam.`;
+
+/**
+ * Chat nad daty. Kontrola čísel: odpověď s číslem, které v kontextu ani v otázce není, se zkusí jednou znovu;
+ * když ani pak nesedí, vrátí se s příznakem `checked: false` (UI ukáže upozornění).
+ */
+export async function answerChat(
+  env: Env,
+  messages: { role: "user" | "assistant"; content: string }[],
+  context: Record<string, unknown>,
+): Promise<{ answer: string; checked: boolean; model: string } | null> {
+  if (!(await llmAvailable(env))) return null;
+  const model = env.LLM_MODEL || "@cf/mistralai/mistral-small-3.1-24b-instruct";
+  const system = `${CHAT_STYLE}\n\nKONTEXT (JSON, data uživatele):\n${JSON.stringify(context)}`;
+  const run1 = async (extra = "") => {
+    try {
+      const r = (await env.AI!.run(model as any, { messages: [{ role: "system", content: system + extra }, ...messages], max_tokens: 700, temperature: 0.3 } as any)) as { response?: string };
+      return (r?.response ?? "").trim() || null;
+    } catch (e) {
+      await logEvent(env.DB, "warn", `chat: ${(e as Error).message.slice(0, 120)}`);
+      return null;
+    }
+  };
+  const allText = { context, q: messages.map((m) => m.content).join(" ") };
+  let ans = await run1();
+  if (!ans) return null;
+  let checked = numbersOk(ans, allText);
+  if (!checked) {
+    const again = await run1("\n\nPOZOR: v minulé odpovědi bylo číslo, které v kontextu není. Používej jen čísla z kontextu.");
+    if (again) {
+      ans = again;
+      checked = numbersOk(again, allText);
+    }
+  }
+  return { answer: ans, checked, model };
 }
 
 /** Přepis jedné věty závěru do přirozenější češtiny (volitelné, llm_polish). Čísla musí sedět. */

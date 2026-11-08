@@ -22,6 +22,10 @@ export interface Env {
   ADMIN_TOKEN?: string;
   INTERVALS_API_KEY?: string;
   INTERVALS_ATHLETE_ID?: string;
+  /** veřejný klíč Mapy.com (jde do prohlížeče, omezit na doménu v portálu Mapy.com) */
+  MAPY_API_KEY?: string;
+  /** TomTom Maps (volitelně) – jemný mapový podklad */
+  TOMTOM_API_KEY?: string;
 }
 
 /** Bezpečný přehled secrets: jen nastaveno / chybí, nikdy hodnota. */

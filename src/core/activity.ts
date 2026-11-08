@@ -38,6 +38,10 @@ export interface PlannedForAct {
   quality_type: string | null;
   target_load: number | null;
   workout: Workout | null;
+  /** app = z plánu aplikace, icu = workout zadaný v intervals.icu */
+  source?: "app" | "icu";
+  /** plnění workoutu podle intervals.icu (%) */
+  compliance?: number | null;
 }
 
 export const SPORT_EMOJI: Record<string, string> = {
@@ -47,7 +51,7 @@ export const SPORT_EMOJI: Record<string, string> = {
   run: "🏃",
   hockey: "🏒",
   skate: "⛸️",
-  xc_ski: "⛷️",
+  xc_ski: "🎿",
   walk: "🚶",
   hike: "🚶",
   padel: "🎾",
@@ -102,8 +106,9 @@ export interface ActivityAnalysis {
   summary: { durationS: number | null; km: number | null; mainPoint: string };
 }
 
-const HR_COLORS = ["var(--z1)", "var(--z2)", "var(--z3)", "var(--z4o)", "var(--z5r)"];
-const PWR_COLORS = ["var(--z1)", "var(--z2)", "var(--z3)", "var(--z4y)", "var(--z5o)", "var(--z6)", "var(--z7)"];
+// barvy musí existovat v app.css (dřív odkazy na neexistující proměnné → Z4/Z5 se nevykreslily)
+const HR_COLORS = ["var(--z1)", "var(--z2)", "var(--z3)", "var(--z4)", "var(--z6)"];
+const PWR_COLORS = ["var(--z1)", "var(--z2)", "var(--z3)", "var(--z4)", "var(--z5)", "var(--z6)", "var(--z7)"];
 
 function zoneRows(secs: number[], moving: number, colors: string[]): ZoneRow[] {
   return secs.map((s, i) => {
@@ -192,7 +197,7 @@ export function analyzeActivity(a: ActRow, plan: PlannedForAct | null, ftp: numb
   const hilly = km != null && km > 0 && (a.elev_gain ?? 0) / km > 10;
   const steady = !isQuality && (vi == null || vi <= 1.15);
   const planLoad = plan?.target_load ?? null;
-  const compliance = planLoad && a.load ? Math.min(150, Math.round((a.load / planLoad) * 100)) : null;
+  const compliance = plan?.compliance ?? (planLoad && a.load ? Math.min(150, Math.round((a.load / planLoad) * 100)) : null);
 
   const envLabel = indoor ? "trenažér" : a.sport === "mtb" ? "MTB" : isBike ? (hasPower ? "silnice s wattmetrem" : "silnice bez wattmetru") : "";
   const unitType = plan?.name ?? (isQuality && qType && qType in QUALITY_NAME ? QUALITY_NAME[qType as QualityType] : isBike ? "bez plánu" : "");
@@ -205,7 +210,7 @@ export function analyzeActivity(a: ActRow, plan: PlannedForAct | null, ftp: numb
   if (!indoor && a.elev_gain != null && isBike) basics.push(["⛰️ Převýšení", `${num(a.elev_gain)} m`]);
   if (!indoor && speed != null && isBike) basics.push(["🚀 Průměrná rychlost", `${num(speed, 1)} km/h`]);
   basics.push(["🔋 Zátěž", `${num(a.load)}${planLoad ? ` (plán ${num(planLoad)})` : ""}`]);
-  if (compliance != null) basics.push(["✅ Splnění plánu", `${compliance} %`]);
+  if (compliance != null) basics.push(["✅ Splnění plánu", `${compliance} %${plan?.compliance != null ? " (intervals.icu)" : ""}`]);
   if (a.avg_hr) basics.push(["❤️ Tep průměr / max", `${num(a.avg_hr)} / ${num(a.max_hr)} bpm`]);
   if (hasPower) {
     basics.push(["⚡ Výkon průměr / NP", `${num(a.avg_power)} / ${num(a.np)} W`]);
@@ -270,7 +275,7 @@ export function analyzeActivity(a: ActRow, plan: PlannedForAct | null, ftp: numb
 
 function buildLaps(a: ActRow, plan: PlannedForAct | null, isZ2: boolean, hasPower: boolean, indoor: boolean) {
   const res = { show: false, rows: [] as LapRow[], note: "", c3: !hasPower };
-  if (!BIKE_SPORTS.includes(a.sport)) return res;
+  if (!BIKE_SPORTS.includes(a.sport) && a.sport !== "run") return res;
   const raw = (a.laps ?? []).filter((l) => !(l.type === "RECOVERY" && l.elapsed_s < 10));
   const garminN = a.lap_count ?? null;
   if (!raw.length) {
@@ -363,6 +368,12 @@ function goalText(a: ActRow, plan: PlannedForAct | null, c: GoalCtx): string {
   const mv = a.moving_s ?? 0;
   const s: string[] = [];
   if (!c.isBike) {
+    if (plan) {
+      const z2hr = zoneShare(a.hr_z, mv, 1, 1);
+      s.push(`Plán: ${plan.name}. ${a.name ?? "Aktivita"} ${hms(mv)}${z2hr != null ? `, ${z2hr} % času v Z2 tepu` : ""}, zátěž ${num(a.load)}${c.planLoad ? ` (plán ${num(c.planLoad)})` : ""}.`);
+      if (c.compliance != null) s.push(`Splnění ${c.compliance} %.`);
+      return s.join(" ");
+    }
     if (a.sport === "hockey") {
       s.push(`Hokej ${hms(mv)}, tep průměr ${num(a.avg_hr)} a max ${num(a.max_hr)} bpm, zátěž ${num(a.load)}.`);
       s.push(c.isQuality ? "Počítá se jako kvalitní jednotka týdne, další den bez intervalů." : "Do limitu kvality se nepočítá.");
@@ -411,6 +422,7 @@ function mainPointText(a: ActRow, c: { hasPower: boolean; intensity: number | nu
 
 function verdictText(a: ActRow, plan: PlannedForAct | null, c: { isBike: boolean; isQuality: boolean; compliance: number | null; hasPower: boolean; steady: boolean }): string {
   const what = a.name ?? "Aktivita";
+  if (!c.isBike && plan) return `${plan.name} odjeto${c.compliance != null ? `, splnění ${c.compliance} %` : ""}.`;
   if (!c.isBike) return `${what}: ${c.isQuality ? "kvalitní jednotka týdne" : "doplňková aktivita"}, zátěž ${num(a.load)}.`;
   if (plan) return `${plan.name} odjeto${c.compliance != null ? `, splnění ${c.compliance} %` : ""}.`;
   return `${c.isQuality ? "Kvalitní jízda" : "Jízda"} bez plánu, zátěž ${num(a.load)}.`;

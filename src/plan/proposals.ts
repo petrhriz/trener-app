@@ -2,6 +2,7 @@
 import type { Env } from "../env";
 import { IntervalsClient } from "../datasource/intervals";
 import type { Change, Payload } from "../core/plan";
+import { ICU_TYPE } from "../core/workout";
 import { all, first, lit, logEvent, run } from "../lib/db";
 import { dayDm } from "../lib/format";
 import { getSettings } from "../lib/settings";
@@ -38,7 +39,7 @@ function eventBody(p: Payload, id: number) {
   return {
     category: "WORKOUT",
     start_date_local: `${p.date}T00:00:00`,
-    type: p.indoor ? "VirtualRide" : "Ride",
+    type: (p.sport ?? "ride") === "ride" ? (p.indoor ? "VirtualRide" : "Ride") : ICU_TYPE[p.sport!] ?? "Run",
     name: p.name,
     description: p.steps_text,
     indoor: !!p.indoor,
@@ -83,14 +84,14 @@ export async function applyChanges(env: Env, items: Change[]): Promise<ApplyResu
       if (id) {
         await run(
           env.DB,
-          "UPDATE planned_workouts SET date=?, kind=?, quality_type=?, name=?, indoor=?, duration_min=?, steps_json=?, steps_text=?, target_load=?, reason=?, moved_from=?, status='planned', updated_at=? WHERE id=?",
-          p.date, p.kind, p.quality_type, p.name, p.indoor, p.duration_min, p.steps_json, p.steps_text, p.target_load, p.reason, p.moved_from ?? null, now, id,
+          "UPDATE planned_workouts SET date=?, kind=?, quality_type=?, name=?, indoor=?, duration_min=?, steps_json=?, steps_text=?, target_load=?, reason=?, moved_from=?, sport=?, goal=?, status='planned', updated_at=? WHERE id=?",
+          p.date, p.kind, p.quality_type, p.name, p.indoor, p.duration_min, p.steps_json, p.steps_text, p.target_load, p.reason, p.moved_from ?? null, p.sport ?? "ride", p.goal ?? s.goal, now, id,
         );
       } else {
         const r = await env.DB.prepare(
-          "INSERT INTO planned_workouts (date, kind, quality_type, name, indoor, duration_min, steps_json, steps_text, target_load, reason, status, moved_from, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?, 'planned', ?, ?, ?) RETURNING id",
+          "INSERT INTO planned_workouts (date, kind, quality_type, name, indoor, duration_min, steps_json, steps_text, target_load, reason, status, moved_from, sport, goal, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?, 'planned', ?, ?, ?, ?, ?) RETURNING id",
         )
-          .bind(p.date, p.kind, p.quality_type, p.name, p.indoor, p.duration_min, p.steps_json, p.steps_text, p.target_load, p.reason, p.moved_from ?? null, now, now)
+          .bind(p.date, p.kind, p.quality_type, p.name, p.indoor, p.duration_min, p.steps_json, p.steps_text, p.target_load, p.reason, p.moved_from ?? null, p.sport ?? "ride", p.goal ?? s.goal, now, now)
           .first<{ id: number }>();
         id = r!.id;
       }
@@ -145,8 +146,55 @@ export async function applyChanges(env: Env, items: Change[]): Promise<ApplyResu
   return { lines, verify };
 }
 
+/** Zrušení omezení (např. omylem „Dnes nepojedu“): smaže záznam v D1 i poznámku v intervals.icu. kind null = všechna omezení dne. */
+export async function removeConstraint(env: Env, date: string, kind: string | null): Promise<number> {
+  const rows = await all<{ id: number; icu_event_id: string | null; created_at: string | null }>(
+    env.DB,
+    kind ? "SELECT id, icu_event_id, created_at FROM constraints WHERE date = ? AND kind = ?" : "SELECT id, icu_event_id, created_at FROM constraints WHERE date = ? AND kind NOT IN ('sport', 'typ')",
+    ...(kind ? [date, kind] : [date]),
+  );
+  const icu = new IntervalsClient(env);
+  for (const r of rows) {
+    if (r.icu_event_id && icu.configured) await icu.deleteEvent(r.icu_event_id).catch(() => null);
+    await run(env.DB, "DELETE FROM constraints WHERE id = ?", r.id);
+  }
+  // jednotka, kterou kvůli omezení smazal potvrzený návrh, se vrátí do plánu (i do intervals.icu → Garmin)
+  const since = rows.map((r) => r.created_at).filter(Boolean).sort()[0];
+  if (since) {
+    const back = await all<any>(env.DB, "SELECT * FROM planned_workouts WHERE date = ? AND status = 'skipped' AND updated_at >= ?", date, since);
+    const s = await getSettings(env.DB);
+    for (const p of back) {
+      let evId: string | null = null;
+      if (s.icu_sync && icu.configured) {
+        try { evId = String((await icu.createEvent(eventBody(p, p.id))).id); } catch { /* zapíše se při dalším návrhu */ }
+      }
+      await run(env.DB, "UPDATE planned_workouts SET status = 'planned', icu_event_id = ?, updated_at = ? WHERE id = ?", evId, new Date().toISOString(), p.id);
+    }
+  }
+  return rows.length;
+}
+
 /** Omezení (7.4) – zapisuje se hned, bez potvrzení; volitelně i jako NOTE do intervals.icu. */
 export async function addConstraint(env: Env, date: string, kind: string, note: string | null): Promise<void> {
+  if (kind === "typ") {
+    // druh jednotky (z2 | quality) zvolený uživatelem; „auto“ = zrušit volbu
+    await run(env.DB, "DELETE FROM constraints WHERE date = ? AND kind = 'typ'", date);
+    if (note === "z2" || note === "quality") await run(env.DB, "INSERT INTO constraints (date, kind, note, created_at) VALUES (?, 'typ', ?, ?)", date, note, new Date().toISOString());
+    return;
+  }
+  if (kind === "sport") {
+    // náhrada sportu: platí poslední volba pro den; „kolo“ = zrušit náhradu
+    await run(env.DB, "DELETE FROM constraints WHERE date = ? AND kind = 'sport'", date);
+    if (note && note !== "ride") await run(env.DB, "INSERT INTO constraints (date, kind, note, created_at) VALUES (?, 'sport', ?, ?)", date, note, new Date().toISOString());
+    else await run(env.DB, "INSERT INTO constraints (date, kind, note, created_at) VALUES (?, 'sport', 'ride', ?)", date, new Date().toISOString());
+    return;
+  }
+  if (kind === "jizda") {
+    // vlastní jízda: platí poslední zadání pro den (JSON {min, km, with}); jízda se zapíše do kalendáře přes návrh změn
+    await run(env.DB, "DELETE FROM constraints WHERE date = ? AND kind = 'jizda'", date);
+    if (note) await run(env.DB, "INSERT INTO constraints (date, kind, note, created_at) VALUES (?, 'jizda', ?, ?)", date, note, new Date().toISOString());
+    return;
+  }
   const exists = await first(env.DB, "SELECT 1 AS x FROM constraints WHERE date = ? AND kind = ?", date, kind);
   if (exists) return;
   let evId: string | null = null;

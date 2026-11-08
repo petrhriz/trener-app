@@ -65,7 +65,12 @@ export async function run(db: D1Database, sql: string, ...params: unknown[]) {
 
 export async function getState<T>(db: D1Database, key: string): Promise<T | null> {
   const r = await first<{ value: string }>(db, "SELECT value FROM sync_state WHERE key = ?", key);
-  return r ? (JSON.parse(r.value) as T) : null;
+  if (!r) return null;
+  try {
+    return JSON.parse(r.value) as T;
+  } catch {
+    return null; // poškozená hodnota nesmí shodit dashboard ani sync (začne se znovu)
+  }
 }
 
 export async function setState(db: D1Database, key: string, value: unknown): Promise<void> {

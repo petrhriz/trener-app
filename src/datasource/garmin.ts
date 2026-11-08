@@ -158,6 +158,74 @@ export class GarminClient implements DataSource {
     };
   }
 
+  /** Tep během dne (vzorek po 2 min): [[ms, bpm|null], …] */
+  async dailyHeartRate(date: string): Promise<{ values: [number, number | null][]; rest: number | null; min: number | null; max: number | null }> {
+    const r = await this.get<any>(`/wellness-service/wellness/dailyHeartRate?date=${date}`);
+    return { values: (r?.heartRateValues ?? []).filter((x: any) => Array.isArray(x)), rest: r?.restingHeartRate ?? null, min: r?.minHeartRate ?? null, max: r?.maxHeartRate ?? null };
+  }
+
+  /** Body Battery dne: klíčové body [[ms, level]] + události (spánek, odpočinek, aktivita). */
+  async bodyBatteryDay(date: string): Promise<{ values: [number, number][]; events: { type: string; start: number; dur: number; impact: number | null }[]; charged: number | null; drained: number | null }> {
+    const r = await this.get<any[]>(`/wellness-service/wellness/bodyBattery/reports/daily?startDate=${date}&endDate=${date}`);
+    const d = (r ?? []).find((x) => x?.date === date) ?? r?.[0];
+    return {
+      values: (d?.bodyBatteryValuesArray ?? []).filter((x: any) => Array.isArray(x) && typeof x[1] === "number"),
+      events: (d?.bodyBatteryActivityEvent ?? []).map((e: any) => ({
+        type: String(e.eventType ?? ""),
+        start: Date.parse(String(e.eventStartTimeGmt ?? "").replace(/\.0$/, "") + "Z"),
+        dur: Number(e.durationInMilliseconds ?? 0),
+        impact: typeof e.bodyBatteryImpact === "number" ? e.bodyBatteryImpact : null,
+      })),
+      charged: d?.charged ?? null,
+      drained: d?.drained ?? null,
+    };
+  }
+
+  /** VST přes noc po 5 min: [[ms, ms VST]] */
+  async hrvNight(date: string): Promise<[number, number][]> {
+    const r = await this.get<any>(`/hrv-service/hrv/${date}`);
+    return (r?.hrvReadings ?? [])
+      .map((x: any) => [Date.parse(String(x.readingTimeGMT ?? "").replace(/\.0$/, "") + "Z"), x.hrvValue] as [number, number])
+      .filter((x: [number, number]) => Number.isFinite(x[0]) && typeof x[1] === "number");
+  }
+
+  /** Stres dne: čas v klidu / nízký / střední / vysoký (s) a celková úroveň. */
+  async stressDay(date: string): Promise<{ rest: number; low: number; med: number; high: number; level: number | null } | null> {
+    const r = await this.get<any[]>(`/usersummary-service/stats/stress/daily/${date}/${date}`);
+    const v = r?.[0]?.values;
+    if (!v) return null;
+    return { rest: v.restStressDuration ?? 0, low: v.lowStressDuration ?? 0, med: v.mediumStressDuration ?? 0, high: v.highStressDuration ?? 0, level: v.overallStressLevel ?? null };
+  }
+
+  /** Průběh aktivity z Garminu (záloha, když aktivita není v intervals.icu): čas, tep, výkon, rychlost, výška, vzdálenost, kadence. */
+  async activityStreams(id: string, points = 1500): Promise<Record<string, (number | null)[] | null> | null> {
+    const d = await this.get<any>(`/activity-service/activity/${id}/details?maxChartSize=${points}&maxPolylineSize=1500`);
+    const desc: { key: string; metricsIndex: number }[] = d?.metricDescriptors ?? [];
+    const rows: { metrics: (number | null)[] }[] = d?.activityDetailMetrics ?? [];
+    if (!rows.length) return null;
+    const col = (...keys: string[]) => {
+      const i = keys.map((k) => desc.find((m) => m.key === k)?.metricsIndex ?? -1).find((x) => x >= 0) ?? -1;
+      return i < 0 ? null : rows.map((r) => (typeof r.metrics[i] === "number" ? (r.metrics[i] as number) : null));
+    };
+    return {
+      time: col("sumElapsedDuration", "sumDuration") ?? rows.map((_, i) => i),
+      heartrate: col("directHeartRate"),
+      watts: col("directPower"),
+      velocity_smooth: col("directSpeed"),
+      altitude: col("directElevation"),
+      distance: col("sumDistance"),
+      cadence: col("directBikeCadence", "directDoubleCadence", "directRunCadence"),
+      temp: col("directAirTemperature"),
+      resp: col("directRespirationRate"),
+      perf: col("directPerformanceCondition"),
+      lat: col("directLatitude"),
+      lon: col("directLongitude"),
+      // trasa pro mapu (zjednodušená polyline Garminu)
+      polyLat: (d?.geoPolylineDTO?.polyline ?? []).map((p: any) => (typeof p?.lat === "number" ? p.lat : null)),
+      polyLon: (d?.geoPolylineDTO?.polyline ?? []).map((p: any) => (typeof p?.lon === "number" ? p.lon : null)),
+    };
+  }
+
   /** ~300 bodů průběhu jízdy (pro aerobní drift). */
   async activitySamples(id: string): Promise<[number, number | null, number | null, number | null][] | null> {
     const d = await this.get<any>(`/activity-service/activity/${id}/details?maxChartSize=300&maxPolylineSize=0`);

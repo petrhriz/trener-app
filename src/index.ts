@@ -9,10 +9,19 @@ import { recomputeLoads, recomputeMetrics } from "./sync/metrics";
 import { syncTick } from "./sync/sync";
 import { getSettings } from "./lib/settings";
 import { logEvent } from "./lib/db";
+import { applySecrets } from "./lib/secrets";
 import { tgCall } from "./telegram/api";
 import { cmdPlan, cmdRano, cmdTyden, cmdZitra, handleUpdate } from "./telegram/bot";
+import { authApp } from "./api/accounts";
+import { sessionUser, userIdForChat } from "./api/session";
+import { OWNER_ID, activeUsers, envFor, forgetUser, userForTick } from "./lib/tenant";
 
 const app = new Hono<{ Bindings: Env }>();
+// API klíče zadané v dashboardu mají přednost před secrets Workeru
+app.use("*", async (c, next) => {
+  await applySecrets(c.env);
+  await next();
+});
 
 /** Porovnání v konstantním čase. */
 export function safeEqual(a: string, b: string): boolean {
@@ -30,7 +39,7 @@ app.post("/telegram/webhook", async (c) => {
   const update = await c.req.json().catch(() => null);
   if (update) {
     c.executionCtx.waitUntil(
-      handleUpdate(c.env, update).catch((e) => logEvent(c.env.DB, "error", `telegram: ${(e as Error).message}`)),
+      routeTelegram(c.env, update).catch((e) => logEvent(c.env.DB, "error", `telegram: ${(e as Error).message}`)),
     );
   }
   return c.text("ok");
@@ -83,6 +92,22 @@ app.get("/admin/llm", async (c) => {
   const out = await runLlm(c.env, sys, `KONTEXT: ${JSON.stringify(ctx)}\nOTÁZKA: ${q}`);
   return c.json({ model: c.env.LLM_MODEL, answer: out, numbersOk: out ? numbersOk(out, { ...ctx, q }) : null });
 });
+// surová odpověď zdroje (diagnostika): /admin/raw?src=garmin|icu&path=/...
+app.get("/admin/raw", async (c) => {
+  const path = c.req.query("path") ?? "";
+  if (!path.startsWith("/")) return c.json({ error: "path" }, 400);
+  if (c.req.query("src") === "icu") {
+    const { IntervalsClient } = await import("./datasource/intervals");
+    return c.json(await new IntervalsClient(c.env).req("GET", path.replace("{ath}", `/athlete/${c.env.INTERVALS_ATHLETE_ID}`)));
+  }
+  const { GarminClient } = await import("./datasource/garmin");
+  const { HttpError } = await import("./lib/http");
+  try {
+    return c.json(await new GarminClient(c.env).get(path));
+  } catch (e) {
+    return c.json({ upstreamError: e instanceof HttpError ? e.status : String(e) }, 502);
+  }
+});
 app.get("/admin/ctx", async (c) => {
   const { env: _e, ...ctx } = await loadCtx(c.env);
   return c.json(ctx);
@@ -92,8 +117,8 @@ app.post("/admin/setup-webhook", async (c) => {
   await tgCall(c.env, "setWebhook", { url, secret_token: c.env.TELEGRAM_WEBHOOK_SECRET, allowed_updates: ["message", "callback_query"], drop_pending_updates: false });
   await tgCall(c.env, "setMyCommands", {
     commands: [
-      ["rano", "Připravenost"], ["stav", "Celý denní report"], ["plan", "Plán na 7 dní"], ["zitra", "Zítřek"],
-      ["aktivita", "Rozbor aktivity"], ["tyden", "Týdenní review"], ["pocasi", "Počasí a okna"], ["nepojedu", "Dnes nepojedu"],
+      ["menu", "Menu a nápověda"], ["rano", "Připravenost"],["stav", "Celý denní report"], ["plan", "Plán na 7 dní"], ["zitra", "Zítřek"],
+      ["aktivita", "Rozbor aktivity"], ["tyden", "Týdenní review"], ["pocasi", "Počasí a okna"], ["nepojedu", "Dnes nepojedu"], ["sport", "Jiný sport místo kola"],
       ["nemuzu", "Nemůžu <den>"], ["hokej", "Hokej <den>"], ["nemoc", "Jsem nemocný"], ["cil", "Cíl: zlepseni/udrzeni/pokles"],
       ["ftp", "Nastavit FTP"], ["vaha", "Zapsat váhu"], ["sila", "Zapsat sílu"], ["mobilita", "Zapsat mobilitu"],
       ["fit", "Workout jako FIT"], ["dashboard", "Odkaz na dashboard"], ["nastaveni", "Nastavení"], ["export", "Export dat"], ["pomoc", "Nápověda"],
@@ -115,14 +140,67 @@ app.get("/logout", async (c) => {
   return new Response(null, { status: 302, headers: { Location: "/", "Set-Cookie": logoutCookie() } });
 });
 
-// ---- dashboard API (session z Telegramu nebo Cloudflare Access) ----
-app.route("/api", api);
+// ---- přihlášení jménem a heslem, registrace z pozvánky ----
+app.route("/auth", authApp);
+
+// ---- dashboard API: env podle přihlášeného uživatele (vlastní tabulky, KV a klíče) ----
+const apiRoot = new Hono<{ Bindings: Env }>().route("/api", api);
+app.all("/api/*", async (c) => {
+  let uid = await sessionUser(c.env, c.req.header("cookie"));
+  // admin token (skripty) smí za uživatele: hlavička x-uid
+  const admin = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (uid == null && c.env.ADMIN_TOKEN && admin && safeEqual(admin, c.env.ADMIN_TOKEN)) uid = Number(c.req.header("x-uid") ?? OWNER_ID) || OWNER_ID;
+  let env = c.env;
+  if (uid != null && uid !== OWNER_ID) {
+    const e = await envFor(c.env, uid);
+    if (!e) return c.json({ error: "login", message: "Účet je vypnutý nebo neexistuje. Přihlas se znovu." }, 403);
+    await applySecrets(e);
+    env = e;
+  }
+  return apiRoot.fetch(c.req.raw, env, c.executionCtx);
+});
 
 app.get("/health", (c) => c.json({ ok: true }));
 
+/**
+ * Telegram: jeden bot pro všechny. Chat se přiřadí uživateli (vlastník = TELEGRAM_CHAT_ID, ostatní = users.telegram_chat_id).
+ * Neznámý chat smí jen „/start <kód>“ z Nastavení → propojí se s účtem.
+ */
+async function routeTelegram(base: Env, update: any): Promise<void> {
+  const chatId = String(update.callback_query?.message?.chat?.id ?? update.message?.chat?.id ?? update.edited_message?.chat?.id ?? "");
+  if (!chatId) return;
+  const uid = await userIdForChat(base, chatId);
+  if (uid == null) {
+    const m = /^\/start\s+(\d{6})\b/.exec(String(update.message?.text ?? "").trim());
+    if (!m) return; // cizí chat ignorovat
+    const v = await base.KV.get(`tglink:${m[1]}`);
+    if (!v) return void (await tgCall(base, "sendMessage", { chat_id: chatId, text: "Kód neplatí. Vygeneruj nový v dashboardu → Nastavení → Telegram." }).catch(() => null));
+    await base.KV.delete(`tglink:${m[1]}`);
+    await base.DB.prepare("UPDATE users SET telegram_chat_id = ? WHERE id = ?").bind(chatId, Number(v)).run();
+    forgetUser(Number(v));
+    await tgCall(base, "sendMessage", { chat_id: chatId, text: "✅ Propojeno. Odteď ti sem budu posílat ranní zhodnocení, rozbory aktivit a plán. Napiš /menu." }).catch(() => null);
+    return;
+  }
+  const env = await envFor(base, uid);
+  if (!env) return;
+  await applySecrets(env);
+  await handleUpdate(env, update);
+}
+
 export default {
   fetch: app.fetch,
+  // cron každou minutu: vlastník každých 5 min (jako dřív), další uživatelé ve zbylých minutách – jeden za spuštění
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(runScheduler(env).then(() => undefined).catch((e) => logEvent(env.DB, "error", `cron: ${(e as Error).message}`)));
+    const run = async () => {
+      await applySecrets(env);
+      const uid = userForTick(await activeUsers(env), Math.floor(Date.now() / 60_000));
+      if (uid == null) return;
+      const e = await envFor(env, uid);
+      if (!e) return;
+      await applySecrets(e);
+      if (uid !== OWNER_ID && !e.GARMIN_API_KEY && !e.INTERVALS_API_KEY) return; // ještě nezadal klíče
+      await runScheduler(e);
+    };
+    ctx.waitUntil(run().catch((e) => logEvent(env.DB, "error", `cron: ${(e as Error).message}`)));
   },
 } satisfies ExportedHandler<Env>;

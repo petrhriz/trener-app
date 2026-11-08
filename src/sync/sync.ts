@@ -7,7 +7,7 @@ import { BIKE_SPORTS } from "../datasource/types";
 import { computeDrift } from "../core/activity";
 import { activityLoad } from "../core/load";
 import { classify, qualityFromName, type QualityType } from "../core/quality";
-import { all, execAll, first, getState, logEvent, run, setState, setStateSql, upsertSql } from "../lib/db";
+import { all, execAll, first, getState, lit, logEvent, setState, setStateSql, upsertSql } from "../lib/db";
 import { HttpError } from "../lib/http";
 import { getSettings, setSettingSql, type Settings } from "../lib/settings";
 import { addDays, daysBetween, localNow } from "../lib/time";
@@ -18,13 +18,39 @@ const ACT_COLS = [
   "id", "start_local", "date", "type_key", "sport", "name", "distance_m", "duration_s", "moving_s", "elev_gain",
   "avg_hr", "max_hr", "avg_power", "max_power", "np", "max20", "tss_garmin", "if_garmin", "garmin_load", "aerobic_te",
   "avg_cad", "min_temp", "max_temp", "lap_count", "calories", "hr_z", "pwr_z", "mmp", "load", "load_source",
-  "is_quality", "quality_type", "updated_at",
+  "is_quality", "quality_type", "extra", "updated_at",
 ];
 
 const WELL_COLS = [
   "date", "hrv", "hrv_weekly", "hrv_status", "rhr", "sleep_s", "sleep_score", "sleep_q", "steps", "bb_max", "bb_min",
-  "stress_avg", "weight_kg", "vo2max", "intensity_min", "respiration", "fitness_age", "wake_time", "updated_at",
+  "stress_avg", "weight_kg", "vo2max", "intensity_min", "respiration", "fitness_age", "wake_time",
+  "deep_s", "light_s", "rem_s", "awake_s", "awake_count", "sleep_stress", "sleep_hr", "sleep_resp", "sleep_need_min",
+  "sleep_feedback", "sleep_sub", "sleep_start", "bb_charged", "bb_drained", "bb_latest", "stress_max", "stress_dist",
+  "icu_ctl", "icu_atl", "icu_ramp", "floors_up", "floors_down", "sleep_resp_lo", "sleep_resp_hi", "next_sleep_need_min", "updated_at",
 ];
+
+/** Zátěž z intervals.icu má přednost (stejná čísla jako v intervals.icu). */
+const ICU_LOAD_SQL = "UPDATE activities SET load = icu_load, load_source = 'icu' WHERE icu_load IS NOT NULL AND (load_source != 'icu' OR load != icu_load)";
+
+/** intervals.icu wellness → kondice/únava (+ VO2max). */
+function icuFitnessRows(w: any[]): NWellness[] {
+  return w
+    .filter((x) => x.ctl != null || x.vo2max != null)
+    .map((x) => ({ date: String(x.id), icu_ctl: x.ctl ?? null, icu_atl: x.atl ?? null, icu_ramp: x.rampRate ?? null, vo2max: x.vo2max ?? null }));
+}
+
+/** Shrnutí spárovaného workoutu z intervals.icu (pro rozbor aktivity). */
+function icuEventJson(ev: any): string {
+  return JSON.stringify({
+    id: ev.id,
+    name: ev.name ?? null,
+    description: ev.description ?? null,
+    load: ev.icu_training_load ?? null,
+    moving_time: ev.moving_time ?? null,
+    type: ev.type ?? null,
+    steps: ev.workout_doc?.steps ?? null,
+  });
+}
 
 export function dataSource(env: Env): DataSource {
   return env.DATA_SOURCE === "intervals" ? new IntervalsClient(env) : new GarminClient(env);
@@ -41,7 +67,7 @@ export function activitySql(acts: NActivity[], s: Settings, plannedQ: Map<string
       a.avg_hr, a.max_hr, a.avg_power, a.max_power, a.np, a.max20, a.tss_garmin, a.if_garmin, a.garmin_load, a.aerobic_te,
       a.avg_cad, a.min_temp, a.max_temp, a.lap_count, a.calories,
       a.hr_z ? JSON.stringify(a.hr_z) : null, a.pwr_z ? JSON.stringify(a.pwr_z) : null, a.mmp ? JSON.stringify(a.mmp) : null,
-      ld.load, ld.source, q.isQuality ? 1 : 0, q.type, now,
+      ld.load, ld.source, q.isQuality ? 1 : 0, q.type, a.extra ? JSON.stringify(a.extra) : null, now,
     ];
   });
   return upsertSql("activities", ACT_COLS, rows, ["id"], "replace");
@@ -74,7 +100,7 @@ export async function upsertActivities(env: Env, acts: NActivity[], s: Settings)
     (await all<{ id: string }>(env.DB, `SELECT id FROM activities WHERE id IN (${ids.map(() => "?").join(",")})`, ...ids)).map((r) => r.id),
   );
   const pq = await plannedQualityMap(env.DB, [...new Set(acts.map((a) => a.date))]);
-  await execAll(env.DB, [...activitySql(acts, s, pq), `UPDATE activities SET seen_at = '${new Date().toISOString()}' WHERE seen_at IS NULL`]);
+  await execAll(env.DB, [...activitySql(acts, s, pq), `UPDATE activities SET seen_at = '${new Date().toISOString()}' WHERE seen_at IS NULL`, ICU_LOAD_SQL]);
   const newIds = ids.filter((i) => !existing.has(i));
   const minDate = acts.filter((a) => !existing.has(a.id)).reduce<string | null>((m, a) => (!m || a.date < m ? a.date : m), null);
   return { newIds, minDate };
@@ -160,61 +186,133 @@ export async function syncTick(env: Env, opts: { force?: boolean; backfillPages?
     rep.steps.push(`aktivity (${acts.length}, nové ${r.newIds.length})`);
   });
 
+  // cron běží každých 5 min; těžší kroky jen jednou za 15 min / hodinu
+  // podle času posledního běhu (ne minut na hodinách) – další uživatelé se v cronu střídají v různých minutách
+  const lastQ = (await getState<number>(env.DB, "tick_quarter")) ?? 0;
+  const lastH = (await getState<number>(env.DB, "tick_hour")) ?? 0;
+  const quarter = opts.force || Date.now() - lastQ >= 14.5 * 60_000;
+  const hourly = opts.force || Date.now() - lastH >= 59 * 60_000;
+  if (quarter) await setState(env.DB, "tick_quarter", Date.now());
+  if (hourly) await setState(env.DB, "tick_hour", Date.now());
+
   // 2) wellness posledních 3 dnů: ráno každých 15 min, jinak jednou za hodinu
   const morning = now.minutes >= 300 && now.minutes <= 12 * 60;
-  if (opts.force || morning || now.mm < 15) {
+  // mimo to každých 5 min jen denní souhrn dneška (Body Battery, kroky, stres – 1 dotaz) → hustý průběh Body Battery
+  {
     await guard("wellness", async () => {
-      const parts: ("daily" | "sleep" | "hrv" | "weight")[] = ["daily", "sleep", "hrv"];
-      if (now.hh === 7 || now.hh === 12 || now.hh === 20 || opts.force) parts.push("weight");
-      const ws = await ds.wellnessRange(addDays(T, -2), T, parts);
+      const full = (hourly || quarter) && (hourly || morning);
+      const parts: ("daily" | "sleep" | "hrv" | "weight")[] = full ? ["daily", "sleep", "hrv"] : ["daily"];
+      if (full && (now.hh === 7 || now.hh === 12 || now.hh === 20 || opts.force)) parts.push("weight");
+      const ws = await ds.wellnessRange(full ? addDays(T, -2) : T, T, parts);
       await execAll(env.DB, wellnessSql(ws));
+      // Body Battery během dne: Garmin vrací jen pár klíčových bodů → průběžně si ukládáme poslední hodnotu
+      // čas = okamžik měření z Garminu, ne čas stažení (hodinky se synchronizují jen občas, v noci vůbec)
+      const tw = ws.find((w) => w.date === T);
+      const bb = tw?.bb_latest;
+      if (bb != null) {
+        const at = tw?.bb_latest_at && tw.bb_latest_at <= Date.now() + 60_000 ? tw.bb_latest_at : Date.now();
+        const k = `bbsnap:${T}`;
+        const arr = ((await env.KV.get(k, "json")) as [number, number][] | null) ?? [];
+        const last = arr[arr.length - 1];
+        // další uživatelé (ne vlastník): nejvýš 1 snímek za 30 min → KV zápisy (free: 1 000 / den) stačí i pro 10 lidí
+        const minGap = (env as any).__uid && (env as any).__uid !== 1 ? 30 * 60_000 : 60_000;
+        if (!last || (Math.abs(last[0] - at) > minGap && last[1] !== bb)) {
+          arr.push([at, bb]);
+          arr.sort((a, b) => a[0] - b[0]);
+          await env.KV.put(k, JSON.stringify(arr.slice(-400)), { expirationTtl: 14 * 86400 });
+        }
+      }
       rep.steps.push(`wellness (${ws.length} dní)`);
     });
   }
 
-  // 3) doplnění aktivit: lapy z intervals.icu, drift z Garmin průběhu (max. 2 na spuštění)
+  // 3) doplnění aktivit z intervals.icu po dávkách: zátěž, spárovaný workout + plnění, eFTP, lapy; drift z Garminu
   await guard("doplnění", async () => {
-    const rows = await all<{ id: string; date: string; sport: string; np: number | null; seen_at: string | null; enrich_state: number }>(
+    type Pend = { id: string; date: string; sport: string; np: number | null; seen_at: string | null; enrich_state: number; has_laps: number; has_drift: number };
+    let rows = await all<Pend>(
       env.DB,
-      "SELECT id, date, sport, np, seen_at, enrich_state FROM activities WHERE enrich_state != 1 AND enrich_state < 4 AND date >= ? ORDER BY date DESC LIMIT 2",
-      addDays(T, -100),
+      "SELECT id, date, sport, np, seen_at, enrich_state, laps IS NOT NULL AS has_laps, drift IS NOT NULL AS has_drift FROM activities WHERE enrich_state != 1 AND enrich_state < 4 AND date >= ? ORDER BY date DESC LIMIT 25",
+      addDays(T, -400),
     );
+    if (!rows.length) return;
+    // jedno okno max. 60 dní na jedno volání intervals.icu
+    const newest = rows[0]!.date;
+    rows = rows.filter((r) => daysBetween(r.date, newest) <= 60);
+    const oldest = rows[rows.length - 1]!.date;
+    const list = icu.configured ? await icu.activitiesRaw(oldest, newest) : [];
+    const paired = list.filter((x) => x.paired_event_id != null);
+    const events = paired.length ? await icu.events(oldest, newest).catch(() => [] as any[]) : [];
+    const evById = new Map(events.map((e: any) => [String(e.id), e]));
+    let lapQuota = 3;
+    let driftQuota = 2;
+    const sqls: string[] = [];
+    let minDate: string | null = null;
     for (const a of rows) {
       const bike = BIKE_SPORTS.includes(a.sport as any);
+      const recent = a.date >= addDays(T, -120);
+      const sameDay = list.filter((x) => String(x.start_date_local ?? "").slice(0, 10) === a.date);
+      const icuRow = list.find((x) => String(x.external_id ?? "") === a.id || String(x.external_id ?? "").includes(a.id)) ?? (sameDay.length === 1 ? sameDay[0] : null);
       let drift: number | null = null;
-      let icuRow: any = null;
       let laps: unknown = null;
-      if (bike && ds.activitySamples) {
-        const smp = await ds.activitySamples(a.id).catch(() => null);
-        if (smp) drift = computeDrift(smp, !!a.np);
+      let pending = false;
+      if (bike && recent && !a.has_drift && ds.activitySamples) {
+        if (driftQuota-- > 0) {
+          const smp = await ds.activitySamples(a.id).catch(() => null);
+          if (smp) drift = computeDrift(smp, !!a.np);
+        } else pending = true;
       }
-      if (icu.configured) {
-        const list = await icu.activitiesRaw(a.date, a.date);
-        icuRow = list.find((x) => String(x.external_id ?? "").includes(a.id)) ?? (list.length === 1 ? list[0] : null);
-        if (icuRow && bike) laps = await icu.laps(String(icuRow.id));
+      if (icuRow && (bike || a.sport === "run") && recent && !a.has_laps) {
+        if (lapQuota-- > 0) laps = await icu.laps(String(icuRow.id)).catch(() => null);
+        else pending = true;
       }
+      const ev = icuRow?.paired_event_id != null ? evById.get(String(icuRow.paired_event_id)) : null;
       const fresh = a.seen_at && Date.now() - Date.parse(a.seen_at) < 6 * 3600_000;
-      const ok = !icu.configured || !!icuRow || !bike;
-      const state = ok ? 1 : fresh ? 0 : a.enrich_state + 1;
-      await run(
-        env.DB,
-        "UPDATE activities SET drift = COALESCE(?, drift), icu_id = COALESCE(?, icu_id), icu_load = COALESCE(?, icu_load), icu_decoupling = COALESCE(?, icu_decoupling), laps = COALESCE(?, laps), enrich_state = ? WHERE id = ?",
-        drift,
-        icuRow ? String(icuRow.id) : null,
-        icuRow?.icu_training_load ?? null,
-        icuRow?.decoupling ?? null,
-        laps ? JSON.stringify(laps) : null,
-        state,
-        a.id,
+      const ok = !icu.configured || !!icuRow || !bike || !recent;
+      const state = pending ? a.enrich_state : ok ? 1 : fresh ? 0 : a.enrich_state + 1;
+      if (icuRow?.icu_training_load != null && (!minDate || a.date < minDate)) minDate = a.date;
+      sqls.push(
+        `UPDATE activities SET drift = COALESCE(${lit(drift)}, drift), icu_id = COALESCE(${lit(icuRow ? String(icuRow.id) : null)}, icu_id), ` +
+          `icu_load = COALESCE(${lit(icuRow?.icu_training_load ?? null)}, icu_load), icu_decoupling = COALESCE(${lit(icuRow?.decoupling ?? null)}, icu_decoupling), ` +
+          `laps = COALESCE(${lit(laps ? JSON.stringify(laps) : null)}, laps), icu_event = COALESCE(${lit(ev ? icuEventJson(ev) : null)}, icu_event), ` +
+          `icu_compliance = COALESCE(${lit(icuRow?.compliance ?? null)}, icu_compliance), icu_eftp = COALESCE(${lit(icuRow?.icu_rolling_ftp ?? null)}, icu_eftp), ` +
+          `icu_strain = COALESCE(${lit(icuRow?.strain_score ?? null)}, icu_strain), icu_intensity = COALESCE(${lit(icuRow?.icu_intensity ?? null)}, icu_intensity), ` +
+          `icu_pwhr_z2 = COALESCE(${lit(icuRow?.icu_power_hr_z2 ?? null)}, icu_pwhr_z2), icu_pwhr_z2_min = COALESCE(${lit(icuRow?.icu_power_hr_z2_mins ?? null)}, icu_pwhr_z2_min), ` +
+          `enrich_state = ${state} WHERE id = ${lit(a.id)}`,
       );
     }
-    if (rows.length) rep.steps.push(`doplnění (${rows.length})`);
+    sqls.push(ICU_LOAD_SQL);
+    await execAll(env.DB, sqls);
+    await markDirty(env.DB, minDate);
+    rep.steps.push(`doplnění (${rows.length})`);
+  });
+
+  // 3b) kondice / únava z intervals.icu: každou hodinu poslední 4 dny, jinak backfill historie po 180 dnech
+  await guard("icu kondice", async () => {
+    if (!icu.configured) return;
+    if (hourly || rep.newActivities.length) {
+      const w = await icu.wellnessRaw(addDays(T, -3), T);
+      await execAll(env.DB, wellnessSql(icuFitnessRows(w)));
+      await markDirty(env.DB, addDays(T, -3));
+      rep.steps.push("icu kondice");
+    }
+    const st = (await getState<{ cursor: string; done: boolean }>(env.DB, "icu_fit_bf")) ?? { cursor: T, done: false };
+    if (st.done || !quarter) return;
+    const from = addDays(st.cursor, -179);
+    const w = await icu.wellnessRaw(from, st.cursor);
+    const rows = icuFitnessRows(w);
+    await execAll(env.DB, wellnessSql(rows));
+    const oldestAct = await first<{ d: string }>(env.DB, "SELECT MIN(date) AS d FROM activities");
+    st.cursor = addDays(from, -1);
+    if (!rows.length || (oldestAct?.d && st.cursor < oldestAct.d)) st.done = true;
+    await setState(env.DB, "icu_fit_bf", st);
+    await markDirty(env.DB, from);
+    rep.steps.push(`icu kondice backfill (do ${from}${st.done ? ", hotovo" : ""})`);
   });
 
   // 4) backfill aktivit (celá historie), několik stránek po 20
   await guard("backfill aktivit", async () => {
     const st = (await getState<BfAct>(env.DB, "bf_act")) ?? { start: 0, done: false, count: 0 };
-    if (st.done) return;
+    if (st.done || !quarter) return;
     const pages = opts.backfillPages ?? 4;
     let minDate: string | null = null;
     for (let i = 0; i < pages; i++) {
@@ -238,7 +336,7 @@ export async function syncTick(env: Env, opts: { force?: boolean; backfillPages?
   // 5) backfill wellness po 28 dnech dozadu
   await guard("backfill wellness", async () => {
     const st = (await getState<BfWell>(env.DB, "bf_well")) ?? { cursor: addDays(T, -3), done: false, empty: 0 };
-    if (st.done) return;
+    if (st.done || !quarter) return;
     const from = addDays(st.cursor, -27);
     const ws = await ds.wellnessRange(from, st.cursor);
     const useful = ws.filter((w) => w.hrv != null || w.rhr != null || w.sleep_s != null || w.steps != null);
@@ -258,9 +356,23 @@ export async function syncTick(env: Env, opts: { force?: boolean; backfillPages?
     const last = await getState<string>(env.DB, "vo2_refresh");
     if (last === T && !opts.force) return;
     const w = await icu.wellnessRaw(addDays(T, -120), T);
-    const rows = w.filter((x) => x.vo2max).map((x) => ({ date: x.id as string, vo2max: x.vo2max as number }));
+    const rows = icuFitnessRows(w);
     await execAll(env.DB, [...wellnessSql(rows), setStateSql("vo2_refresh", T)]);
-    rep.steps.push(`vo2max (${rows.length})`);
+    // FTP z intervals.icu (tam je zadaný test) – jen když ho uživatel nenastavil ručně
+    const rs = await icu.rideSettings().catch(() => null);
+    // Ruční FTP z dashboardu platí, dokud se v intervals.icu neobjeví NOVÉ číslo (nový test) – to pak má přednost.
+    if (rs?.ftp) {
+      const seen = await getState<number>(env.DB, "icu_ftp_seen");
+      const manual = await getState<boolean>(env.DB, "ftp_manual");
+      const changedInIcu = seen != null && seen !== rs.ftp;
+      if (rs.ftp !== s.ftp && (!manual || changedInIcu)) {
+        await execAll(env.DB, [setSettingSql("ftp", rs.ftp), setStateSql("ftp_set_at", T), setStateSql("ftp_manual", false)]);
+        s.ftp = rs.ftp;
+      }
+      if (seen !== rs.ftp) await execAll(env.DB, [setStateSql("icu_ftp_seen", rs.ftp)]);
+    }
+    await markDirty(env.DB, addDays(T, -120));
+    rep.steps.push(`vo2max + kondice (${rows.length})`);
   });
 
   // 7) fitness age jednou denně

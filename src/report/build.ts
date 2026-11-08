@@ -1,6 +1,9 @@
 // Skládání reportů z kontextu. Vše deterministické – LLM sem nevstupuje.
 import { BIKE_SPORTS } from "../datasource/types";
-import { type ActivityAnalysis, analyzeActivity } from "../core/activity";
+import { type ActivityAnalysis, type PlannedForAct, analyzeActivity } from "../core/activity";
+import { qualityFromName } from "../core/quality";
+import { ftpCheck } from "../core/ftpCheck";
+import { workoutFromIcu } from "../core/workout";
 import { acwr, lthrSanity, sleepRegularity, weeklyReview, type WeeklyReview } from "../core/extras";
 import { FORM_ZONE_RANGE, formZone, rampLabel, weeklyLoadTarget } from "../core/fitness";
 import { type ActDay, type Change, type PlanDay, type PlanResult, generatePlan } from "../core/plan";
@@ -41,12 +44,13 @@ export function dayAfterReason(ctx: Ctx): string | null {
 
 export function recoveryFor(ctx: Ctx): RecoveryResult {
   const illness = ctx.constraints.some((c) => c.kind === "nemoc" && (c.date === ctx.T || c.date === addDays(ctx.T, -1)));
-  return evaluateRecovery({
+  const r = evaluateRecovery({
     date: ctx.T,
     rows: ctx.well.map((w) => ({ date: w.date, hrv: w.hrv, rhr: w.rhr, sleep_s: w.sleep_s, sleep_score: w.sleep_score, sleep_q: w.sleep_q })),
     dayAfter: dayAfterReason(ctx),
     illness,
   });
+  return r;
 }
 
 // ---------- 📊 kondice ----------
@@ -71,14 +75,30 @@ function vo2Last(ctx: Ctx, upTo: string): number | null {
   return r?.vo2max ?? null;
 }
 
+/** eFTP: odhad intervals.icu (icu_rolling_ftp z poslední jízdy), záložně 95 % nejlepších 20 min za 42 dní. */
+export function eftpOf(ctx: Ctx): { w: number; date: string; source: "icu" | "calc" } | null {
+  const a = [...ctx.acts].reverse().find((x) => isBike(x.sport) && x.icu_eftp);
+  if (a) return { w: Math.round(a.icu_eftp!), date: a.date, source: "icu" };
+  const e = eftp(ctx.acts.filter((x) => isBike(x.sport)).map((x) => ({ id: x.id, date: x.date, mmp: x.mmp, max20: x.max20, pwr_z: x.pwr_z })), ctx.T);
+  return e ? { ...e, source: "calc" } : null;
+}
+
+/** Kontrola FTP: doporučit test, když eFTP / 20 min neodpovídá nebo je FTP dlouho neověřené. */
+export function ftpCheckOf(ctx: Ctx, ftpSetAt: string | null) {
+  const power = ctx.acts.filter((a) => isBike(a.sport)).map((a) => ({ id: a.id, date: a.date, mmp: a.mmp, max20: a.max20, pwr_z: a.pwr_z }));
+  const m = +ctx.T.slice(5, 7);
+  return ftpCheck({ today: ctx.T, ftp: ctx.s.ftp, eftp: eftpOf(ctx), best20: bestIn(power, addDays(ctx.T, -42), ctx.T, 1200), ftpSetAt, inSeason: m >= 3 && m <= 9 });
+}
+
 export function fitnessTable(ctx: Ctx): FitnessTable {
   const T = ctx.T;
   const done = todayActs(ctx).length > 0;
-  const r2 = done ? metricOn(ctx, T) : metricOn(ctx, addDays(T, -1));
-  const r1 = metricOn(ctx, addDays(T, -8));
-  const col1 = `${dm(addDays(T, -7))} ráno`;
-  const col2 = `${dm(T)} ${done ? "teď" : "ráno"}`;
-  const f = (m: MetricRow | null) => (m ? m.ctl - m.atl : null);
+  // stejně jako intervals.icu: hodnoty dne (CTL, ATL, forma = CTL − ATL)
+  const r2 = metricOn(ctx, T) ?? metricOn(ctx, addDays(T, -1));
+  const r1 = metricOn(ctx, addDays(T, -7));
+  const col1 = dm(addDays(T, -7));
+  const col2 = `${dm(T)} dnes`;
+  const f = (m: MetricRow | null) => (m ? m.form : null);
   const loadIn = (from: string, to: string) => ctx.acts.filter((a) => a.date >= from && a.date <= to);
   const endDay = done ? T : addDays(T, -1);
   const l7 = loadIn(addDays(endDay, -6), endDay);
@@ -100,7 +120,7 @@ export function fitnessTable(ctx: Ctx): FitnessTable {
   const A = avgf(a14);
   const P = avgf(p14);
   const trend = A != null && P != null ? (A - P <= -1 ? "klesá" : A - P >= 1 ? "roste" : "stabilní") : "–";
-  const ef = eftp(ctx.acts.filter((a) => isBike(a.sport)).map((a) => ({ id: a.id, date: a.date, mmp: a.mmp, max20: a.max20, pwr_z: a.pwr_z })), T);
+  const ef = eftpOf(ctx);
   const ftp = ctx.s.ftp;
 
   const loads = new Map<string, number>();
@@ -117,9 +137,9 @@ export function fitnessTable(ctx: Ctx): FitnessTable {
     { label: "VO2max (Garmin)", v1: num(v1), v2: num(v2), diff: v1 != null && v2 != null ? signed(v2 - v1) : "–", sub: `${trend} · rozpětí 30 d ${v30.length ? `${Math.min(...v30)}–${Math.max(...v30)}` : "–"} · průměr 14 d ${num(A, 1)} (předtím ${num(P, 1)})${ef ? ` · eFTP ${ef.w} W` : ""}${ftp ? `, FTP ${ftp} W` : ""}`, iv: false },
   ];
   const notes: string[] = [];
-  notes.push(done ? "Dnes už proběhla aktivita, stav = konec dneška." : `Dnes zatím bez aktivity, stav dnes ráno = konec ${dayDm(addDays(T, -1))}`);
+  notes.push(`Kondice, únava a forma z intervals.icu (forma = kondice − únava dne)${done ? ", včetně dnešní aktivity" : ""}.`);
   if (A != null && P != null && A - P <= -2) notes.push("VO2max průměr klesl o 2 a víc.");
-  if (ef && ftp && Math.abs(ef.w - ftp) / ftp > 0.03) notes.push(`eFTP ${ef.w} W se liší od FTP ${ftp} W o víc než 3 %${zone === "Čerstvý" ? ", navrhuji test" : ", test až při formě Čerstvý"}.`);
+  if (ef && ftp) notes.push(`FTP ${ftp} W je z testu (nastavené v intervals.icu). eFTP ${ef.w} W je odhad intervals.icu z jízd bez testu${Math.abs(ef.w - ftp) / ftp > 0.03 ? ` – liší se o ${Math.round(Math.abs(ef.w - ftp))} W, ${zone === "Čerstvý" ? "zvaž nový test" : "test až při formě Čerstvý"}` : ", sedí s FTP"}.`);
   return { col1, col2, rows, note: notes.join(" "), ctl: r2?.ctl ?? null, atl: r2?.atl ?? null, form: form2, ramp, load7, loadPrev7, maintenance, acwr: ac };
 }
 
@@ -154,7 +174,7 @@ export function weatherMap(ctx: Ctx, from: string, days: number): Map<string, Da
   const m = new Map<string, DayWeather | null>();
   for (let i = 0; i < days; i++) {
     const d = addDays(from, i);
-    m.set(d, ctx.weatherOk ? dayWeather(ctx.hours, d) : null);
+    m.set(d, ctx.weatherOk ? dayWeather(ctx.hours, d, ctx.s.ride_temps ?? undefined) : null);
   }
   return m;
 }
@@ -201,13 +221,28 @@ export async function planFor(ctx: Ctx, rec?: RecoveryResult): Promise<PlanResul
     actsPower: power,
     past: (q) => pastQuality(ctx, q),
     calendar: ctx.calendar,
-    constraints: ctx.constraints,
+    constraints: [...ctx.constraints, ...statusConstraints(ctx)],
+    runExperienced: ctx.acts.filter((a) => a.sport === "run" && a.date >= addDays(T, -60) && (a.moving_s ?? 0) >= 15 * 60).length >= 6,
     weather: weatherMap(ctx, T, 9),
     weatherOk: ctx.weatherOk,
     recovery: recovery.state,
     p5: bestIn(power, addDays(T, -42), T, 300)?.w ?? null,
     weekLoads: await weekLoads(ctx),
   });
+}
+
+/**
+ * Stav Nemocný / Zraněný / Dovolená → virtuální omezení na dny stavu (plán se zastaví, nic se nedohání).
+ * Nemoc = „nemoc“ (po návratu 2 dny lehce), zranění = „nemuzu“, dovolená = „dovolena“. Bez konce = 14 dní dopředu.
+ */
+export function statusConstraints(ctx: Ctx): { date: string; kind: "nemoc" | "nemuzu" | "dovolena"; note: string | null }[] {
+  const st = ctx.s.status;
+  if (!st || st.kind === "active") return [];
+  const kind = st.kind === "sick" ? "nemoc" : st.kind === "injured" ? "nemuzu" : "dovolena";
+  const from = st.from && st.from > addDays(ctx.T, -3) ? st.from : addDays(ctx.T, -3);
+  const to = st.until ?? addDays(ctx.T, 14);
+  if (to < from) return [];
+  return dateRange(from, to).map((date) => ({ date, kind, note: "stav" }));
 }
 
 // ---------- 🚦 připravenost ----------
@@ -279,7 +314,7 @@ export async function readiness(ctx: Ctx): Promise<Readiness> {
   const maxSeen = Math.max(0, ...ctx.acts.filter((a) => isBike(a.sport)).map((a) => a.max_hr ?? 0)) || null;
   const lthrNote = lthrSanity(ctx.s.hr_zones?.lthr ?? null, ctx.s.hr_zones?.max ?? null, maxSeen);
   const missing: string[] = [];
-  if (rec.hrv.status === "missing") missing.push("dnešní HRV");
+  if (rec.hrv.status === "missing") missing.push("dnešní VST");
   if (rec.sleep.status === "missing") missing.push("dnešní spánek");
   if (rec.rhr.status === "missing") missing.push("dnešní klidový tep");
   const last = ctx.acts[ctx.acts.length - 1];
@@ -315,14 +350,47 @@ export function alertsFrom(ctx: Ctx, rec: RecoveryResult, fit: FitnessTable): st
 
 // ---------- 🚴 aktivita ----------
 
+/** Sedí sport aktivity na sport plánované jednotky? */
+export function sportMatches(planSport: string | null | undefined, actSport: string): boolean {
+  const p = planSport ?? "ride";
+  if (p === "ride") return isBike(actSport);
+  if (p === "walk") return actSport === "walk" || actSport === "hike";
+  return p === actSport;
+}
+
+export function plannedFor(ctx: Ctx, a: FullAct): PlannedForAct | null {
+  // 1) spárovaný workout v intervals.icu (i ten, který jsi zadal mimo aplikaci)
+  const ev = a.icu_event;
+  const own = ctx.calendar.find((c) => c.date === a.date && c.kind !== "rest" && c.status !== "skipped" && sportMatches(c.sport, a.sport));
+  if (ev && (!own || !own.icu_event_id || String(own.icu_event_id) !== String(ev.id))) {
+    const w = workoutFromIcu(ev.steps, ctx.s.ftp);
+    const hasWork = !!w?.blocks.some((b) => b.kind === "work");
+    const qt = qualityFromName(ev.name ?? "");
+    return {
+      name: ev.name ?? "Workout z intervals.icu",
+      kind: hasWork || qt ? "quality" : "z2",
+      quality_type: qt,
+      target_load: ev.load,
+      workout: w,
+      source: "icu",
+      compliance: a.icu_compliance != null && a.icu_compliance > 0 ? Math.round(a.icu_compliance) : null,
+    };
+  }
+  if (own)
+    return {
+      name: own.name,
+      kind: own.kind,
+      quality_type: own.quality_type,
+      target_load: own.target_load,
+      workout: workoutOf(own.steps_json),
+      source: "app",
+      compliance: a.icu_compliance != null && a.icu_compliance > 0 ? Math.round(a.icu_compliance) : null,
+    };
+  return null;
+}
+
 export function activityReport(ctx: Ctx, a: FullAct): ActivityAnalysis {
-  const pw = ctx.calendar.find((c) => c.date === a.date && c.kind !== "rest" && isBike(a.sport));
-  return analyzeActivity(
-    a,
-    pw ? { name: pw.name, kind: pw.kind, quality_type: pw.quality_type, target_load: pw.target_load, workout: workoutOf(pw.steps_json) } : null,
-    ctx.s.ftp,
-    ctx.s.hr_zones,
-  );
+  return analyzeActivity(a, plannedFor(ctx, a), ctx.s.ftp, ctx.s.hr_zones);
 }
 
 export function findActivity(ctx: Ctx, query?: string): FullAct[] {

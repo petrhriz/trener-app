@@ -1,9 +1,11 @@
 // Přihlášení do dashboardu přes Telegram: /dashboard → jednorázový odkaz (15 min) → podepsaná session cookie (30 dní).
-// Odkaz přijde jen do tvého chatu (bot odpovídá jen na tvoje chat_id). Náhledy odkazů jsou vypnuté, takže ho Telegram neotevře sám.
+// Odkaz přijde jen do chatu uživatele (bot odpovídá jen známým chat_id). Náhledy odkazů jsou vypnuté, takže ho Telegram neotevře sám.
+// Session nese id uživatele (v2.<uid>.<exp>) – příprava na víc uživatelů; starší cookie v1 = vlastník (id 1).
 import type { Env } from "../env";
 
 const COOKIE = "trener_sess";
-const SESSION_DAYS = 30;
+const SESSION_DAYS = 365; // přihlášení si pamatuje rok (malý okruh lidí)
+export const OWNER_ID = 1;
 
 const b64u = (b: ArrayBuffer | Uint8Array) =>
   btoa(String.fromCharCode(...new Uint8Array(b instanceof Uint8Array ? b : new Uint8Array(b)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -18,21 +20,38 @@ async function sign(env: Env, payload: string): Promise<string> {
   return `${payload}.${b64u(sig)}`;
 }
 
-/** Vytvoří jednorázový přihlašovací odkaz (token v KV, TTL 15 min). */
-export async function createLoginLink(env: Env): Promise<string> {
+/** Id uživatele podle Telegram chat_id (vlastník = TELEGRAM_CHAT_ID ze secrets). null = neznámý chat. */
+export async function userIdForChat(env: Env, chatId: string | number): Promise<number | null> {
+  if (env.TELEGRAM_CHAT_ID && String(chatId) === String(env.TELEGRAM_CHAT_ID)) return OWNER_ID;
+  try {
+    const r = await env.DB.prepare("SELECT id FROM users WHERE telegram_chat_id = ? AND active = 1").bind(String(chatId)).first<{ id: number }>();
+    return r?.id ?? null;
+  } catch {
+    return null; // tabulka users ještě není (migrace 0005)
+  }
+}
+
+/** Vytvoří jednorázový přihlašovací odkaz pro uživatele (token v KV, TTL 15 min). */
+export async function createLoginLink(env: Env, userId: number = OWNER_ID): Promise<string> {
   const t = b64u(crypto.getRandomValues(new Uint8Array(24)));
-  await env.KV.put(`login:${t}`, "1", { expirationTtl: 15 * 60 });
+  await env.KV.put(`login:${t}`, String(userId), { expirationTtl: 15 * 60 });
   return `${env.PUBLIC_URL}/auth?t=${t}`;
 }
 
 /** Ověří jednorázový token a vrátí hlavičku Set-Cookie, nebo null. */
 export async function consumeLogin(env: Env, t: string | undefined): Promise<string | null> {
   if (!t || !/^[A-Za-z0-9_-]{20,64}$/.test(t)) return null;
-  const ok = await env.KV.get(`login:${t}`);
-  if (!ok) return null;
+  const v = await env.KV.get(`login:${t}`);
+  if (!v) return null;
   await env.KV.delete(`login:${t}`);
+  const uid = /^\d+$/.test(v) && v !== "1" ? Number(v) : OWNER_ID; // staré odkazy měly hodnotu „1“ = vlastník
+  return sessionCookie(env, uid);
+}
+
+/** Podepsaná session cookie pro uživatele (platí SESSION_DAYS). */
+export async function sessionCookie(env: Env, uid: number): Promise<string> {
   const exp = Date.now() + SESSION_DAYS * 86400_000;
-  const val = await sign(env, `v1.${exp}`);
+  const val = await sign(env, `v2.${uid}.${exp}`);
   return `${COOKIE}=${val}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}`;
 }
 
@@ -40,16 +59,28 @@ export function logoutCookie(): string {
   return `${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
 }
 
-export async function verifySession(env: Env, cookieHeader: string | undefined): Promise<boolean> {
-  if (!env.ADMIN_TOKEN || !cookieHeader) return false;
+/** Ověří session cookie a vrátí id uživatele, nebo null. */
+export async function sessionUser(env: Env, cookieHeader: string | undefined): Promise<number | null> {
+  if (!env.ADMIN_TOKEN || !cookieHeader) return null;
   const m = new RegExp(`(?:^|;\\s*)${COOKIE}=([^;]+)`).exec(cookieHeader);
-  if (!m) return false;
-  const [v, exp, sig] = m[1]!.split(".");
-  if (v !== "v1" || !exp || !sig || Number(exp) < Date.now()) return false;
-  const expected = await sign(env, `v1.${exp}`);
+  if (!m) return null;
   const got = m[1]!;
-  if (expected.length !== got.length) return false;
+  const parts = got.split(".");
+  let payload: string, uid: number, exp: string;
+  if (parts[0] === "v1" && parts.length === 3) {
+    payload = `v1.${parts[1]}`; uid = OWNER_ID; exp = parts[1]!;
+  } else if (parts[0] === "v2" && parts.length === 4 && /^\d+$/.test(parts[1]!)) {
+    payload = `v2.${parts[1]}.${parts[2]}`; uid = Number(parts[1]); exp = parts[2]!;
+  } else return null;
+  if (!exp || Number(exp) < Date.now()) return null;
+  const expected = await sign(env, payload);
+  if (expected.length !== got.length) return null;
   let r = 0;
   for (let i = 0; i < got.length; i++) r |= got.charCodeAt(i) ^ expected.charCodeAt(i);
-  return r === 0;
+  return r === 0 ? uid : null;
+}
+
+/** Zpětná kompatibilita: platná session ano/ne. */
+export async function verifySession(env: Env, cookieHeader: string | undefined): Promise<boolean> {
+  return (await sessionUser(env, cookieHeader)) != null;
 }

@@ -5,7 +5,8 @@
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
   // Jediný cron. Co se kdy má stát, rozhoduje interní plánovač podle času v Europe/Prague.
-  "triggers": { "crons": ["*/15 * * * *"] },
+  // Každých 5 min: rychlá kontrola nových aktivit; těžší kroky (wellness, backfill) jen každých 15 min.
+  "triggers": { "crons": ["* * * * *"] }, // každou minutu: vlastník každých 5 min, další uživatelé v mezičase
   "observability": { "enabled": true },
   "kv_namespaces": [
     { "binding": "KV", "id": "1dfcfb7a0f4b49a59752cc25e0c7b0c1" }
@@ -19,7 +20,7 @@
     "directory": "public",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/telegram/*", "/admin/*", "/health", "/auth", "/logout"]
+    "run_worker_first": ["/api/*", "/telegram/*", "/admin/*", "/health", "/auth", "/auth/*", "/logout"]
   },
   "vars": {
     "TZ_NAME": "Europe/Prague",

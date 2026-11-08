@@ -46,9 +46,33 @@ export interface NActivity {
   hr_z: number[] | null;
   pwr_z: number[] | null;
   mmp: Record<string, number> | null;
+  /** doplňkové údaje (JSON do sloupce extra) */
+  extra?: ActExtra | null;
+}
+
+export interface ActExtra {
+  max_speed?: number | null; // km/h
+  avg_speed?: number | null; // km/h
+  max_cad?: number | null;
+  strokes?: number | null; // otáčky / kroky celkem
+  avg_resp?: number | null;
+  min_resp?: number | null;
+  max_resp?: number | null;
+  min_elev?: number | null;
+  max_elev?: number | null;
+  elev_loss?: number | null;
+  ana_te?: number | null;
+  te_label?: string | null;
+  device?: string | null;
+  run_cad?: number | null;
 }
 
 export interface NWellness {
+  floors_up?: number | null;
+  floors_down?: number | null;
+  sleep_resp_lo?: number | null;
+  sleep_resp_hi?: number | null;
+  next_sleep_need_min?: number | null;
   date: string;
   hrv?: number | null;
   hrv_weekly?: number | null;
@@ -67,7 +91,35 @@ export interface NWellness {
   respiration?: number | null;
   fitness_age?: number | null;
   wake_time?: string | null;
+  deep_s?: number | null;
+  light_s?: number | null;
+  rem_s?: number | null;
+  awake_s?: number | null;
+  awake_count?: number | null;
+  sleep_stress?: number | null;
+  sleep_hr?: number | null;
+  sleep_resp?: number | null;
+  sleep_need_min?: number | null;
+  sleep_feedback?: string | null;
+  sleep_sub?: string | null;
+  sleep_start?: string | null;
+  bb_charged?: number | null;
+  bb_drained?: number | null;
+  bb_latest?: number | null;
+  /** čas měření poslední hodnoty Body Battery (ms, GMT) – jen pro snímky v KV */
+  bb_latest_at?: number | null;
+  stress_max?: number | null;
+  stress_dist?: string | null;
+  icu_ctl?: number | null;
+  icu_atl?: number | null;
+  icu_ramp?: number | null;
 }
+
+/** Sporty, které plán umí naplánovat. */
+export type PlanSport = "ride" | "run" | "xc_ski" | "walk";
+export const PLAN_SPORTS: PlanSport[] = ["ride", "run", "xc_ski", "walk"];
+/** Vytrvalostní sporty, které „odjedou“ plánovanou jednotku (jakýkoli trénink, ne jen kolo). */
+export const ENDURANCE_SPORTS: Sport[] = ["ride", "mtb", "indoor", "run", "xc_ski", "walk", "hike"];
 
 export interface NLap {
   i: number;

@@ -9,8 +9,14 @@ export interface DayMetric {
   load: number;
   ctl: number; // konec dne
   atl: number; // konec dne
-  form: number; // ráno = CTL(D−1) − ATL(D−1)
+  form: number; // jako intervals.icu: CTL(D) − ATL(D)
   ramp: number | null; // CTL(D) − CTL(D−7)
+}
+
+export interface Anchor {
+  ctl: number;
+  atl: number;
+  ramp: number | null;
 }
 
 export const r1 = (x: number) => Math.round(x * 10) / 10;
@@ -23,36 +29,39 @@ export function step(prev: { ctl: number; atl: number }, load: number) {
   };
 }
 
-/** Celá řada od `from` do `to`. Dny bez aktivity mají zátěž 0. */
+/**
+ * Celá řada od `from` do `to`. Dny bez aktivity mají zátěž 0.
+ * `anchors` = hodnoty z intervals.icu (konec dne) – kde jsou, platí ony; jinde se pokračuje výpočtem.
+ */
 export function computeMetrics(
   loads: Map<string, number>,
   from: string,
   to: string,
   seed: { ctl: number; atl: number } = { ctl: 0, atl: 0 },
+  anchors: Map<string, Anchor> = new Map(),
 ): DayMetric[] {
   const out: DayMetric[] = [];
   let prev = seed;
   const ctlHist: number[] = [];
   for (const d of dateRange(from, to)) {
     const load = loads.get(d) ?? 0;
-    const form = prev.ctl - prev.atl;
-    const cur = step(prev, load);
+    const an = anchors.get(d);
+    const cur = an ? { ctl: an.ctl, atl: an.atl } : step(prev, load);
     ctlHist.push(cur.ctl);
-    const ramp = ctlHist.length > 7 ? cur.ctl - ctlHist[ctlHist.length - 8]! : null;
-    out.push({ date: d, load: r1(load), ctl: r2(cur.ctl), atl: r2(cur.atl), form: r2(form), ramp: ramp == null ? null : r2(ramp) });
+    const ramp = an?.ramp != null ? an.ramp : ctlHist.length > 7 ? cur.ctl - ctlHist[ctlHist.length - 8]! : null;
+    out.push({ date: d, load: r1(load), ctl: r2(cur.ctl), atl: r2(cur.atl), form: r2(cur.ctl - cur.atl), ramp: ramp == null ? null : r2(ramp) });
     prev = cur;
   }
   return out;
 }
 
-/** Výhled: start = stav na konci posledního ukončeného dne; loads = zátěž dalších dnů. */
+/** Výhled: start = stav na konci posledního ukončeného dne; loads = zátěž dalších dnů. Forma = CTL − ATL dne. */
 export function project(start: { ctl: number; atl: number }, startDate: string, loads: number[]) {
   const out: { date: string; load: number; ctl: number; atl: number; form: number }[] = [];
   let prev = start;
   loads.forEach((load, i) => {
-    const form = prev.ctl - prev.atl;
     const cur = step(prev, load);
-    out.push({ date: addDays(startDate, i + 1), load, ctl: r1(cur.ctl), atl: r1(cur.atl), form: r1(form) });
+    out.push({ date: addDays(startDate, i + 1), load, ctl: r1(cur.ctl), atl: r1(cur.atl), form: r1(cur.ctl - cur.atl) });
     prev = cur;
   });
   return out;

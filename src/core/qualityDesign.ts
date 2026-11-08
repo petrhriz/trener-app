@@ -72,7 +72,7 @@ function planFormat(pl: NonNullable<PastQuality["plan"]>): Format {
 }
 
 /** Krok 2: na co kvalitu zaměřit. */
-export function chooseFocus(acts: ActPower[], today: string, lastWeekType: QualityType | null) {
+export function chooseFocus(acts: ActPower[], today: string, lastWeekType: QualityType | null, avoid: QualityType[] = []) {
   const curve = curveCompare(acts, today);
   const stim = lastStimulus(acts, today);
   const pct = (s: number) => curve.rows.find((r) => r.secs === s)?.pct ?? null;
@@ -85,7 +85,9 @@ export function chooseFocus(acts: ActPower[], today: string, lastWeekType: Quali
     sweetspot: decl(1200) * 1.5 + Math.min(daysSince(stim.prah, today), 21) / 4,
     vo2short: Math.max(decl(30), decl(60)) * 2 + Math.min(daysSince(stim.anaer, today), 21) / 4,
   };
-  let pool = cands.filter((c) => c !== lastWeekType);
+  // pestrost: ne stejné zaměření jako minulý týden ani jako jiná kvalita v posledních ~10 dnech
+  let pool = cands.filter((c) => c !== lastWeekType && !avoid.includes(c));
+  if (!pool.length) pool = cands.filter((c) => !avoid.includes(c));
   if (!pool.length) pool = cands;
   pool.sort((a, b) => score[b]! - score[a]!);
   return { focus: pool[0]!, curve, stim, score };
@@ -105,6 +107,10 @@ export interface DesignInput {
   /** 🟡 = dávka −30 % */
   reduce?: boolean;
   forceFocus?: QualityType | null;
+  /** zaměření, kterým se vyhnout (jiná kvalita v posledních dnech) */
+  avoid?: QualityType[];
+  /** cíl: zvyseni = posun dávky, udrzeni = drží dávku, pokles = menší dávka */
+  goal?: "udrzeni" | "zvyseni" | "pokles" | "zavod";
 }
 
 export interface Design {
@@ -165,10 +171,14 @@ function pickFormat(type: keyof typeof LADDER, outcome: Outcome, last: Format | 
 }
 
 export function designQuality(inp: DesignInput): Design {
-  const ch = chooseFocus(inp.acts, inp.today, inp.lastWeekType);
+  const ch = chooseFocus(inp.acts, inp.today, inp.lastWeekType, inp.avoid ?? []);
   const type = (inp.forceFocus && inp.forceFocus !== "tempo" ? inp.forceFocus : ch.focus) as keyof typeof LADDER;
   const ev = evaluatePast(inp.past(type));
-  const fmt = pickFormat(type, ev.outcome, ev.format, !!inp.reduce);
+  // cíl mění progresi: udržení posun nedělá, pokles bere menší dávku
+  let outcome = ev.outcome;
+  if (inp.goal === "udrzeni" && outcome === "posun") outcome = "zopakovat";
+  const reduce = !!inp.reduce || inp.goal === "pokles";
+  const fmt = pickFormat(type, outcome, ev.format, reduce);
   const band = bandFor(type, inp.ftp, inp.p5);
   const sets: IntervalSet[] = [];
   const nSets = fmt.sets ?? 1;
@@ -204,11 +214,11 @@ export function designQuality(inp: DesignInput): Design {
   else if (r?.now) parts.push(`${sysName} výkon ${Math.round(r.now)} W`);
   const stimDate = type === "prah" || type === "sweetspot" ? ch.stim.prah : type === "vo2short" ? ch.stim.anaer : ch.stim.vo2;
   parts.push(stimDate ? `poslední podnět ${dm(stimDate)}` : "podnět za 21 dní chybí");
-  const action = { posun: "posun", zopakovat: "stejná dávka", ubrat: "ubráno ~20 %", nove: "výchozí dávka" }[ev.outcome];
+  const action = { posun: "posun", zopakovat: "stejná dávka", ubrat: "ubráno ~20 %", nove: "výchozí dávka" }[outcome] + (inp.goal === "udrzeni" && ev.outcome === "posun" ? " (cíl udržet)" : "");
   // z referencí (VO2 optimizer): 4×4 min je výzkumem ověřený protokol (Tier 1), ostatní formáty jsou jeho úprava
   const tier =
     type === "vo2" ? (fmt.reps === 4 && fmt.work_s === 240 ? " Formát 4×4 min = ověřený protokol (Tier 1)." : " Formát je úprava ověřeného 4×4 min (Tier 1, upraveno).") : "";
-  const reason = `${QUALITY_NAME[type][0]!.toUpperCase() + QUALITY_NAME[type].slice(1)}: ${parts.join(", ")}; ${ev.text} → ${action}${inp.reduce ? ", 🟡 dávka −30 %" : ""}: ${base}.${tier}`;
+  const reason = `${QUALITY_NAME[type][0]!.toUpperCase() + QUALITY_NAME[type].slice(1)}: ${parts.join(", ")}; ${ev.text} → ${action}${inp.reduce ? ", 🟡 dávka −30 %" : inp.goal === "pokles" ? ", řízený pokles: dávka −30 %" : ""}${inp.avoid?.length && !inp.forceFocus ? `, jiné zaměření než ${inp.avoid.map((t) => QUALITY_NAME[t]).join("/")} v posledních dnech` : ""}: ${base}.${tier}`;
 
   return {
     type,

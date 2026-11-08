@@ -19,7 +19,7 @@ Ověřeno v dokumentaci Cloudflare 7. 11. 2026:
 | D1 – rows read | 5 000 000 / den | dashboard + výpočty z `daily_metrics` (stovky řádků) | > 99 % |
 | D1 – rows written | 100 000 / den | backfill celé historie: jednotky tisíc řádků celkem; denně desítky | > 95 % |
 | D1 – velikost | 500 MB / DB, 5 GB / účet | roky dat < 50 MB (bez FIT a streamů) | > 90 % |
-| KV – zápisy | **1 000 / den** | Garmin token 1–2×/den, deduplikace zpráv ~10/den | > 98 % |
+| KV – zápisy | **1 000 / den** | Garmin token 1–2×/den, snímky Body Battery jen při změně hodnoty (max. 288/den, typicky ~100), cache dne/průběhů desítky | > 60 % |
 | KV – čtení | 100 000 / den | ~200 / den | > 99 % |
 | Workers AI | 10 000 neuronů / den | 3–4 hotové zprávy + otázky, krátký kontext | ověřit podle modelu ve fázi 6 |
 | Open-Meteo | zdarma pro nekomerční použití, bez klíče (~10 000 volání / den) | 1–4 volání / den (cache v D1) | > 99 % |

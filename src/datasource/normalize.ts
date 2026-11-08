@@ -58,7 +58,7 @@ export function normActivityGarmin(a: J): NActivity {
     if_garmin: pos(a.intensityFactor),
     garmin_load: n(a.activityTrainingLoad),
     aerobic_te: n(a.aerobicTrainingEffect),
-    avg_cad: pos(a.averageBikingCadenceInRevPerMinute),
+    avg_cad: pos(a.averageBikingCadenceInRevPerMinute) ?? pos(a.averageRunningCadenceInStepsPerMinute),
     min_temp: n(a.minTemperature),
     max_temp: n(a.maxTemperature),
     lap_count: n(a.lapCount),
@@ -66,7 +66,29 @@ export function normActivityGarmin(a: J): NActivity {
     hr_z: hz.some((x) => x > 0) ? hz : null,
     pwr_z: pz.some((x) => x > 0) ? pz : null,
     mmp: Object.keys(mmp).length ? mmp : null,
+    extra: extraGarmin(a),
   };
+}
+
+function extraGarmin(a: J) {
+  const kmh = (v: unknown) => (pos(v) != null ? Math.round(pos(v)! * 36) / 10 : null);
+  const run = pos(a.averageRunningCadenceInStepsPerMinute) != null;
+  const e = {
+    max_speed: kmh(a.maxSpeed),
+    avg_speed: kmh(a.averageSpeed),
+    max_cad: run ? pos(a.maxRunningCadenceInStepsPerMinute) : pos(a.maxBikingCadenceInRevPerMinute),
+    strokes: pos(a.strokes) ?? pos(a.steps),
+    avg_resp: pos(a.avgRespirationRate),
+    min_resp: pos(a.minRespirationRate),
+    max_resp: pos(a.maxRespirationRate),
+    min_elev: n(a.minElevation),
+    max_elev: n(a.maxElevation),
+    elev_loss: n(a.elevationLoss),
+    ana_te: n(a.anaerobicTrainingEffect),
+    te_label: typeof a.trainingEffectLabel === "string" && a.trainingEffectLabel !== "UNKNOWN" ? a.trainingEffectLabel : null,
+    run_cad: run ? pos(a.averageRunningCadenceInStepsPerMinute) : null,
+  };
+  return Object.values(e).some((v) => v != null) ? e : null;
 }
 
 /** Garmin qualifierKey spánku -> slovo z pravidel (Q1–Q4) */
@@ -89,15 +111,29 @@ export function normDaily(d: J): NWellness | null {
   if (!d?.calendarDate) return null;
   const im = n(d.intensityMinutes?.moderate);
   const iv = n(d.intensityMinutes?.vigorous);
+  const st = d.stress ?? {};
+  const dist =
+    n(st.restProportion) != null
+      ? JSON.stringify({ rest: n(st.restProportion), low: n(st.lowStressProportion), med: n(st.mediumStressProportion), high: n(st.highStressProportion), act: n(st.activityProportion) })
+      : null;
   return {
     date: d.calendarDate,
     rhr: pos(d.heartRate?.restingValue),
     steps: n(d.movement?.steps?.value),
     bb_max: n(d.bodyBattery?.maxValue),
     bb_min: n(d.bodyBattery?.minValue),
+    bb_charged: n(d.bodyBattery?.chargedValue),
+    bb_drained: n(d.bodyBattery?.drainedValue),
+    bb_latest: n(d.bodyBattery?.latestValue),
+    // čas poslední hodnoty Body Battery (hodinky se synchronizují cca po hodině) – jen pro snímky v KV, do D1 se nezapisuje
+    bb_latest_at: (() => { const t = Date.parse(String(d.bodyBattery?.dynamicFeedbackEvent?.eventTimestampGmt ?? "").replace(/\.0$/, "") + "Z"); return Number.isFinite(t) ? t : null; })(),
     stress_avg: pos(d.stress?.avgLevel),
+    stress_max: pos(st.maxLevel),
+    stress_dist: dist,
     intensity_min: im != null || iv != null ? (im ?? 0) + (iv ?? 0) : null,
     respiration: pos(d.respiration?.avgValue),
+    floors_up: n(d.movement?.floorsAscended?.value),
+    floors_down: n(d.movement?.floorsDescended?.value),
   };
 }
 
@@ -105,12 +141,34 @@ export function normSleep(s: J): NWellness | null {
   if (!s?.calendarDate) return null;
   const secs = pos(s.sleepTimeSeconds);
   const end = n(s.sleepEndTimestampLocal);
+  const start = n(s.sleepStartTimestampLocal);
+  const sc = s.sleepScores ?? {};
+  const sub: Record<string, string> = {};
+  for (const k of ["totalDuration", "stress", "awakeCount", "remPercentage", "restlessness", "lightPercentage", "deepPercentage"]) {
+    const q = sc[k]?.qualifierKey;
+    if (typeof q === "string") sub[k] = q;
+  }
   return {
     date: s.calendarDate,
     wake_time: end ? new Date(end).toISOString().slice(0, 16) : null,
+    sleep_start: start ? new Date(start).toISOString().slice(0, 16) : null,
     sleep_s: secs,
-    sleep_score: n(s.sleepScores?.overall?.value),
-    sleep_q: sleepQualifier(s.sleepScores?.overall?.qualifierKey),
+    sleep_score: n(sc.overall?.value),
+    sleep_q: sleepQualifier(sc.overall?.qualifierKey),
+    deep_s: n(s.deepSleepSeconds),
+    light_s: n(s.lightSleepSeconds),
+    rem_s: n(s.remSleepSeconds),
+    awake_s: n(s.awakeSleepSeconds),
+    awake_count: n(s.awakeCount),
+    sleep_stress: n(s.avgSleepStress),
+    sleep_hr: pos(s.avgHeartRate),
+    sleep_resp: pos(s.averageRespirationValue),
+    sleep_need_min: pos(s.sleepNeed?.actual),
+    next_sleep_need_min: pos(s.nextSleepNeed?.actual),
+    sleep_resp_lo: pos(s.lowestRespirationValue),
+    sleep_resp_hi: pos(s.highestRespirationValue),
+    sleep_feedback: typeof s.sleepScoreFeedback === "string" ? s.sleepScoreFeedback : null,
+    sleep_sub: Object.keys(sub).length ? JSON.stringify(sub) : null,
   };
 }
 

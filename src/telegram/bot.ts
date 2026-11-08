@@ -5,19 +5,20 @@ import type { Change } from "../core/plan";
 import { windowText } from "../core/weather";
 import { z2Workout, renderIcu, totalSeconds, type Workout } from "../core/workout";
 import { GOAL_LABEL, type Goal } from "../core/fitness";
-import { all, first, run } from "../lib/db";
+import { all, first, getState, run, setState } from "../lib/db";
 import { dayDm, dm, num } from "../lib/format";
 import { getSettings, setSetting } from "../lib/settings";
-import { addDays, dow } from "../lib/time";
+import { addDays, dow, localNow } from "../lib/time";
+import { ownRideName, ownRideNote, parseOwnRide } from "../core/ownRide";
 import { answerQuestion, ruleAnswer } from "../llm/llm";
 import { encodeWorkoutFit } from "../plan/fit";
 import { addConstraint, applyChanges, getProposal, openProposal, parseConsent, saveProposal } from "../plan/proposals";
-import { activityReport, findActivity, fitnessTable, planFor, readiness, recoveryFor, weatherMap, weekly } from "../report/build";
+import { activityReport, findActivity, fitnessTable, ftpCheckOf, planFor, readiness, recoveryFor, weatherMap, weekly } from "../report/build";
 import { loadCtx } from "../report/context";
 import { recomputeLoads, recomputeMetrics } from "../sync/metrics";
 import { escapeHtml as e, sendMessage, tgCall, type InlineButton } from "./api";
 import {
-  activityMessage, changeButtons, dayButtons, helpMessage, planMessage, readinessMessage, tomorrowMessage, weeklyMessage,
+  activityMessage, changeButtons, dayButtons, dayPickButtons, helpMessage, MENU_KEYBOARD, planMessage, readinessMessage, sportButtons, tomorrowMessage, weeklyMessage,
 } from "./render";
 
 export async function send(env: Env, html: string, buttons?: InlineButton[][]): Promise<void> {
@@ -95,7 +96,11 @@ async function cmdPlan(env: Env, title = "Plán") {
   const ctx = await loadCtx(env);
   const p = await planFor(ctx);
   const pid = await saveProposal(env, "plan", p.changes);
-  await send(env, planMessage(p, title, base(env)), changeButtons(pid, p.changes));
+  await send(env, planMessage(p, title, base(env)), [...changeButtons(pid, p.changes), [{ text: "🔄 Změnit den (sport / volno)", callback_data: "s:days" }]]);
+}
+
+async function cmdMenu(env: Env) {
+  await tgCall(env, "sendMessage", { chat_id: env.TELEGRAM_CHAT_ID, text: helpMessage(), parse_mode: "HTML", reply_markup: MENU_KEYBOARD });
 }
 
 async function cmdZitra(env: Env) {
@@ -130,6 +135,9 @@ async function cmdTyden(env: Env) {
   const ctlS = ctx.metrics.find((m) => m.date === addDays(from, -1))?.ctl ?? null;
   const ctlE = ctx.metrics.find((m) => m.date === addDays(from, 6))?.ctl ?? null;
   await send(env, weeklyMessage(w, p, ctlS, ctlE, base(env)), changeButtons(pid, p.changes));
+  // podezření na špatné FTP → doporučit test (jen v týdenním souhrnu, ať to neotravuje denně)
+  const fc = ftpCheckOf(ctx, await getState<string>(env.DB, "ftp_set_at"));
+  if (fc.suggest) await send(env, `⚡ <b>${e(fc.title)}</b>\n${fc.reasons.map((r) => "• " + e(r)).join("\n")}\nTest: 20 min naplno po rozjetí (FTP = 95 % průměru) nebo ramp test na trenažéru. Nové FTP zadej v intervals.icu nebo /ftp 280.`);
 }
 
 async function cmdStav(env: Env) {
@@ -144,7 +152,8 @@ async function cmdPocasi(env: Env) {
   const m = weatherMap(ctx, ctx.T, 3);
   const L = ["<b>🌤️ Počasí Teplice · 3 dny</b>"];
   for (const [d, w] of m) L.push(w ? `${dayDm(d)}: ${e(w.text)} · nejlepší 3 h ${windowText(w)}` : `${dayDm(d)}: bez předpovědi`);
-  L.push("<i>Zelená hodina = srážky ≤ 30 %, nárazy ≤ 40 km/h, pocitově ≥ 3 °C. Open-Meteo.</i>");
+  const rt = ctx.s.ride_temps ?? { cold: 3, hot: 30, ideal: 18 };
+  L.push(`<i>Zelená hodina = srážky ≤ 30 %, nárazy ≤ 40 km/h, pocitově ${rt.cold}–${rt.hot} °C (Nastavení). Okno nejblíž ${rt.ideal} °C a bez velkého rozdílu teplot. Open-Meteo.</i>`);
   await send(env, L.join("\n"));
 }
 
@@ -155,6 +164,42 @@ async function constraintCmd(env: Env, kind: string, text: string) {
   await addConstraint(env, date, kind, text.slice(0, 200));
   const label: Record<string, string> = { nemuzu: "Nemůžu", hokej: "Hokej", bezky: "Běžky", nemoc: "Nemoc", nepojedu: "Nepojedu" };
   await send(env, `📝 Zapsáno hned: ${label[kind] ?? kind} ${dayDm(date)}.${kind === "nemoc" ? " Žádná zátěž, odpočinek. Při bolesti na hrudi, závrati nebo vysoké horečce k lékaři." : ""} Přepočítávám plán…`);
+  await cmdPlan(env, "Upravený plán");
+}
+
+// ---------- jiný sport místo kola ----------
+
+const SPORT_WORDS: [RegExp, string][] = [
+  [/b[eě][zž]k|lyž|lyz/, "xc_ski"],
+  [/b[eě]h|b[eě]hat|b[eě][zž]et|poklus|run/, "run"],
+  [/ch[uů]z|proch[aá]z|walk|p[eě][sš]ky|turist/, "walk"],
+  [/\bkol[oae]?\b/, "ride"],
+];
+
+/** „dnes ne kolo, běh“, „zítra běžky místo kola“, „příští týden jen běh“ → {sport, dny}. null = není to změna sportu. */
+export function parseSportChange(text: string, T: string): { sport: string; dates: string[] } | null {
+  const t = text.toLowerCase();
+  const isCmd = /^\/sport\b/.test(t);
+  const strong = /(m[ií]sto|ne kolo|nahra[dď]|alternativ|\bjen\b|pouze|zp[eě]t na)/.test(t);
+  const weak = /\b(budu|d[aá]m|p[uů]jdu)\b/.test(t);
+  if (!isCmd && !strong && !weak) return null;
+  // sport, který chci: první zmíněný kromě „kola“ v záporu / „místo kola“
+  const cleaned = t.replace(/(m[ií]sto|ne)\s+kol[ao]?/g, " ");
+  const hit = SPORT_WORDS.find(([re]) => re.test(cleaned));
+  if (!hit || (!isCmd && !strong && hit[1] === "ride")) return null;
+  const mon = addDays(T, 1 - dow(T));
+  let dates: string[];
+  if (/p[rř][ií][sš]t[ií]\s+t[yý]d/.test(t)) dates = Array.from({ length: 7 }, (_, i) => addDays(mon, 7 + i));
+  else if (/(tento|tenhle|tenhle|tento|cel[yý])\s+t[yý]d/.test(t)) dates = Array.from({ length: 7 }, (_, i) => addDays(mon, i)).filter((d) => d >= T);
+  else dates = [parseDay(t.replace(/^\/sport\s*/, ""), T) ?? T];
+  return { sport: hit[1], dates };
+}
+
+async function sportChange(env: Env, sport: string, dates: string[]) {
+  for (const d of dates) await addConstraint(env, d, "sport", sport);
+  const label: Record<string, string> = { ride: "🚴 kolo", run: "🏃 běh", xc_ski: "🎿 běžky", walk: "🚶 chůze", rest: "🛋️ volno" };
+  const when = dates.length > 1 ? `${dayDm(dates[0]!)}–${dayDm(dates[dates.length - 1]!)}` : dayDm(dates[0]!);
+  await send(env, `📝 ${when}: ${label[sport] ?? sport}. Přepočítávám plán…`);
   await cmdPlan(env, "Upravený plán");
 }
 
@@ -298,8 +343,17 @@ export async function handleUpdate(env: Env, update: any): Promise<void> {
     await tgCall(env, "answerCallbackQuery", { callback_query_id: cb.id }).catch(() => null);
     const data = String(cb.data ?? "");
     const [kind, a, b, c] = data.split(":");
-    if (cb.message?.message_id && (kind === "p" || kind === "d"))
+    if (cb.message?.message_id && (kind === "p" || kind === "d" || (kind === "s" && a !== "days" && a !== "pick")))
       await tgCall(env, "editMessageReplyMarkup", { chat_id: chatId, message_id: cb.message.message_id, reply_markup: { inline_keyboard: [] } }).catch(() => null);
+    if (kind === "s") {
+      if (a === "days") {
+        const p = await planFor(await loadCtx(env));
+        return send(env, "Který den chceš změnit?", dayPickButtons(p.days));
+      }
+      if (a === "pick") return send(env, `Co bude <b>${dayDm(b!)}</b>?`, sportButtons(b!));
+      if (/^\d{4}-\d{2}-\d{2}$/.test(a ?? "") && ["ride", "run", "xc_ski", "rest"].includes(b ?? "")) return sportChange(env, b!, [a!]);
+      return;
+    }
     if (kind === "p") {
       const pid = Number(b);
       const p = await getProposal(env, pid);
@@ -322,6 +376,19 @@ export async function handleUpdate(env: Env, update: any): Promise<void> {
   if (!text) return;
   const lower = text.toLowerCase();
 
+  // 0) vlastní jízda („zítra jedu 4 h s Honzou“) a jiný sport („ne kolo, běh“ nesmí spadnout do „ne“ = odmítnutí návrhu)
+  if (!text.startsWith("/") || /^\/jizda\b/.test(lower)) {
+    const own = parseOwnRide(text.replace(/^\/jizda\s*/, ""), localNow(new Date(), env.TZ_NAME).date);
+    if (own) {
+      await addConstraint(env, own.date, "jizda", ownRideNote(own));
+      await send(env, `📝 ${dayDm(own.date)}: ${e(ownRideName(own))}. Započítám zátěž a ostatní dny týdne přepočítám…`);
+      return cmdPlan(env, "Plán s tvojí jízdou");
+    }
+    if (/^\/jizda\b/.test(lower)) return send(env, "Napiš třeba „/jizda zítra 4 h“, „v sobotu jedu 120 km s Honzou“ nebo „pozítří jedu projížďku 3:30 h ve skupině“.");
+    const sc = parseSportChange(text, localNow(new Date(), env.TZ_NAME).date);
+    if (sc) return sportChange(env, sc.sport, sc.dates);
+  }
+
   // 1) souhlas s posledním návrhem
   const open = await openProposal(env);
   if (open) {
@@ -338,9 +405,9 @@ export async function handleUpdate(env: Env, update: any): Promise<void> {
   const word = !m && lower.length <= 12 ? lower.replace(/[?!.]/g, "") : null;
   const is = (c: string, ...w: string[]) => cmd === c || (word != null && w.includes(word));
 
-  if (is("start") || is("pomoc", "pomoc", "help") || is("help")) return send(env, helpMessage());
-  if (is("rano", "ráno", "rano", "připravenost", "pripravenost")) return cmdRano(env);
-  if (is("stav", "stav", "report", "dnes")) return cmdStav(env);
+  if (is("start") || is("menu", "menu") || is("pomoc", "pomoc", "help") || is("help")) return cmdMenu(env);
+  if (is("rano", "ráno", "rano", "připravenost", "pripravenost", "dnes")) return cmdRano(env);
+  if (is("stav", "stav", "report")) return cmdStav(env);
   if (is("plan", "plán", "plan")) return cmdPlan(env);
   if (is("zitra", "zítra", "zitra")) return cmdZitra(env);
   if (is("aktivita", "aktivita", "jízda", "jizda")) return cmdAktivita(env, arg);
@@ -349,10 +416,15 @@ export async function handleUpdate(env: Env, update: any): Promise<void> {
   if (is("nastaveni", "nastavení")) return cmdNastaveni(env);
   if (cmd === "dashboard" || is("dashboard", "dashboard", "přihlásit", "prihlasit")) {
     const { createLoginLink } = await import("../api/session");
-    const url = await createLoginLink(env);
-    return send(env, `📈 <a href="${url}">Otevřít dashboard</a>\nOdkaz platí 15 minut a jen jednou, přihlášení pak vydrží 30 dní. Nikomu ho neposílej.`);
+    const url = await createLoginLink(env, (env as any).__uid ?? 1);
+    return send(env, `📈 <a href="${url}">Otevřít dashboard</a>\nOdkaz platí 15 minut a jen jednou, přihlášení pak vydrží rok. Nikomu ho neposílej.`);
   }
   if (cmd === "export") return cmdExport(env);
+  if (cmd === "sport") {
+    const sc = parseSportChange(text, localNow(new Date(), env.TZ_NAME).date);
+    if (sc) return sportChange(env, sc.sport, sc.dates);
+    if (cmd === "sport") return send(env, "Napiš třeba „/sport běh zítra“, „dnes běžky místo kola“ nebo „příští týden jen běh“. Zpět: „/sport kolo zítra“.");
+  }
   if (cmd === "fit") return cmdFit(env, arg);
   if (cmd === "nemuzu" || /^nem[uů][zž]u\b/.test(lower)) return constraintCmd(env, "nemuzu", text);
   if (cmd === "hokej" || /^hokej\b/.test(lower)) return constraintCmd(env, "hokej", text);
@@ -363,6 +435,8 @@ export async function handleUpdate(env: Env, update: any): Promise<void> {
     const v = Number(arg.replace(",", "."));
     if (!(v > 80 && v < 600)) return send(env, "Napiš FTP ve wattech, např. /ftp 272.");
     await setSetting(env.DB, "ftp", Math.round(v));
+    await setState(env.DB, "ftp_manual", true);
+    await setState(env.DB, "ftp_set_at", localNow(new Date(), env.TZ_NAME).date);
     const s = await getSettings(env.DB);
     const n = await recomputeLoads(env.DB, s);
     await recomputeMetrics(env.DB, (await loadCtx(env)).T);
@@ -380,7 +454,8 @@ export async function handleUpdate(env: Env, update: any): Promise<void> {
     const g = map[arg.toLowerCase().split(/\s+/)[0] ?? ""];
     if (!g) return send(env, `Cíl teď: ${GOAL_LABEL[(await getSettings(env.DB)).goal as Goal]}. Změna: /cil zlepseni | udrzeni | pokles`);
     await setSetting(env.DB, "goal", g);
-    return send(env, `Cíl nastaven: ${GOAL_LABEL[g]}. Plán od teď počítá s tímto režimem (/plan).`);
+    await send(env, `Cíl nastaven: ${GOAL_LABEL[g]}. Přepočítávám naplánované tréninky…`);
+    return cmdPlan(env, "Plán po změně cíle");
   }
   if (cmd === "jizd") {
     const v = Number(arg);
