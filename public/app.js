@@ -1590,7 +1590,7 @@ function energyHtml(d, isToday, sum = {}) {
   return `<div class="en-wrap">${top}<div class="en-chart">` + sized((W) => energyChartW(d, bbp, hrp, isToday, W)) + `</div></div>`;
 }
 function energyChartW(d, bbp, hrp, isToday, W) {
-  const H1 = 130, GAP = 10, H2 = 58, AX = 20, P = { l: 4, r: 4, t: 18 };
+  const H1 = 130, GAP = 10, H2 = 58, AX = 20, P = { l: 4, r: 4, t: 32 };
   const H = P.t + H1 + GAP + H2 + AX;
   const X = (m) => P.l + (clamp(m, 0, 1440) / 1440) * (W - P.l - P.r);
   const Y1 = (v) => P.t + (1 - v / 100) * H1;
@@ -1652,10 +1652,10 @@ function energyChartW(d, bbp, hrp, isToday, W) {
     const va = bbAt(a), vb = bbAt(b);
     const ch = ev ? ev.impact : pa && pb && pa !== pb ? pb.v - pa.v : null;
     if (ch == null || !Math.round(ch)) continue;
-    const mid = (a + b) / 2, vm = bbAt(mid) ?? Math.max(va ?? 0, vb ?? 0);
-    const txt = `${ch > 0 ? "+" : "−"}${Math.abs(Math.round(ch))} %`, tw = txt.length * 7 + 14;
-    const cx = clamp(X(mid), P.l + tw / 2, W - P.r - tw / 2), cy = Math.max(P.t + 10, Y1(vm) - 20);
-    marks += `<g class="bbmark ${ch > 0 ? "up" : "down"}"><rect x="${(cx - tw / 2).toFixed(1)}" y="${(cy - 10).toFixed(1)}" width="${tw}" height="20" rx="10"/><text x="${cx.toFixed(1)}" y="${(cy + 4.5).toFixed(1)}" text-anchor="middle">${txt}</text></g>`;
+    // číslo nad pruhem spánku / aktivity (mimo graf, nic nepřekrývá)
+    const txt = `${ch > 0 ? "+" : "−"}${Math.abs(Math.round(ch))} %`, tw = txt.length * 7;
+    const cx = clamp(X((a + b) / 2), P.l + tw / 2, W - P.r - tw / 2);
+    marks += `<text class="bbmark ${ch > 0 ? "up" : "down"}" x="${cx.toFixed(1)}" y="${P.t - 14}" text-anchor="middle">${txt}</text>`;
   }
   const base = hrp.length ? hrp : bbp;
   bindHover(id, W, (cx) => { let best = 0, bd = Infinity; base.forEach((q, i) => { const dd = Math.abs(X(q.m) - cx); if (dd < bd) { bd = dd; best = i; } }); return best; }, (i) => X(base[i].m), (i) => {

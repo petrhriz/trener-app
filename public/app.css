@@ -1371,3 +1371,5 @@ details.info > .note { margin-top: 6px; }
 .bbmark text { font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .bbmark.up rect { stroke: #23955a; } .bbmark.up text { fill: #23955a; }
 .bbmark.down rect { stroke: #d63b47; } .bbmark.down text { fill: #d63b47; }
+text.bbmark { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+text.bbmark.up { fill: #23955a; } text.bbmark.down { fill: #d63b47; }
