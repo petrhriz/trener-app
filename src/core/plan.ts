@@ -953,7 +953,7 @@ export function generatePlan(inp: PlanInput): PlanResult {
   // ---- změny v kalendáři (7.1) ----
   const changes: Change[] = [];
   let n = 0;
-  const code = () => `Z${++n}`;
+  const code = () => `#${++n}`; // #1, #2… (dřív Z1 – pletlo se se zónami)
   for (const s of slots) {
     const day = days.find((d) => d.date === s.date)!;
     const ride = ["z2", "quality", "long", "recovery"].includes(s.kind as string);

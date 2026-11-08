@@ -71,3 +71,15 @@ describe("cron: kdo je na řadě", () => {
     for (const u of many) expect(got.has(u)).toBe(true);
   });
 });
+
+import { parseConsent } from "../src/plan/proposals";
+describe("souhlas s návrhem: nové kódy #1 a staré Z1", () => {
+  it("čísla i staré zápisy", () => {
+    const codes = ["#1", "#2", "#3"];
+    expect(parseConsent("ano 1, 3", codes)).toEqual(["#1", "#3"]);
+    expect(parseConsent("ano #2", codes)).toEqual(["#2"]);
+    expect(parseConsent("ano Z1", codes)).toEqual(["#1"]);
+    expect(parseConsent("ne 2", codes)).toEqual(["#1", "#3"]);
+    expect(parseConsent("ano", codes)).toEqual(codes);
+  });
+});

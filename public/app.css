@@ -1003,3 +1003,23 @@ html:root[data-skin="k"] .stat, html:root[data-skin="k"] .mtile { border-radius:
 .mapseg { display: flex; width: 100%; margin-bottom: 10px; }
 .mapseg button { flex: 1; text-align: center; padding: 7px 4px; }
 .leaflet-bar.mapfit.on { background: #fdeadb; }
+
+/* ======================= 11. kolo ======================= */
+/* vlastní jízda: mřížka, popisky nad poli, tlačítko v řadě s poli */
+.ownf { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .8fr) minmax(0, 1.2fr) auto; gap: 8px; align-items: end; max-width: 640px; }
+.ownf label { gap: 4px; }
+.ownf input { width: 100%; height: 38px; }
+.ownf .btn { height: 38px; white-space: nowrap; }
+.addd.own > .note { max-width: 640px; margin-top: 6px; }
+@media (max-width: 760px) { .ownf { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ownf .btn { grid-column: 1 / -1; } }
+/* Trenér na PC: dva sloupce (zátěž + plán | brána, návrh, týden…) → žádné natažené prázdné karty;
+   na mobilu se karty seřadí: brána, plán, návrh, zátěž, zbytek */
+@media (max-width: 760px) {
+  .tcol { display: contents; }
+  .t-gate { order: 1; } .t-plan { order: 2; } .t-prop { order: 3; } .t-load { order: 4; } .tcol > .card:not(.t-gate):not(.t-plan):not(.t-prop):not(.t-load) { order: 5; }
+  .grid > .tcol + .card, .grid > .tcol ~ .card { order: 6; }
+}
+/* karty, které se nemají natahovat do výšky sousední karty */
+.grid > .card.fit { align-self: start; }
+@media (max-width: 760px) { .tcol > .card { grid-column: 1 / -1; } }
+.head .sub .warn { color: var(--warn); font-weight: 700; }

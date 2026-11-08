@@ -41,7 +41,7 @@ export function changesBlock(changes: Change[]): string {
   return [
     `<b>Návrh změn v kalendáři (${changes.length})</b>`,
     ...changes.map((c) => `${ACTION[c.action] ?? "•"} <b>${c.code}</b> ${dshort(c.date)} ${e(c.name)}${c.why ? `\n      <i>${e(c.why)}</i>` : ""}`),
-    "<i>Tlačítkem, nebo napiš „ano“ / „ano Z1, Z3“ / „ne Z2“.</i>",
+    "<i>Tlačítkem, nebo napiš „ano“ / „ano 1, 3“ / „ne 2“.</i>",
   ].join("\n");
 }
 

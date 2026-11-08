@@ -29,7 +29,10 @@ export async function getProposal(env: Env, id: number) {
 /** „ano“ = vše · „ano Z1, Z3“ = jen tyto · „ne Z2“ = vše kromě · „ne“ = nic. null = není to odpověď na návrh. */
 export function parseConsent(text: string, codes: string[]): string[] | null {
   const t = text.trim().toLowerCase().replace(/[.!]+$/, "");
-  const picked = [...t.matchAll(/z\s?(\d+)/g)].map((m) => `Z${m[1]}`).filter((c) => codes.includes(c));
+  // „#1“, „1“ i staré „Z1“ → kód změny se stejným číslem
+  const picked = [...t.replace(/^(ano|zapiš|zapis|ok|jo|jasně|jasne|ne)\b/, "").matchAll(/(?:z|#)?\s?(\d+)/g)]
+    .map((m) => codes.find((c) => c.replace(/\D/g, "") === m[1]))
+    .filter((c): c is string => !!c);
   if (/^(ano|zapiš|zapis|ok|jo|jasně|jasne)\b/.test(t)) return picked.length ? picked : codes;
   if (/^ne\b/.test(t)) return picked.length ? codes.filter((c) => !picked.includes(c)) : [];
   return null;

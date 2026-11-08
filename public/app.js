@@ -152,13 +152,16 @@ function sized(fn) {
 function renderSized(box) {
   const fn = box._fn || sizers.get(box.id);
   if (!fn) return;
-  if (!box._fn) { box._fn = fn; sizers.delete(box.id); }
+  if (!box._fn) { box._fn = fn; sizers.delete(box.id); sizeObs?.observe(box); }
   const w = Math.round(box.clientWidth);
   if (!w) return; // skrytý (např. jiná záložka na mobilu) – vykreslí se po zobrazení
-  if (box.dataset.w && Math.abs(+box.dataset.w - w) < 4) return;
+  if (box.dataset.w && +box.dataset.w === w) return;
   box.dataset.w = w;
   box.innerHTML = fn(Math.max(260, w));
 }
+// překreslit při KAŽDÉ změně šířky boxu (posuvník, načtený obsah vedle, otevřené menu) – jinak se SVG jen
+// zmenší jako obrázek a text i čísla jsou na PC rozmazané / kostrbaté
+const sizeObs = typeof ResizeObserver === "function" ? new ResizeObserver((es) => { for (const e of es) if (e.target.isConnected) renderSized(e.target); }) : null;
 function hydrate(root = document) { root.querySelectorAll(".sized").forEach(renderSized); }
 new MutationObserver((ms) => {
   const fresh = ms.some((m) => m.target.id !== "tip" && [...m.addedNodes].some((n) => n.nodeType === 1 && (n.classList.contains("sized") || n.querySelector(".sized:not([data-w])"))));
@@ -216,6 +219,8 @@ function bindHover(id, W, getI, xOf, tipFn, top, bottom) {
 function lineChart(o) { return o.W ? lineChartW(o) : sized((W) => lineChartW({ ...o, W })); }
 function lineChartW({ W = 760, x, series, band, bands = null, bandSeries = null, avgLine = null, include = null, height = 200, fmt = (v) => num(v, 1), xfmt = (l) => l, zero = false, markIndex = null, yfmt = null, legend = true, minSpan = 0, step: forceStep = null, yticks = null, bandsLegend = true }) {
   const H = hScale(height, W), P = { l: W < 500 ? 32 : 42, r: W < 500 ? 6 : 12, t: 12, b: 26 };
+  // pásma s popisky (zóny formy): graf skončí dřív, popisky jsou v pravém okraji a výhled je nepřekryje
+  if (bands && bands.some((z) => z.name)) P.r = W < 500 ? 74 : 96;
   const vis = series.filter((s) => !s.hidden);
   const all = vis.flatMap((s) => s.values).filter((v) => v != null && isFinite(v));
   if (band) all.push(band.lo, band.hi);
@@ -244,7 +249,7 @@ function lineChartW({ W = 760, x, series, band, bands = null, bandSeries = null,
     const hi = Math.min(z.hi ?? mx, mx), lo = Math.max(z.lo ?? mn, mn);
     if (hi <= lo) continue;
     b += `<rect x="${P.l}" y="${Y(hi)}" width="${W - P.l - P.r}" height="${Y(lo) - Y(hi)}" fill="${z.color}" opacity=".13"/>`;
-    if (Y(lo) - Y(hi) >= 13) b += `<text class="bandl" x="${W - P.r - 6}" y="${(Y(hi) + Y(lo)) / 2 + 4}" text-anchor="end" style="fill:${z.color}">${esc(z.name)}</text>`;
+    if (Y(lo) - Y(hi) >= 13) b += `<text class="bandl" x="${W - P.r + 8}" y="${(Y(hi) + Y(lo)) / 2 + 4}" text-anchor="start" style="fill:${z.color}">${esc(z.name)}</text>`;
   }
   let defs = "", paths = "";
   // normální rozsah posuvný po dnech (jako v Bevelu): plocha mezi hi a lo
@@ -649,7 +654,8 @@ function bindDateNav(el, id, today, set) {
   // klik na datum → kalendář (výběr libovolného dne v historii)
   const inp = el.querySelector(`#${id} [data-pick]`);
   if (inp) {
-    inp.closest(".dpick").addEventListener("click", (e) => { if (e.target !== inp) { e.preventDefault(); try { inp.showPicker(); } catch { inp.focus(); } } });
+    // PC (Chrome, Edge): klik na pole data kalendář sám neotevře → showPicker; iPhone otevře výběr nativně
+    inp.closest(".dpick").addEventListener("click", (e) => { if (e.target !== inp) e.preventDefault(); try { inp.showPicker(); } catch { if (e.target !== inp) inp.focus(); } });
     inp.addEventListener("change", () => { if (inp.value) set(inp.value >= today ? null : inp.value); });
   }
 }
@@ -777,11 +783,11 @@ async function pagePrehled(el) {
   // 5) poslední aktivita + počasí
   const la = d.lastActivity;
   const laCard = la
-    ? card("c4", "Poslední aktivita", "", `<a class="lastact" href="#/aktivita/${la.id}"><span class="big-ico">${SPORT_ICON[la.sport] || "🏅"}</span><div><b>${esc(la.name || SPORT_NAME[la.sport])}</b><div class="sub">${dayDm(la.date)}${la.plan ? ` · plán ${la.compliance ? `${num(la.compliance)} %` : "✓"}` : ""}</div></div><span class="go">→</span></a>
+    ? card("c4 fit", "Poslední aktivita", "", `<a class="lastact" href="#/aktivita/${la.id}"><span class="big-ico">${SPORT_ICON[la.sport] || "🏅"}</span><div><b>${esc(la.name || SPORT_NAME[la.sport])}</b><div class="sub">${dayDm(la.date)}${la.plan ? ` · plán ${la.compliance ? `${num(la.compliance)} %` : "✓"}` : ""}</div></div><span class="go">→</span></a>
       <div class="la-grid">${[la.km ? ["Vzdálenost", num(la.km, 1), "km"] : null, ["Čas", hmm(la.moving_s), "h"], la.elev ? ["Převýšení", num(la.elev), "m"] : null, la.np ? ["Výkon NP", num(la.np), "W"] : null, la.avg_hr ? ["Tep ⌀", num(la.avg_hr), "bpm"] : null, ["Zátěž", num(la.load), ""]].filter(Boolean).slice(0, 6).map(([l, v, u]) => `<div><span>${l}</span><b>${v}${u ? `<small> ${u}</small>` : ""}</b></div>`).join("")}</div>`)
     : card("c4", "Poslední aktivita", "", `<div class="empty">Žádná aktivita za 90 dní.</div>`);
 
-  el.innerHTML = `<div class="head"><div><h1>${greeting(d.hour)}, <span class="acc">${esc(d.name)}</span></h1><div class="sub">data k ${d.lastSync ? new Date(d.lastSync).toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" }) : DASH}</div></div>${dateNav(d.date, d.minDate, d.todayDate, "pnav")}</div>
+  el.innerHTML = `<div class="head"><div><h1>${greeting(d.hour)}, <span class="acc">${esc(d.name)}</span></h1><div class="sub">data k ${d.lastSync ? new Date(d.lastSync).toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" }) : DASH}<span id="watchAt"></span></div></div>${dateNav(d.date, d.minDate, d.todayDate, "pnav")}</div>
   <div class="toprow">${statusPill(d.status)}${d.isToday ? weatherPill(d.weatherNow) : ""}</div>
   <div class="grid prehled">${dnes}${sleepCard}${tiles}${bbCard}${hrCard}${laCard}
   ${d.isToday ? card("c8", "Počasí na trénink · 7 dní", "Open-Meteo", weatherList(d.weather, d.rideTemps), 'id="wcard"') : ""}</div>`;
@@ -794,12 +800,16 @@ async function pagePrehled(el) {
     if (bb2) { bb2.className = ""; bb2.innerHTML = bbPanel(day, d.isToday, { latest: bb.latest, max: bb.max, min: bb.min, charged: bb.charged, drained: bb.drained }); }
     const ds = el.querySelector("#daystress"); if (ds) ds.innerHTML = dayStressHtml(day);
     const de = el.querySelector("#dayenergy"); if (de) de.innerHTML = dayEnergyHtml(day);
+    // poslední data z hodinek = nejnovější bod tepu / Body Battery (hodinky je pošlou až po synchronizaci s telefonem)
+    const lastT = Math.max(0, ...(day.hr || []).map((x) => x[0]), ...(day.bb || []).map((x) => x[0]));
+    const wa = el.querySelector("#watchAt");
+    if (wa && lastT && d.isToday) { const m = Math.round((Date.now() - lastT) / 60000); wa.innerHTML = ` · hodinky ${new Date(lastT).toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" })} <span class="${m > 120 ? "warn" : ""}">(před ${m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`})</span>`; }
   }).catch((e) => { for (const s of ["#hrday", "#bbday"]) { const b = el.querySelector(s); if (b) { b.className = ""; b.innerHTML = `<div class="empty">${esc(e.message)}</div>`; } } });
 }
 
 
 /** „Mám vlastní trasu“: délka + s kým → plán den nechá a ostatní dny dopočítá. */
-const ownForm = (d) => `<details class="addd own"><summary class="btn sm">🗺️ Vlastní jízda…</summary><form class="ownf" data-date="${d.date}"><label>Délka<input name="h" type="text" inputmode="decimal" placeholder="např. 4 nebo 3:30" required> h</label><label>km<input name="km" type="number" min="0" max="400" placeholder="volitelné"></label><label>S kým<input name="with" placeholder="sám / skupina / jméno"></label><button class="btn sm pri" type="submit">Zapsat do plánu</button></form><p class="note">Trasu a tempo volíš ty, trenér započítá zátěž (ve skupině +15 %) a zbytek týdne přepočítá. Jde to i v Telegramu nebo v chatu: „zítra jedu 4 h s Honzou“.</p></details>`;
+const ownForm = (d) => `<details class="addd own"><summary class="btn sm">🗺️ Vlastní jízda…</summary><form class="ownf" data-date="${d.date}"><label>Délka (h)<input name="h" type="text" inputmode="decimal" placeholder="4 nebo 3:30" required></label><label>Km<input name="km" type="number" min="0" max="400" placeholder="volitelné"></label><label>S kým<input name="with" placeholder="sám / skupina / jméno"></label><button class="btn sm pri" type="submit">Zapsat do plánu</button></form><p class="note">Trasu a tempo volíš ty, trenér započítá zátěž (ve skupině +15 %) a zbytek týdne přepočítá. Jde to i v Telegramu nebo v chatu: „zítra jedu 4 h s Honzou“.</p></details>`;
 
 /** Den plánu. opts: switcher (akce), cons (omezení), plan (všechny dny – pro přesun kvality), types (volby druhu). */
 function planDayHtml(d, opts = {}) {
@@ -893,11 +903,13 @@ async function pageTrener(el) {
   el.innerHTML = `<div class="head"><div><h1>Trenér · <span class="acc">${dayDm(r.date)}</span></h1><div class="sub">normy z ${rec.normDays} dní · cíl týdne ${p.weeklyTarget.lo}–${p.weeklyTarget.hi}</div></div></div>
   <section class="card goalbar"><div class="gl"><span class="sl">Cíl tréninku</span><div class="seg">${d.goals.map((g) => `<button class="${d.goal === g.key ? "on" : ""}" data-goal="${g.key}">${esc(g.label)}</button>`).join("")}</div></div><p class="gtext">${esc(cur ? cur.text : "")}</p>${goalTable}<p class="note" id="goalMsg">Cíl je jedno nastavení (stejné jako v Nastavení) a platí, dokud ho nezměníš – ne jen na týden. Po změně se tréninky přepočítají a změny potvrdíš v „Návrh změn“.</p></section>
   <div class="grid">
-    ${card("c5", "Dnešní brána", "Garmin · Open-Meteo", todayCard)}
-    ${card("c7", "📈 Zátěž po týdnech", "TSS · plán", weekLoadsHtml(d.weeks))}
-    ${card("c7 plan", "🗓️ Plán " + dm(p.from) + "–" + dm(p.to), "plán · Open-Meteo", `<p class="note top">Ikony 🚴 🏃 ${XC_SVG} mění sport, 🛋️ = volno. Kvalitu přesuneš nebo vyměníš za Z2 tlačítky u dne. Ve volném dni „＋ Přidat trénink“. Změny se objeví v návrhu změn.</p>` + p.days.map((x) => planDayHtml(x, { switcher: !paused, cons: d.constraints, plan: p.days, types: d.userTypes })).join("") + (p.warnings.length ? `<ul class="alerts">${p.warnings.map((w) => `<li>⚠️ ${esc(w)}</li>`).join("")}</ul>` : ""))}
-    <div class="c5 col">
-      ${card("", "✏️ Návrh změn", "", changes, 'id="propCard"')}
+    <div class="c7 col tcol">
+      ${card("t-load", "📈 Zátěž po týdnech", "TSS · plán", weekLoadsHtml(d.weeks))}
+      ${card("plan t-plan", "🗓️ Plán " + dm(p.from) + "–" + dm(p.to), "plán · Open-Meteo", `<p class="note top">Ikony 🚴 🏃 ${XC_SVG} mění sport, 🛋️ = volno. Kvalitu přesuneš nebo vyměníš za Z2 tlačítky u dne. Ve volném dni „＋ Přidat trénink“. Změny se objeví v návrhu změn.</p>` + p.days.map((x) => planDayHtml(x, { switcher: !paused, cons: d.constraints, plan: p.days, types: d.userTypes })).join("") + (p.warnings.length ? `<ul class="alerts">${p.warnings.map((w) => `<li>⚠️ ${esc(w)}</li>`).join("")}</ul>` : ""))}
+    </div>
+    <div class="c5 col tcol">
+      ${card("t-gate", "Dnešní brána", "Garmin · Open-Meteo", todayCard)}
+      ${card("t-prop", "✏️ Návrh změn", "", changes, 'id="propCard"')}
       ${r.warnings.length ? card("", "⚠️ Upozornění", "", `<ul class="alerts">${r.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>`) : ""}
       ${card("", "Tento týden · plán vs. hotovo", "", weekRows)}
       ${card("", "Minimum týdne", "co držet i v náročném týdnu", floor + `<p class="note">Plný týden: ${full.rides} tréninky, kvalita ${full.quality ? `${full.quality.count} z ${full.quality.limit}` : DASH}, zátěž ${full.done} / cíl ${full.target.lo}–${full.target.hi}.</p>`)}
@@ -1103,7 +1115,17 @@ function streamsChart(s, opts = {}) {
       // profil výšky obarvený podle sklonu (plocha i čára v barvě třídy sklonu)
       const zpts = [];
       segs.forEach((sg) => sg.forEach((q, k) => { const g = p.grade[q.i]; zpts.push({ x: q.x, y: q.y, z: g == null ? 2 : gradeIdx(g), gap: k === 0 && zpts.length > 0 }); }));
-      svg += zoneArea(zpts, y0 + PH, GRADE_CLS.map((c) => c[2]));
+      // jako tep / výkon: barevná čára a pod ní jen jemný slábnoucí stín v barvě úseku
+      const gc = GRADE_CLS.map((c) => c[2]);
+      svg += zoneFill(zpts, y0 + PH, gc, y0);
+      let gi = 0;
+      while (gi < zpts.length - 1) {
+        let gj = gi;
+        while (gj + 1 < zpts.length && !zpts[gj + 1].gap && zpts[gj + 1].z === zpts[gi].z) gj++;
+        const end = gj + 1 < zpts.length && !zpts[gj + 1].gap ? gj + 1 : gj;
+        if (end > gi) svg += `<path d="${curvePath(zpts.slice(gi, end + 1))}" fill="none" stroke="${gc[zpts[gi].z]}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>`;
+        gi = end > gi ? end : gi + 1;
+      }
       p.zc = GRADE_CLS.map((c) => c[2]);
       p.zf = null;
     } else if (zf) {
@@ -1183,7 +1205,9 @@ function lapsHtml(a, s) {
     : `<div class="empty">${esc(a.laps.note || "Tréninkové okruhy nejsou – vyber okruhy po km.")}</div>`;
   const sp = s && s.splits ? s.splits : {};
   const modes = [["plan", "Tréninkové"], ...["1", "5", "10"].filter((k) => sp[k] && sp[k].length > 1).map((k) => [k, `po ${k} km`])];
-  const mode = modes.some(([k]) => k === lapMode) ? lapMode : a.laps.show ? "plan" : modes[1]?.[0] || "plan";
+  // tréninkové okruhy chybí (Garmin ani intervals.icu je nedaly) → rovnou po 10 km (jinak 5 / 1 km), ať to není prázdné
+  const fallback = ["10", "5", "1"].find((k) => sp[k] && sp[k].length > 1);
+  const mode = modes.some(([k]) => k === lapMode) && !(lapMode === "plan" && !a.laps.show) ? lapMode : a.laps.show ? "plan" : fallback || "plan";
   const run = a.sport === "run";
   let body = tbl;
   if (mode !== "plan") {
@@ -1235,7 +1259,7 @@ async function drawMap(box, s, legBox, modeBox) {
   const maxH = innerWidth >= 1180 ? Math.min(620, innerHeight * 0.7) : innerWidth > 760 ? 460 : Math.min(440, innerHeight * 0.55);
   box.style.height = `${Math.round(clamp((bw / ratio) * 1.06 + 24, 240, maxH))}px`;
   let soft = false;
-  try { soft = localStorage.getItem("mapSoft2") === "1"; } catch {} // jemná mapa je tlumená sama, zesvětlení jen na požádání
+  try { soft = localStorage.getItem("mapSoft3") === "1"; } catch {} // jemná mapa je tlumená sama, zesvětlení jen na požádání
   box.classList.toggle("soft", soft);
   // PC: kolečko myši; mobil: dvěma prsty (jedním prstem se dál posouvá stránka)
   const map = L.map(box, { scrollWheelZoom: true, wheelPxPerZoomLevel: 90, touchZoom: true, dragging: !L.Browser.mobile, tap: false, attributionControl: true, zoomSnap: 1, zoomDelta: 1 });
@@ -1272,7 +1296,7 @@ async function drawMap(box, s, legBox, modeBox) {
   fitCtl.addTo(map);
   // ◐ zesvětlit podklad (trasa víc vynikne) – malé tlačítko na mapě pod ⤢
   const softCtl = L.control({ position: "topleft" });
-  softCtl.onAdd = () => { const b = L.DomUtil.create("a", "leaflet-bar mapfit"); b.href = "#"; b.setAttribute("role", "button"); const upd = () => { b.innerHTML = soft ? "◑" : "◐"; b.title = soft ? "Podklad normální" : "Zesvětlit podklad (trasa víc vynikne)"; b.classList.toggle("on", soft); }; upd(); L.DomEvent.on(b, "click", (e) => { L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e); soft = !soft; box.classList.toggle("soft", soft); try { localStorage.setItem("mapSoft2", soft ? "1" : "0"); } catch {} upd(); }); return b; };
+  softCtl.onAdd = () => { const b = L.DomUtil.create("a", "leaflet-bar mapfit"); b.href = "#"; b.setAttribute("role", "button"); const upd = () => { b.innerHTML = soft ? "◑" : "◐"; b.title = soft ? "Podklad normální" : "Zesvětlit podklad (trasa víc vynikne)"; b.classList.toggle("on", soft); }; upd(); L.DomEvent.on(b, "click", (e) => { L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e); soft = !soft; box.classList.toggle("soft", soft); try { localStorage.setItem("mapSoft3", soft ? "1" : "0"); } catch {} upd(); }); return b; };
   softCtl.addTo(map);
 
   const has = (k) => route.some((p) => p[MAP_MODES[k][0]] != null);

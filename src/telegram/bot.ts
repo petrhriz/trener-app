@@ -363,7 +363,7 @@ export async function handleUpdate(env: Env, update: any): Promise<void> {
       if (a === "pick" && p) {
         const rows: InlineButton[][] = [];
         for (let i = 0; i < p.items.length; i += 4) rows.push(p.items.slice(i, i + 4).map((x) => ({ text: `✅ ${x.code}`, callback_data: `p:one:${pid}:${x.code}` })));
-        return send(env, "Vyber změnu (nebo napiš „ano Z1, Z3“ / „ne Z2“):", rows);
+        return send(env, "Vyber změnu (nebo napiš „ano 1, 3“ / „ne 2“):", rows);
       }
     }
     if (kind === "d" && a === "skip") return constraintCmd(env, "nepojedu", `dnes ${b}`);

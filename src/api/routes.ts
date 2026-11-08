@@ -649,7 +649,8 @@ api.get("/recovery", async (c) => {
   const T0 = ctx0.T;
   // ?date= : kterýkoli den v historii – spánek té noci, normy z 60 dní před ním
   const T = pastDate(c.req.query("date"), T0);
-  const ctx = await withHistory(c.env, ctx0, T);
+  // vždy aspoň 150 dní: pásmo normy v grafu 90 dní potřebuje 30 dní před prvním dnem
+  const ctx = await withHistory(c.env, ctx0, T < addDays(T0, -60) ? T : addDays(T0, -60));
   const hist = ctx.well.filter((w) => w.date >= addDays(T, -60) && w.date < T);
   const n = (k: "hrv" | "rhr" | "sleep_s" | "sleep_score" | "sleep_resp" | "stress_avg" | "bb_max") => {
     const x = norm(hist.map((w) => w[k]));
