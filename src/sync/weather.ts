@@ -22,10 +22,12 @@ export async function refreshWeather(env: Env, force = false): Promise<boolean> 
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
     `&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,wind_gusts_10m,wind_speed_10m,weather_code` +
-    `&timezone=Europe%2FPrague&forecast_days=8&past_days=1&wind_speed_unit=kmh`;
+    `&daily=sunrise,sunset&timezone=Europe%2FPrague&forecast_days=8&past_days=1&wind_speed_unit=kmh`;
   const res = await fetchRetry(url, {});
   if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`);
-  const j = (await res.json()) as { hourly: Record<string, (number | null)[]> & { time: string[] } };
+  const j = (await res.json()) as { hourly: Record<string, (number | null)[]> & { time: string[] }; daily?: { time: string[]; sunrise: string[]; sunset: string[] } };
+  // východ a západ slunce po dnech (stránka Počasí)
+  const sun = (j.daily?.time ?? []).map((d, i) => ({ date: d, rise: j.daily!.sunrise[i]?.slice(11, 16) ?? null, set: j.daily!.sunset[i]?.slice(11, 16) ?? null }));
   const h = j.hourly;
   const rows = h.time.map((t, i) => [
     t.slice(0, 13) + ":00",
@@ -42,6 +44,7 @@ export async function refreshWeather(env: Env, force = false): Promise<boolean> 
     ...upsertSql("weather_hourly", ["time", "temp", "feels", "precip_prob", "precip", "gust", "wind", "code"], rows, ["time"], "replace"),
     `DELETE FROM weather_hourly WHERE time < '${oldest}'`,
     setStateSql("weather_at", Date.now()),
+    setStateSql("weather_sun", sun),
   ]);
   return true;
 }

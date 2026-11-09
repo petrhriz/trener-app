@@ -44,10 +44,9 @@ export function trainingBalanceOf(acts: BalanceAct[], from: string, to: string):
   let noZones = 0;
   let garminPts = false;
   for (const a of acts) {
-    // body zátěže Garminu (stejná stupnice jako „zaměření zátěže“ v Garminu), jinak naše zátěž
-    const ld = a.garmin_load ?? a.load;
+    // zátěž = TSS (výkon) nebo HRSS (tep) z intervals.icu u všech sportů – body EPOC z Garminu se nepoužívají (jiná stupnice)
+    const ld = a.load;
     if (a.date < from || a.date > to || !ld) continue;
-    if (a.garmin_load != null) garminPts = true;
     const usePwr = a.pwr_z && a.pwr_z.some((x) => x > 0);
     const z = usePwr ? a.pwr_z! : a.hr_z && a.hr_z.some((x) => x > 0) ? a.hr_z : null;
     if (!z) {

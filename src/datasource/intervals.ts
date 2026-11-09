@@ -110,7 +110,7 @@ export class IntervalsClient implements DataSource {
       hrv: w.hrv ?? null,
       rhr: w.restingHR ?? null,
       sleep_s: w.sleepSecs ?? null,
-      sleep_score: w.sleepScore ?? null,
+      sleep_score_g: w.sleepScore ?? null,
       sleep_q: w.sleepQuality ? `Q${w.sleepQuality}` : null,
       steps: w.steps ?? null,
       weight_kg: w.weight ?? null,

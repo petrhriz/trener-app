@@ -9,6 +9,7 @@ import m0003 from "../../migrations/0003_feedback2.sql";
 import m0004 from "../../migrations/0004_round3.sql";
 import m0006 from "../../migrations/0006_round6.sql";
 import m0007 from "../../migrations/0007_round7.sql";
+import m0009 from "../../migrations/0009_sleep_calc.sql";
 
 export const OWNER_ID = 1;
 
@@ -20,13 +21,14 @@ export const TENANT_MIGRATIONS: { name: string; sql: string }[] = [
   { name: "0004", sql: m0004 },
   { name: "0006", sql: m0006 },
   { name: "0007", sql: m0007 },
+  { name: "0009", sql: m0009 },
 ];
 
 /** Tabulky s daty uživatele (vše kromě users). */
 export const TENANT_TABLES = [
   "settings", "sync_state", "activities", "activity_laps", "wellness", "weekly_reviews", "daily_metrics", "planned_workouts",
   "constraints", "proposals", "weather_hourly", "sent_messages", "training_log", "events_log", "gear", "activity_gear",
-  "app_secrets", "gear_parts", "gear_service", "activity_tags",
+  "app_secrets", "gear_parts", "gear_service", "activity_tags", "energy_day",
 ] as const;
 
 const TBL = TENANT_TABLES.join("|");

@@ -47,6 +47,10 @@ export interface WellRow {
   sleep_resp_lo: number | null;
   sleep_resp_hi: number | null;
   next_sleep_need_min: number | null;
+  /** původní hodnoty z Garminu (sleep_score / sleep_need_min / next_sleep_need_min = vlastní výpočet) */
+  sleep_score_g?: number | null;
+  sleep_need_g_min?: number | null;
+  next_sleep_need_g_min?: number | null;
 }
 
 /** Spárovaný workout z intervals.icu */

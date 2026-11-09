@@ -6,6 +6,8 @@ export interface SleepNight {
   date: string;
   sleep_s: number | null;
   sleep_score: number | null;
+  /** skóre z Garminu pro srovnání (sleep_score = vlastní výpočet, src/core/sleepCalc.ts) */
+  sleep_score_g?: number | null;
   deep_s: number | null;
   light_s: number | null;
   rem_s: number | null;
@@ -43,6 +45,8 @@ export interface SleepReport {
   durationS: number | null;
   needMin: number | null;
   score: number | null;
+  /** skóre z Garminu pro srovnání */
+  garminScore: number | null;
   scoreTone: Tone;
   verdict: string;
   start: string | null;
@@ -56,7 +60,7 @@ export interface SleepReport {
   respLo: number | null;
   respHi: number | null;
   hrv: number | null;
-  /** potřeba spánku na následující (dnešní) noc podle Garminu */
+  /** potřeba spánku na následující (dnešní) noc: cíl + spánkový dluh (src/core/sleepCalc.ts) */
   nextNeedMin: number | null;
   awakeCount: number | null;
 }
@@ -113,7 +117,7 @@ export function sleepReport(night: SleepNight | null, history: SleepNight[]): Sl
   if (night.sleep_s != null) {
     if (need) {
       const diff = Math.round(night.sleep_s / 60 - need);
-      points.push({ tone: diff >= -15 ? "good" : diff >= -60 ? "ok" : "bad", text: `Délka ${hmm(night.sleep_s)} h, Garmin pro tuto noc doporučil ${hmm(need * 60)} h (${diff >= 0 ? "+" : "−"}${Math.abs(diff)} min).` });
+      points.push({ tone: diff >= -15 ? "good" : diff >= -60 ? "ok" : "bad", text: `Délka ${hmm(night.sleep_s)} h, potřeba pro tuto noc ${hmm(need * 60)} h – cíl + spánkový dluh (${diff >= 0 ? "+" : "−"}${Math.abs(diff)} min).` });
     } else if (durN.n) {
       points.push({ tone: night.sleep_s >= durN.mean - 1800 ? "good" : "ok", text: `Délka ${hmm(night.sleep_s)} h, tvůj průměr ${hmm(durN.mean)} h.` });
     }
@@ -143,6 +147,7 @@ export function sleepReport(night: SleepNight | null, history: SleepNight[]): Sl
     durationS: night.sleep_s,
     needMin: need,
     score,
+    garminScore: night.sleep_score_g ?? null,
     scoreTone,
     verdict,
     start: time(night.sleep_start),

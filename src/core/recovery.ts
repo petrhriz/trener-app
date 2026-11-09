@@ -71,6 +71,11 @@ export interface RecoveryResult {
   hrvYellow2Days: boolean;
   normDays: number;
   reasons: string[];
+  /** Zotavení 0–100 % (vzorec jako v Bevelu, src/core/readinessScore.ts recoveryScore); null = málo dat */
+  score: number | null;
+  /** co skóre nejvíc stáhlo / zvedlo (text) */
+  scoreDrags: string[];
+  scoreBoosts: string[];
 }
 
 export const STATE_LABEL: Record<State, string> = {
@@ -80,7 +85,7 @@ export const STATE_LABEL: Record<State, string> = {
 };
 export const STATE_EMOJI: Record<State, string> = { green: "🟢", yellow: "🟡", red: "🔴" };
 
-/** Slovní hodnocení spánku podle skóre (Garmin 0–100) nebo kvalifikátoru Q1–Q4. */
+/** Slovní hodnocení spánku podle skóre 0–100 (vlastní výpočet z nočních dat Garminu) nebo kvalifikátoru Q1–Q4. */
 export function sleepRating(score: number | null, q: string | null): string | null {
   if (score != null) {
     if (score >= 90) return "Výborný";
@@ -108,6 +113,8 @@ export interface RecoveryInput {
   /** důvod očekávaného poklesu: „hokeji“, „dlouhých běžkách“, „jízdě se zátěží 135“ (včerejšek) */
   dayAfter: string | null;
   illness: boolean;
+  /** Zotavení v % z recoveryScore: pod 34 % aspoň 🟡, pod 15 % 🔴 */
+  score?: { score: number | null; drags: string[]; boosts: string[] } | null;
 }
 
 export function evaluateRecovery(inp: RecoveryInput): RecoveryResult {
@@ -247,6 +254,18 @@ export function evaluateRecovery(inp: RecoveryInput): RecoveryResult {
     state = "yellow";
     if (hrvYellow2Days && yellow < 2) reasons.push("VST pod normou druhý den po sobě");
   }
+  // Zotavení v % (pásma Bevelu: pod 34 špatné) – stav jen zhorší, nikdy nezlepší (nemoc ani 🔴 příznak nepřebije)
+  const sc = inp.score?.score ?? null;
+  if (sc != null && !inp.illness) {
+    const why = inp.score!.drags.length ? ` (${inp.score!.drags.join(", ")})` : "";
+    if (sc < 15 && state !== "red") {
+      state = "red";
+      reasons.push(`zotavení jen ${sc} %${why}`);
+    } else if (sc < 34 && state === "green") {
+      state = "yellow";
+      reasons.push(`zotavení ${sc} % – pod 34 %${why}`);
+    }
+  }
 
   return {
     date: D,
@@ -262,6 +281,9 @@ export function evaluateRecovery(inp: RecoveryInput): RecoveryResult {
     hrvYellow2Days,
     normDays: hist.length,
     reasons,
+    score: sc,
+    scoreDrags: inp.score?.drags ?? [],
+    scoreBoosts: inp.score?.boosts ?? [],
   };
 }
 

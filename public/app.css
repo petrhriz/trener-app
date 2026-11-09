@@ -420,7 +420,7 @@ a.trend:hover { background: color-mix(in srgb, var(--card2) 70%, var(--acc) 8%);
   .pday { grid-template-columns: 46px minmax(0, 1fr); gap: 10px; }
   .sw-sport { margin-left: 0; }
   .zones { grid-template-columns: 26px minmax(0, 1fr) 60px 42px; }
-  .tabbar { display: grid; grid-template-columns: repeat(6, 1fr); position: fixed; left: 0; right: 0; bottom: 0; background: color-mix(in srgb, var(--bg2) 94%, transparent); backdrop-filter: blur(10px); border-top: 1px solid var(--line); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); z-index: 30; }
+  .tabbar { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; background: color-mix(in srgb, var(--bg2) 94%, transparent); backdrop-filter: blur(10px); border-top: 1px solid var(--line); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); z-index: 30; }
   .tabbar a, .tabbar button { display: flex; flex-direction: column; align-items: center; gap: 1px; font-size: 10.5px; font-weight: 600; color: var(--muted); padding: 5px 2px; border-radius: 10px; border: 0; background: none; cursor: pointer; min-width: 0; }
   .tabbar .ico { font-size: 18px; line-height: 1.1; }
   .tabbar .ico svg { width: 22px; height: 22px; }
@@ -645,7 +645,7 @@ body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-ins
 @media (max-width: 1000px) and (orientation: landscape) and (max-height: 500px) {
   .nav { display: none; }
   .main { padding: calc(10px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) calc(64px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); max-width: none; }
-  .tabbar { display: grid; grid-template-columns: repeat(6, 1fr); position: fixed; left: 0; right: 0; bottom: 0; background: color-mix(in srgb, var(--bg2) 94%, transparent); backdrop-filter: blur(10px); border-top: 1px solid var(--line); padding: 3px max(8px, env(safe-area-inset-right)) calc(3px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); z-index: 30; }
+  .tabbar { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; background: color-mix(in srgb, var(--bg2) 94%, transparent); backdrop-filter: blur(10px); border-top: 1px solid var(--line); padding: 3px max(8px, env(safe-area-inset-right)) calc(3px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); z-index: 30; }
   .tabbar a, .tabbar button { display: flex; flex-direction: row; justify-content: center; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--muted); padding: 6px 2px; border-radius: 10px; border: 0; background: none; cursor: pointer; }
   .tabbar a.on, .tabbar button.on { color: var(--acc); background: var(--accbg); }
   .tabbar .ico svg { width: 20px; height: 20px; }
@@ -1379,3 +1379,304 @@ text.bbmark.up { fill: #23955a; } text.bbmark.down { fill: #d63b47; }
 #toast { position: fixed; left: 50%; bottom: calc(86px + env(safe-area-inset-bottom)); transform: translate(-50%, 20px); max-width: min(92vw, 520px); background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: 13.5px; box-shadow: 0 6px 20px rgba(0,0,0,.18); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 1000; }
 #toast.on { opacity: 1; transform: translate(-50%, 0); }
 @media (min-width: 761px) { #toast { bottom: 28px; } }
+
+/* ======================= Přehled – 10. kolo: kroužek zotavení, kroužek spánku z fází, baterie energie ======================= */
+.dn-wrap { display: flex; gap: 22px; align-items: center; }
+.dn-ring { flex: 0 0 auto; display: flex; color: var(--fg); }
+.dn-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.rr-v { font-size: 38px; font-weight: 800; fill: var(--fg); letter-spacing: -.02em; }
+.rr-l { font-size: 11px; fill: var(--muted); }
+.slring { flex: 0 0 auto; }
+.slring .sr-v { font-size: 32px; }
+.mtiles.five { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.batt { display: flex; align-items: center; gap: 4px; margin: auto 0 0; padding-top: 10px; flex: 1 1 auto; }
+.etile { justify-content: flex-start; }
+.batt-b { position: relative; flex: 1 1 auto; height: 84px; min-height: 84px; border-radius: 18px; background: var(--card2); box-shadow: inset 0 0 0 2px var(--line); overflow: hidden; }
+.batt-b > i { position: absolute; left: 0; top: 0; bottom: 0; }
+.batt-max { opacity: .25; }
+.batt-now { border-radius: 0 10px 10px 0; }
+.batt-b > span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 30px; font-weight: 800; color: var(--fg); font-variant-numeric: tabular-nums; letter-spacing: -.02em; text-shadow: 0 0 4px var(--card), 0 0 2px var(--card); }
+.batt-b > span small { font-size: 15px; font-weight: 600; margin-left: 1px; }
+.batt-cap { display: block; width: 6px; height: 28px; border-radius: 0 4px 4px 0; background: var(--line); }
+.hrday .hd-k { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.hrday .hd-k > div { background: var(--card2); border-radius: 12px; padding: 8px 10px; }
+.hrday .hd-k span { display: block; font-size: 11.5px; color: var(--muted); }
+.hrday .hd-k b { font-size: 17px; font-variant-numeric: tabular-nums; }
+@media (max-width: 1400px) { .mtiles.five { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+@media (max-width: 1180px) { .mtiles.five { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 760px) {
+  /* iPhone: kroužek zotavení nad textem, energie přes celou šířku, ostatní dlaždice po dvou */
+  .dn-wrap { flex-direction: column; align-items: stretch; gap: 10px; }
+  .dn-ring { align-self: center; }
+  .dn-ring .rring { width: 116px; height: 116px; }
+  .mtiles.five { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mtiles.five .etile { grid-column: 1 / -1; }
+  .slring { width: 100px; height: 100px; }
+  .hrday .hd-k { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* mobil: baterie přes celou šířku, o něco nižší */
+@media (max-width: 760px) { .batt-b { height: 72px; min-height: 72px; } .batt-b > span { font-size: 28px; } }
+
+/* ======================= iPhone: horní pruh jako „liquid glass“ (rozmazání postupně mizí, jde přes stavový řádek) ======================= */
+.topsafe, .standalone .topsafe {
+  height: calc(env(safe-area-inset-top) + 26px);
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--bg) 78%, transparent), color-mix(in srgb, var(--bg) 35%, transparent) 70%, transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(160%); backdrop-filter: blur(16px) saturate(160%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%); mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
+  box-shadow: none;
+}
+
+/* ======================= iPhone: spodní lišta jako plovoucí „liquid glass“ (5 položek, Zotavení ve „Více“) ======================= */
+@media (max-width: 760px) {
+  .tabbar {
+    grid-template-columns: repeat(5, 1fr);
+    left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); bottom: calc(6px + env(safe-area-inset-bottom));
+    padding: 6px; border-radius: 30px;
+    background: color-mix(in srgb, var(--bg2) 58%, transparent);
+    -webkit-backdrop-filter: blur(22px) saturate(180%); backdrop-filter: blur(22px) saturate(180%);
+    border: 1px solid color-mix(in srgb, #ffffff 55%, transparent); border-top-color: color-mix(in srgb, #ffffff 80%, transparent);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .14), 0 1px 3px rgba(0, 0, 0, .08), inset 0 1px 0 rgba(255, 255, 255, .55);
+  }
+  .tabbar a, .tabbar button { padding: 7px 2px 6px; border-radius: 24px; font-size: 11px; gap: 2px; }
+  .tabbar .ico svg { width: 25px; height: 25px; }
+  .tabbar a.on, .tabbar button.on { background: color-mix(in srgb, var(--acc) 14%, transparent); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .4); }
+  .sheet-in { bottom: calc(86px + env(safe-area-inset-bottom)); border-radius: 24px; background: color-mix(in srgb, var(--card) 80%, transparent); -webkit-backdrop-filter: blur(22px) saturate(180%); backdrop-filter: blur(22px) saturate(180%); }
+  .main { padding-bottom: calc(96px + env(safe-area-inset-bottom)) !important; }
+}
+@media (max-width: 760px) and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .tabbar { border-color: rgba(255, 255, 255, .12); box-shadow: 0 10px 30px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .08); }
+}
+@media (max-width: 760px) { :root[data-theme="dark"] .tabbar { border-color: rgba(255, 255, 255, .12); box-shadow: 0 10px 30px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .08); } }
+
+/* ======================= kroužky s přechodem (Bevel styl): zotavení na PC, na mobilu energie · zotavení · spánek ======================= */
+.dn-rings { display: flex; align-items: flex-end; gap: 10px; flex: 0 0 auto; }
+.dn-rings > a { display: flex; color: var(--fg); }
+.dn-side { display: none !important; }
+.gring { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--fg); }
+.gring svg { width: var(--rs); height: var(--rs); }
+.gring b { font-size: 13px; font-weight: 650; color: var(--muted); }
+.gr-v { font-size: 30px; font-weight: 800; fill: var(--fg); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) {
+  .dn-rings { width: 100%; justify-content: space-between; align-items: flex-end; padding: 2px 4px 4px; box-sizing: border-box; }
+  .dn-side { display: flex !important; }
+  .dn-rings .dn-ring .gring { --rs: 118px !important; }
+  /* baterie na mobilu cca 3,5 : 1 */
+  .batt-b { height: 96px; min-height: 96px; border-radius: 20px; }
+  .batt-b > span { font-size: 34px; }
+  .batt-cap { height: 32px; }
+}
+
+/* ======================= 11. kolo: karta Dnes bez proužku, nadpis v barvě stavu, hlavička, lišta, AI, okruhy ======================= */
+.dnes::before { display: none !important; }
+.card h2.dn-title { display: flex; align-items: center; gap: 10px; color: var(--ok); }
+.dnes.warn h2.dn-title { color: var(--warn); }
+.dnes.bad h2.dn-title { color: var(--bad); }
+.dn-dot { width: 14px; height: 14px; border-radius: 50%; background: currentColor; flex: none; box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 18%, transparent); }
+.dn-dot:not(.good):not(.warn):not(.bad) { background: var(--muted); }
+/* hlavička Přehledu: pozdrav → stav a počasí → přepínání dnů */
+.daterow { display: flex; margin: -4px 0 16px; }
+.toprow .tr-fill { flex: 1 1 0; }
+@media (max-width: 760px) {
+  .toprow > * { flex: 1 1 0 !important; min-width: 0; }
+  .toprow .pillbig { padding: 3px 10px 3px 3px; gap: 8px; border-radius: 14px; }
+  .toprow .pb-ico { width: 30px; height: 30px; font-size: 15px; border-radius: 10px; }
+  .toprow .pb-t b { font-size: 14px; }
+  .toprow .pb-t small { font-size: 12px; }
+  .daterow { margin: -2px 0 12px; }
+  .daterow .dnav { width: 100%; justify-content: space-between; }
+}
+/* vybavení a „s kým jsem jel“: dvě stejné buňky přes celou šířku */
+.actsel { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; width: 100%; gap: 10px !important; }
+.actsel .gearsel { width: 100%; }
+.actsel select { max-width: none !important; width: 100%; flex: 1 1 auto; }
+/* okruhy: klik → průběh úseku */
+tr.lapclick { cursor: pointer; }
+tr.lapclick:hover td, tr.lapclick:focus-visible td { background: color-mix(in srgb, var(--acc) 8%, transparent); }
+tr.lapclick td:first-child b::after { content: " ›"; color: var(--acc); font-weight: 800; }
+@media (max-width: 760px) {
+  /* liquid glass lišta: níž ke spodní hraně, průhlednější */
+  .tabbar { bottom: max(6px, calc(env(safe-area-inset-bottom) - 18px)); background: color-mix(in srgb, var(--bg2) 36%, transparent); }
+  .sheet-in { bottom: calc(max(6px, env(safe-area-inset-bottom) - 18px) + 74px); }
+  /* AI okno nad lištou – lišta zůstane vidět a klik na ni chat zavře a přepne stránku */
+  .modal.aip { bottom: calc(max(6px, env(safe-area-inset-bottom) - 18px) + 70px); z-index: 28; align-items: flex-end; padding-bottom: 8px; }
+  .aip .modal-in { height: min(72dvh, 680px); border-radius: 24px; }
+}
+
+/* ======================= 12. kolo: baterie B2, zítřek T2, poslední aktivita L2 ======================= */
+/* baterie B2 – menší celá, tmavý obrys, prázdná část s čárkami, zaoblené výplně */
+.batt { display: flex !important; align-items: center; justify-content: center; gap: 3px; margin: 10px 0 2px !important; padding: 0 !important; flex: none !important; }
+.batt-b { position: relative; flex: none !important; width: min(100%, 220px); height: 70px !important; min-height: 0 !important; border-radius: 18px !important; border: 2px solid var(--fg); box-shadow: none !important; box-sizing: border-box; overflow: hidden;
+  background: repeating-linear-gradient(135deg, var(--card) 0 6px, var(--card2) 6px 8px) !important; }
+.batt-b > i { position: absolute; left: 4px !important; top: 4px !important; bottom: 4px !important; border-radius: 12px !important; }
+.batt-max { opacity: .2 !important; }
+.batt-now { opacity: .92; }
+.batt-b > span { font-size: 26px !important; text-shadow: 0 0 3px var(--card), 0 0 6px var(--card); }
+.batt-b > span small { font-size: 14px !important; }
+.batt-cap { width: 6px !important; height: 24px !important; border-radius: 0 5px 5px 0; background: var(--fg) !important; }
+.etile .mt-f { text-align: center; }
+@media (max-width: 760px) { .batt-b { width: min(100%, 240px); height: 72px !important; } }
+/* zítřek: dva řádky, počasí s ikonami */
+.tmw { font-size: 14px; margin-top: 2px; }
+.tmw-w { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; font-size: 13px; color: var(--muted); }
+.tmw-w span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.tmw-w svg { width: 14px; height: 14px; flex: none; }
+/* poslední aktivita: vzdálenost a čas velké, zbytek v řádku */
+.la2 { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.la2-main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.la2-main span { display: block; font-size: 12px; color: var(--muted); }
+.la2-main b { font-size: 30px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.la2-main b small { font-size: 14px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+.la2-sub { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; border-top: 1px solid var(--line); padding-top: 10px; font-size: 13px; color: var(--muted); }
+.la2-sub b { color: var(--fg); font-weight: 700; font-variant-numeric: tabular-nums; }
+@media (min-width: 761px) { .lacard .la2 { margin-top: 0; } }
+
+/* ======================= kolo 25 ======================= */
+/* baterie: vyšší, vycentrovaná v dlaždici (svisle i vodorovně) */
+.etile { justify-content: space-between !important; }
+.etile .mt-h { min-height: 0 !important; }
+.batt { margin: auto 0 !important; padding: 12px 0 8px !important; }
+.batt-b { width: min(100%, 250px) !important; height: 84px !important; border-radius: 20px !important; border-width: 2.5px !important; }
+.batt-b > i { border-radius: 14px !important; }
+.batt-b > span { font-size: 30px !important; }
+.batt-cap { height: 28px !important; width: 7px !important; }
+@media (max-width: 760px) { .batt-b { width: min(78%, 300px) !important; height: 104px !important; border-radius: 24px !important; } .batt-b > i { border-radius: 16px !important; } .batt-b > span { font-size: 36px !important; } .batt-b > span small { font-size: 16px !important; } .batt-cap { height: 34px !important; } }
+
+/* poslední aktivita: obě velká čísla vycentrovaná ve svých polovinách, spodní řádek rovnoměrně */
+.la2-main > div { text-align: center; }
+.la2-sub { justify-content: space-around !important; }
+
+/* vybavení a „s kým“: dvě stejné bubliny přes celý řádek, ikona uvnitř */
+.head > div:has(.actsel) { flex: 1 1 100%; min-width: 0; }
+.actsel .gearsel { display: grid !important; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0 6px !important; background: var(--card2); border: 1px solid var(--line); border-radius: 12px; padding: 0 4px 0 12px; box-sizing: border-box; font-size: 17px; }
+.actsel .gearsel select { border: 0 !important; background-color: transparent !important; padding: 9px 6px !important; font-size: 15px; width: 100% !important; min-width: 0; }
+.actsel .gearsel .sub { grid-column: 1 / -1; font-size: 11.5px; padding: 0 0 6px; }
+.actsel .gearsel .sub:empty { display: none; }
+
+/* kroužek spánku: zaoblené konce fází */
+.slring circle[stroke-linecap] { stroke-linecap: round; }
+/* horní pruh: jako v prvních verzích – nic vlastního, rozmazání pod stavovým řádkem dělá iOS (bez theme-color) */
+.topsafe, .standalone .topsafe { display: none !important; }
+/* AI okno na mobilu: ztmavení přes celou obrazovku (bez rovné hrany nad lištou), panel nad lištou, lišta zůstává nahoře a klikací */
+@media (max-width: 760px) {
+  .modal.aip { inset: 0 !important; bottom: 0 !important; z-index: 28; padding: calc(10px + env(safe-area-inset-top)) 10px calc(max(6px, env(safe-area-inset-bottom) - 18px) + 80px) !important; background: rgba(0, 0, 0, .38); }
+  .aip .modal-in { box-shadow: 0 12px 40px rgba(0, 0, 0, .28); }
+}
+/* forma: dnešní stav na jednom řádku, vysvětlivky zón */
+.note.fnow { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; line-height: 1.4; }
+.fz-list { display: grid; gap: 8px; margin: 8px 0; }
+.fz-list > div { display: grid; grid-template-columns: 12px 1fr; column-gap: 8px; align-items: baseline; font-size: 13.5px; }
+.fz-list i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; transform: translateY(1px); }
+.fz-list p { grid-column: 2; margin: 2px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+/* Další údaje: jedno hlavní číslo, rozsah / maximum drobně pod ním */
+.abasics.xtra b { font-size: 20px; font-weight: 750; }
+.abasics.xtra b small { font-size: 12.5px; }
+.abasics.xtra > div > i { display: block; font-style: normal; font-size: 12px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+tr.lapclick.busy td { opacity: .55; }
+/* filtr sportů v Aktivitách: jeden vodorovně posuvný řádek */
+.filters { flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; margin-left: -2px; margin-right: -2px; padding: 2px; scroll-snap-type: x proximity; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+.filters::-webkit-scrollbar { display: none; }
+.filters button { flex: none; white-space: nowrap; scroll-snap-align: start; }
+/* souhrn měsíce */
+.msum-nav { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.msum-nav b { font-size: 17px; }
+.msum-nav b small { font-weight: 500; color: var(--muted); }
+.msum-nav .btn { min-width: 38px; font-size: 18px; line-height: 1; }
+.msum > div em { display: block; font-style: normal; font-size: 11.5px; font-weight: 700; margin-top: 2px; }
+.msum > div em.up { color: var(--ok); }
+.msum > div em.down { color: var(--bad); }
+.mratio { display: flex; height: 12px; border-radius: 99px; overflow: hidden; gap: 2px; background: var(--card2); }
+.mratio i { display: block; height: 100%; min-width: 3px; }
+.mrows { display: grid; gap: 6px; margin-top: 10px; }
+.mrows > div { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; column-gap: 8px; align-items: center; font-size: 14px; }
+.mrows .mr-i { grid-row: span 2; font-size: 20px; text-align: center; }
+.mrows .mr-i .emo { width: 22px; height: 22px; }
+.mrows .mr-n { font-weight: 650; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.mrows .mr-n i { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+.mrows .mr-v { font-weight: 750; font-variant-numeric: tabular-nums; }
+.mrows .mr-s { grid-column: 2 / -1; font-size: 12.5px; color: var(--muted); }
+.ai-row { display: flex; justify-content: flex-end; margin-top: 10px; gap: 8px; flex-wrap: wrap; }
+.btn.aiask { border-color: color-mix(in srgb, var(--acc) 40%, var(--line)); }
+@media (max-width: 760px) {
+  .aktgrid[data-view="list"] .ak-month, .aktgrid[data-view="year"] .ak-month, .aktgrid[data-view="vol"] .ak-month,
+  .aktgrid[data-view="month"] .ak-list, .aktgrid[data-view="month"] .ak-year, .aktgrid[data-view="month"] .ak-vol { display: none; }
+}
+/* porovnání roků */
+.yrsel { display: flex; gap: 6px; align-items: center; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-bottom: 8px; }
+.yrsel::-webkit-scrollbar { display: none; }
+.yrsel .sub { flex: none; margin-right: 2px; }
+.yrsel button { flex: none; border: 1px solid var(--line); background: var(--card2); color: var(--fg); border-radius: 999px; padding: 5px 12px; font-weight: 650; font-size: 13px; cursor: pointer; }
+.yrsel button.on { background: var(--acc); border-color: var(--acc); color: #fff; }
+.t.ycmp td.up { color: var(--ok); font-weight: 700; }
+.t.ycmp td.down { color: var(--bad); font-weight: 700; }
+/* stránka Počasí */
+.wxseg { margin-bottom: 12px; }
+.wx-sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+.wx-sum > div { background: var(--card2); border-radius: 12px; padding: 8px 10px; }
+.wx-sum b { display: block; font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.wx-sum b small { font-size: 13px; font-weight: 600; color: var(--muted); }
+.wx-sum span { font-size: 12px; color: var(--muted); }
+.wx-strip { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.wx-strip::-webkit-scrollbar { display: none; }
+.wx-strip > div { flex: 0 0 48px; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; border-radius: 12px; background: var(--card2); font-variant-numeric: tabular-nums; }
+.wx-strip > div.now { background: color-mix(in srgb, var(--acc) 16%, var(--card2)); outline: 1.5px solid var(--acc); }
+.wx-strip span { font-size: 11.5px; color: var(--muted); }
+.wx-strip i { font-style: normal; font-size: 20px; line-height: 1.2; }
+.wx-strip b { font-size: 14px; }
+.wx-strip small { font-size: 10.5px; color: var(--z2); min-height: 13px; }
+.wxlay { margin-bottom: 8px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.wxmap { position: relative; border-radius: 14px; overflow: hidden; aspect-ratio: 4 / 3.4; background: var(--card2); }
+.wxmap iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.wx-links { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+@media (max-width: 760px) { .wxmap { aspect-ratio: 3 / 3.6; } }
+/* baterie: znak % stejně velký jako číslo */
+.batt-b > span small, .batt-b > span small { font-size: inherit !important; font-weight: inherit !important; margin-left: 1px; }
+/* porovnání roků: sbalené úplně dole */
+details.yrfold { padding: 0; }
+details.yrfold > summary { list-style: none; cursor: pointer; padding: 14px 16px; font-weight: 750; display: flex; align-items: center; gap: 8px; }
+details.yrfold > summary::-webkit-details-marker { display: none; }
+details.yrfold > summary::after { content: "›"; margin-left: auto; color: var(--muted); font-size: 20px; transition: transform .15s; }
+details.yrfold[open] > summary::after { transform: rotate(90deg); }
+details.yrfold > div { padding: 0 16px 16px; }
+.pillbig .pb-t b small { font-size: .8em; font-weight: 600; color: var(--muted); }
+/* ikony počasí (Meteocons, MIT) */
+img.wxi { width: 1.6em; height: 1.6em; vertical-align: middle; margin: -0.3em 0; filter: drop-shadow(0 1px 1.2px rgba(0, 0, 0, .28)); }
+.pb-ico img.wxi { width: 36px; height: 36px; margin: 0; }
+/* vysvětlivky formy: název + rozsah vedle čtverečku, popis pod tím */
+.fz-list > div { grid-template-columns: 12px minmax(0, 1fr) !important; }
+.fz-list .fz-h { min-width: 0; }
+.fz-list .fz-h .sub { margin-left: 4px; }
+/* počasí po hodinách – posuvná tabulka jako detail ve Windy */
+.wxt { display: grid; grid-template-columns: auto minmax(0, 1fr); margin: 0 -4px; }
+.wxs { position: relative; display: flex; overflow-x: auto; scrollbar-width: thin; -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity; }
+.wxlab, .wxc { display: grid; grid-template-rows: 16px 18px 40px 22px 16px 22px 16px 22px 22px; align-items: center; justify-items: center; font-variant-numeric: tabular-nums; }
+.wxlab { justify-items: end; padding-right: 6px; font-size: 11px; color: var(--muted); border-right: 1px solid var(--line); }
+.wxlab b { font-size: 11px; font-weight: 600; }
+.wxc { flex: 0 0 46px; scroll-snap-align: start; border-radius: 10px; }
+.wxc.dstart { border-left: 1.5px solid var(--line); }
+.wxc.now { background: color-mix(in srgb, var(--acc) 12%, transparent); }
+.wxc .wxd { font-size: 10.5px; font-weight: 750; white-space: nowrap; justify-self: start; padding-left: 3px; overflow: visible; }
+.wxc .wxh { font-size: 12px; color: var(--muted); }
+.wxc i { font-style: normal; }
+.wxc img.wxi { width: 38px; height: 38px; margin: 0; }
+.wxc b { font-size: 15px; }
+.wxc .wxf { font-size: 11px; color: var(--muted); }
+.wxc .wxr, .wxc .wxw, .wxc .wxg { width: calc(100% - 2px); text-align: center; font-size: 12px; line-height: 22px; border-radius: 5px; }
+.wxc .wxr { font-weight: 700; color: #1d4ed8; }
+.wxc .wxp { font-size: 10.5px; color: var(--z2); }
+.wxc .wxg { color: var(--muted); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .wxc .wxr { color: #93c5fd; } }
+:root[data-theme="dark"] .wxc .wxr { color: #93c5fd; }
+.wx-sum { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+.wx-sun { position: relative; }
+.wx-sun img { position: absolute; right: 4px; top: 2px; width: 34px; height: 34px; }
+/* iPhone: Safari barví horní lištu podle pozadí elementu přes celou obrazovku → ztmavení jen stínem panelu,
+   samotná vrstva přes obrazovku je průhledná (jinak po otevření „Více“ nebo okna zůstal nahoře šedý pruh) */
+.sheet { background: transparent !important; }
+.sheet.on .sheet-in { box-shadow: 0 0 0 200vmax rgba(0, 0, 0, .35), 0 10px 30px rgba(0, 0, 0, .18); }
+.modal { background: transparent !important; }
+.modal > .modal-in { box-shadow: 0 0 0 200vmax rgba(0, 0, 0, .42), 0 20px 60px rgba(0, 0, 0, .3) !important; }
+/* 🤖 zarovnaný s nadpisem i na stránkách s odkazem „← Zpět“ nad nadpisem */
+.head:has(> div > .back) > .aibtn { margin-top: 24px; }
+.wxbar { display: flex; gap: 8px; flex-wrap: wrap; margin: -4px 0 12px; }
+.wxbar .seg { flex-wrap: nowrap; }

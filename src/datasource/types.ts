@@ -73,6 +73,10 @@ export interface NWellness {
   sleep_resp_lo?: number | null;
   sleep_resp_hi?: number | null;
   next_sleep_need_min?: number | null;
+  /** původní hodnoty z Garminu (sleep_score / sleep_need_min / next_sleep_need_min jsou přepočtené, src/core/sleepCalc.ts) */
+  sleep_score_g?: number | null;
+  sleep_need_g_min?: number | null;
+  next_sleep_need_g_min?: number | null;
   date: string;
   hrv?: number | null;
   hrv_weekly?: number | null;
@@ -106,8 +110,15 @@ export interface NWellness {
   bb_charged?: number | null;
   bb_drained?: number | null;
   bb_latest?: number | null;
-  /** čas měření poslední hodnoty Body Battery (ms, GMT) – jen pro snímky v KV */
-  bb_latest_at?: number | null;
+  /** Body Battery z Garminu (bb_* = vlastní energie) */
+  bb_max_g?: number | null;
+  bb_min_g?: number | null;
+  bb_charged_g?: number | null;
+  bb_drained_g?: number | null;
+  bb_latest_g?: number | null;
+  energy_end?: number | null;
+  /** do kdy jsou v Garmin Connect data z hodinek (ms, GMT) – jen pro záznam synchronizace */
+  data_until?: number | null;
   stress_max?: number | null;
   stress_dist?: string | null;
   icu_ctl?: number | null;

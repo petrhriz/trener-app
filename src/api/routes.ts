@@ -18,13 +18,14 @@ import { DEFAULTS, getSettings, setSetting, statusOn, type Settings } from "../l
 import { STATUS_LABEL, coaching, strainScore, typicalWake, type StatusKind } from "../core/readinessScore";
 import { weeklyLoadTarget } from "../core/fitness";
 import { round6 } from "./round6";
-import { addDays, dow, localNow, mondayOf } from "../lib/time";
+import { addDays, dow, localNow, mondayOf, tzOffsetMin } from "../lib/time";
 import { addConstraint, applyChanges, claimProposal, finishProposal, getProposal, openProposal, removeConstraint, saveProposal } from "../plan/proposals";
 import { activityReport, eftpOf, ftpCheckOf, fitnessTable, recoveryFor, plannedFor, planFor, readiness, weatherMap, weekLoads, weekly } from "../report/build";
 import { weekTargetAdjusted, z2MaxMinutes } from "../core/plan";
 import { loadCtx } from "../report/context";
 import { compliance, ctlPlan, efficiency, intensityVerdict, intensityWeeks, monotonyWeeks, weeklyCompliance } from "../core/analytics";
 import { recomputeLoads } from "../sync/metrics";
+import { recomputeSleep } from "../sync/sleep";
 import { geocode } from "../sync/weather";
 import { verifyAccess } from "./access";
 import { accountsApi } from "./accounts";
@@ -96,6 +97,8 @@ api.get("/overview", async (c) => {
   const vsN = (v: number | null | undefined, n: { mean: number; sd: number } | null, lowGood = false) =>
     v == null || !n ? null : v < n.mean - n.sd ? (lowGood ? "Nízký" : "Pod normou") : v > n.mean + n.sd ? (lowGood ? "Zvýšený" : "Nad normou") : "Normální";
   const past = D !== T;
+  // zpětný den: zotavení spočítané k tomu dni (data jen do toho dne)
+  const recD = past ? recoveryFor({ ...ctx, T: D, well: ctx.well.filter((w) => w.date <= D), acts: ctx.acts.filter((a) => a.date <= D) } as any) : r.recovery;
   // skóre jako v Bevelu: Zátěž · Zotavení · Spánek
   const st = statusOn(ctx.s, D);
   const ctlY = ctx.metrics.find((m) => m.date === addDays(D, -1))?.ctl ?? fit.ctl ?? null;
@@ -106,9 +109,11 @@ api.get("/overview", async (c) => {
   const sleepNeed = tw?.sleep_need_min ?? null;
   const coach = coaching({
     hour: past ? 21 : ctx.now.hh,
+    past,
     status: st.kind as StatusKind,
     statusUntil: st.until,
-    semafor: past ? null : { state: r.recovery.state, reasons: [...r.recovery.flags.counted, ...r.recovery.reasons], missing: r.missingData.length >= 2 },
+    // zpětný den bez dat z hodinek: žádné „odpočatý“ z ničeho
+    semafor: past && !tw?.hrv && !tw?.sleep_s && !tw?.rhr ? null : { state: recD.state, reasons: [...recD.flags.counted, ...recD.reasons], missing: past ? false : r.missingData.length >= 2 },
     strain,
     sleepS: tw?.sleep_s ?? null,
     sleepNeedMin: sleepNeed,
@@ -130,6 +135,7 @@ api.get("/overview", async (c) => {
       sleep: { score: tw?.sleep_score ?? null, durationS: tw?.sleep_s ?? null, needMin: sleepNeed },
     },
     coaching: coach,
+    weatherDay: past ? await weatherOfDay(c.env, ctx.s, D) : null,
     weatherNow: hourNow ? { temp: hourNow.temp, feels: hourNow.feels, prob: hourNow.precip_prob, code: (hourNow as any).code ?? null, gust: hourNow.gust, place: ctx.s.place_name } : null,
     name: ctx.s.first_name,
     hour: ctx.now.hh,
@@ -145,7 +151,7 @@ api.get("/overview", async (c) => {
       rhrPast: { today: tw?.rhr ?? null, rating: vsN(tw?.rhr, nm("rhr"), true), norm: nm("rhr"), series: series("rhr") },
       fitPast: { ...pastFit, load7 },
     } : {}),
-    readiness: { state: r.recovery.state, label: r.recovery.stateLabel, emoji: r.recovery.emoji, reasons: [...r.recovery.flags.counted, ...r.recovery.reasons], decision: r.today.decision, why: r.today.decisionWhy, missing: r.missingData },
+    readiness: { state: recD.state, label: recD.stateLabel, emoji: recD.emoji, score: recD.score, scoreDrags: recD.scoreDrags, scoreBoosts: recD.scoreBoosts, reasons: [...recD.flags.counted, ...recD.reasons], decision: r.today.decision, why: r.today.decisionWhy, missing: r.missingData },
     bb: { max: tw?.bb_max ?? null, min: tw?.bb_min ?? null, latest: tw?.bb_latest ?? null, charged: tw?.bb_charged ?? null, drained: tw?.bb_drained ?? null, series: last14.map((w) => ({ date: w.date, max: w.bb_max, min: w.bb_min })), norm: nm("bb_max") },
     hrv: { today: r.recovery.hrv.today, rating: r.recovery.hrv.rating, flag: r.recovery.hrv.flag, range: r.recovery.hrv.rangeText, avg7: r.recovery.hrv.avg7, series: series("hrv"), norm: nm("hrv") },
     rhr: { today: r.recovery.rhr.today, rating: r.recovery.rhr.rating, flag: r.recovery.rhr.flag, range: r.recovery.rhr.rangeText, avg7: r.recovery.rhr.avg7, series: series("rhr"), norm: nm("rhr") },
@@ -155,12 +161,32 @@ api.get("/overview", async (c) => {
     sleep,
     sleepSeries: last14.map((w) => ({ date: w.date, s: w.sleep_s, score: w.sleep_score, deep: w.deep_s, rem: w.rem_s, light: w.light_s, awake: w.awake_s })),
     strain: { today: todayLoad, yesterday: yLoad, load7: fit.load7, ctl: fit.ctl, atl: fit.atl, form: fit.form, zone: fit.form != null ? formZone(fit.form) : null, ramp: fit.ramp },
-    today: { decision: r.today.decision, why: r.today.decisionWhy, name: day?.name ?? null, tag: day?.tag ?? null, durationMin: day?.durationMin ?? null, sport: day?.sport ?? null, targetText: day?.targetText ?? null, done: r.today.done, tomorrow: r.tomorrow },
+    today: { decision: r.today.decision, why: r.today.decisionWhy, name: day?.name ?? null, tag: day?.tag ?? null, durationMin: day?.durationMin ?? null, sport: day?.sport ?? null, targetText: day?.targetText ?? null, done: r.today.done, tomorrow: r.tomorrow, tomorrowInfo: r.tomorrowInfo },
     lastActivity: lastAct ? { id: lastAct.id, date: lastAct.date, name: lastAct.name, sport: lastAct.sport, km: lastAct.distance_m ? Math.round(lastAct.distance_m / 100) / 10 : null, moving_s: lastAct.moving_s, load: lastAct.load, avg_hr: lastAct.avg_hr, np: lastAct.np, elev: lastAct.elev_gain, plan: plannedFor(ctx, lastAct)?.name ?? null, compliance: lastAct.icu_compliance } : null,
     rideTemps: ctx.s.ride_temps ?? null,
     weather: [...wm.entries()].map(([d, w]) => ({ date: d, label: d === T ? "Dnes" : d === addDays(T, 1) ? "Zítra" : dayDm(d), w })),
   });
 });
+
+/** Počasí minulého dne (Open-Meteo historical forecast): max/min, pocitově, srážky, kód; v KV na rok. */
+async function weatherOfDay(env: Env, st: Settings, D: string): Promise<{ tmax: number | null; tmin: number | null; feels: number | null; precip: number | null; code: number | null; gust: number | null } | null> {
+  const lat = st.place_lat ?? Number(env.LAT), lon = st.place_lon ?? Number(env.LON);
+  if (!isFinite(lat) || !isFinite(lon)) return null;
+  const key = `wxday:${lat}:${lon}:${D}`;
+  const hit = await env.KV.get(key, "json").catch(() => null);
+  if (hit) return hit as any;
+  try {
+    const r = await fetch(`https://historical-forecast-api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&start_date=${D}&end_date=${D}&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,precipitation_sum,wind_gusts_10m_max&timezone=Europe%2FPrague&wind_speed_unit=kmh`);
+    if (!r.ok) return null;
+    const j = (await r.json()) as { daily?: Record<string, (number | null)[]> };
+    const g = (k: string) => j.daily?.[k]?.[0] ?? null;
+    const out = { tmax: g("temperature_2m_max"), tmin: g("temperature_2m_min"), feels: g("apparent_temperature_max"), precip: g("precipitation_sum"), code: g("weather_code"), gust: g("wind_gusts_10m_max") };
+    if (out.tmax == null) return null;
+    // včerejšek se ještě může zpřesnit → krátce, starší dny na rok
+    await env.KV.put(key, JSON.stringify(out), { expirationTtl: D >= addDays(localNow().date, -2) ? 6 * 3600 : 365 * 86400 }).catch(() => {});
+    return out;
+  } catch { return null; }
+}
 
 /** Platné datum pro náhled zpět: YYYY-MM-DD v rozsahu T−7 … T, jinak T. */
 function pastDate(q: string | undefined, T: string): string {
@@ -355,7 +381,10 @@ function weekLoadsView(ctx: CtxT, plan: Awaited<ReturnType<typeof planFor>>) {
  */
 api.get("/activity/:id/streams", async (c) => {
   const id = c.req.param("id");
-  const key = `streams:v4:${id}`;
+  // ?from=&to= (s od startu): výřez úseku v plném rozlišení (okruh / interval), jinak celá aktivita po ~600 bodech
+  const fromQ = Number(c.req.query("from")), toQ = Number(c.req.query("to"));
+  const part = c.req.query("from") != null && isFinite(fromQ) && isFinite(toQ) && toQ > fromQ;
+  const key = `streams:v5:${id}${part ? `:${Math.round(fromQ)}-${Math.round(toQ)}` : ""}`;
   const cached = await c.env.KV.get(key, "json");
   if (cached) return c.json(cached);
   const row = await first<{ icu_id: string | null }>(c.env.DB, "SELECT icu_id FROM activities WHERE id = ?", id);
@@ -363,7 +392,8 @@ api.get("/activity/:id/streams", async (c) => {
   let get: (t: string) => (number | null)[] | null;
   // hlavní zdroj Garmin (všechny kanály vč. kadence, teploty, dechu, výkonnostního stavu a trasy, celá historie)
   let src = "Garmin";
-  const g = await new GarminClient(c.env).activityStreams(id).catch(() => null);
+  // výřez úseku: plné rozlišení Garminu (1 bod za sekundu), celá aktivita ~1500 bodů
+  const g = await new GarminClient(c.env).activityStreams(id, part ? 100000 : 1500).catch(() => null);
   if (g && (g.time?.length ?? 0) > 10) {
     get = (t) => g[t] ?? null;
   } else if (row.icu_id) {
@@ -373,9 +403,19 @@ api.get("/activity/:id/streams", async (c) => {
     get = (t) => raw.find((s) => s.type === (alias[t] ?? t))?.data ?? null;
     src = "intervals.icu";
   } else return c.json({ error: "Průběh nemám (ani v Garminu, ani v intervals.icu)." }, 404);
-  const time = get("time") ?? [];
+  let time = get("time") ?? [];
+  if (part) {
+    const i0 = time.findIndex((v) => v != null && v >= fromQ - 1);
+    let i1 = time.length - 1;
+    while (i1 > 0 && (time[i1] == null || time[i1]! > toQ + 1)) i1--;
+    if (i0 < 0 || i1 - i0 < 3) return c.json({ error: "Úsek je mimo průběh." }, 404);
+    const base = get;
+    get = (t) => { const a = base(t); return a ? a.slice(i0, i1 + 1) : null; };
+    time = time.slice(i0, i1 + 1);
+  }
   const n = time.length;
-  const step = Math.max(1, Math.ceil(n / 600));
+  // úsek: do ~30 min po 1 s, delší po 2 s; celá aktivita ~600 bodů
+  const step = part ? Math.max(1, Math.ceil(n / 1800)) : Math.max(1, Math.ceil(n / 600));
   const pick = (arr: (number | null)[] | null, dec = 0) => {
     if (!arr) return null;
     const out: (number | null)[] = [];
@@ -403,7 +443,7 @@ api.get("/activity/:id/streams", async (c) => {
     perf: pick(get("perf")),
     halves: halvesOf(time, get("heartrate"), get("watts"), spd),
     splits: { 1: splitsOf(time, get, 1000), 5: splitsOf(time, get, 5000), 10: splitsOf(time, get, 10000) },
-    route: routeOf(get("polyLat"), get("polyLon"), get("lat"), get("lon"), spd, get("heartrate"), get("watts"), get("altitude")),
+    route: part ? null : routeOf(get("polyLat"), get("polyLon"), get("lat"), get("lon"), spd, get("heartrate"), get("watts"), get("altitude")),
     // hranice zón pro barvy grafu: tep = dolní hranice Z2..Z5, výkon = horní hranice Z1..Z6 (W)
     hrFloors: s.hr_zones?.floors?.slice(1) ?? null,
     pwrTops: (s.power_zones_pct ?? [55, 75, 90, 105, 120, 150]).map((p) => Math.round((ftp * p) / 100)),
@@ -507,20 +547,18 @@ function halvesOf(time: (number | null)[], hr: (number | null)[] | null, w: (num
   return { hr: hrA, w: wA, spd: sA, ef: ef ? ef.map((x) => Math.round(x * 1000) / 1000) : null, dec, by: wA ? "power" : "speed" };
 }
 
-/** Den po hodinách: tep po 2 min a Body Battery (klíčové body Garminu + vlastní záznamy během dne). */
+/** Den po hodinách: tep po 2 min a energie (vlastní výpočet z energy_day; bez něj klíčové body Body Battery z Garminu). */
 api.get("/day", async (c) => {
   const ctx = await loadCtx(c.env);
   const date = c.req.query("date") ?? ctx.T;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return c.json({ error: "bad date" }, 400);
   const key = `day:v3:${date}`;
-  // vlastní snímky Body Battery (každých 5 min) se čtou vždy čerstvé, cache je jen pro data z Garminu
-  const snaps = ((await c.env.KV.get(`bbsnap:${date}`, "json")) as [number, number][] | null) ?? [];
-  const withSnaps = (o: any) => {
-    const keyPts: [number, number][] = o.bbKey ?? [];
-    // vlastní záznam jen tam, kde Garmin klíčový bod nemá (± 3 min)
-    const bb = [...keyPts, ...snaps.filter(([t]) => !keyPts.some(([k]) => Math.abs(k - t) < 3 * 60_000))].sort((a, b) => a[0] - b[0]);
-    return { ...o, bb };
-  };
+  // energie se čte vždy čerstvá z D1 (přepočet každých 15 min), cache je jen pro data z Garminu
+  const en = await first<{ data: string }>(c.env.DB, "SELECT data FROM energy_day WHERE date = ?", date);
+  const energy = (() => { try { return en ? JSON.parse(en.data) : null; } catch { return null; } })();
+  const withSnaps = (o: any) => energy
+    ? { ...o, bb: energy.pts, bbEvents: energy.events, bbCharged: energy.charged, bbDrained: energy.drained, stressSeries: energy.stress, restSpans: energy.rest, energySource: "vypocet" }
+    : { ...o, bb: o.bbKey ?? [], stressSeries: [], restSpans: [], energySource: "garmin" };
   const cached = await c.env.KV.get(key, "json");
   if (cached) return c.json(withSnaps(cached));
   const g = new GarminClient(c.env);
@@ -571,15 +609,6 @@ function loadDaysOf(ctx: Awaited<ReturnType<typeof loadCtx>>, days: number) {
     out.push({ date: d, acts });
   }
   return out;
-}
-
-/** Posun časové zóny (min) pro den – graf kreslí místní čas 0–24 h. */
-function tzOffsetMin(tz: string, date: string): number {
-  const d = new Date(`${date}T12:00:00Z`);
-  const p = new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(d);
-  const hh = +(p.find((x) => x.type === "hour")?.value ?? 12);
-  const mm = +(p.find((x) => x.type === "minute")?.value ?? 0);
-  return (hh - 12) * 60 + mm;
 }
 
 /** Křivka výkonu 1 s – 5 h z intervals.icu (42 dní, 90 dní, 1 rok), cache 6 h. */
@@ -663,6 +692,22 @@ api.post("/activity/:id/company", async (c) => {
   return c.json({ ok: true, company: v || null });
 });
 
+/** Měsíce: 24 měsíců po sportech (počet, čas, km, převýšení, zátěž) – souhrn měsíce a graf 12 měsíců v Aktivitách. */
+api.get("/months", async (c) => {
+  const ctx = await loadCtx(c.env);
+  const y = +ctx.T.slice(0, 4), m = +ctx.T.slice(5, 7);
+  const back = (k: number) => { const t = y * 12 + (m - 1) - k; return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, "0")}`; };
+  const months: string[] = [];
+  for (let k = 23; k >= 0; k--) months.push(back(k));
+  const rows = await all<{ m: string; sport: string; n: number; s: number; km: number; up: number; load: number }>(c.env.DB,
+    "SELECT substr(date, 1, 7) AS m, sport, COUNT(*) AS n, SUM(COALESCE(moving_s, 0)) AS s, SUM(COALESCE(distance_m, 0)) / 1000.0 AS km, SUM(COALESCE(elev_gain, 0)) AS up, SUM(COALESCE(load, 0)) AS load FROM activities WHERE date >= ? GROUP BY m, sport",
+    `${months[0]}-01`);
+  return c.json({
+    today: ctx.T,
+    months: months.map((mm) => ({ month: mm, sports: rows.filter((r) => r.m === mm).map((r) => ({ sport: r.sport, n: r.n, s: Math.round(r.s), km: Math.round(r.km * 10) / 10, up: Math.round(r.up), load: Math.round(r.load) })) })),
+  });
+});
+
 api.get("/ride", async (c) => {
   const ctx = await loadCtx(c.env);
   const rows = await all<any>(c.env.DB, "SELECT id, date, mmp, max20, pwr_z, distance_m, moving_s, load, sport FROM activities WHERE date >= ? AND sport IN ('ride','mtb','indoor')", addDays(ctx.T, -365));
@@ -700,7 +745,7 @@ api.get("/recovery", async (c) => {
     today: T0,
     minDate: await firstDay(c.env, T0),
     rows: ctx.well.filter((w) => w.date <= T).map((w) => ({
-      date: w.date, hrv: w.hrv, rhr: w.rhr, sleep_s: w.sleep_s, sleep_score: w.sleep_score, bb_max: w.bb_max, bb_min: w.bb_min,
+      date: w.date, hrv: w.hrv, rhr: w.rhr, sleep_s: w.sleep_s, sleep_score: w.sleep_score, sleep_score_g: w.sleep_score_g ?? null, bb_max: w.bb_max, bb_min: w.bb_min,
       bb_charged: w.bb_charged, bb_drained: w.bb_drained, stress: w.stress_avg, stress_max: w.stress_max,
       deep: w.deep_s, rem: w.rem_s, light: w.light_s, awake: w.awake_s, sleep_hr: w.sleep_hr, sleep_stress: w.sleep_stress, resp: w.sleep_resp,
       stress_dist: (() => { try { return w.stress_dist ? JSON.parse(w.stress_dist) : null; } catch { return null; } })(),
@@ -731,6 +776,72 @@ api.get("/fitness", async (c) => {
     ? await all<any>(c.env.DB, "SELECT * FROM daily_metrics WHERE date >= ? AND date <= ? ORDER BY date", `${T.slice(0, 4)}-01-01`, startDate)
     : ctx.metrics.filter((m) => m.date >= addDays(T, -90) && m.date <= startDate);
   return c.json({ range: ytd ? "ytd" : "90", loadDays: loadDaysOf(ctx, 28), ftp: ctx.s.ftp, eftp: eftpOf(ctx), ftpCheck: ftpCheckOf(ctx, await getState<string>(c.env.DB, "ftp_set_at")), ftpSetAt: await getState<string>(c.env.DB, "ftp_set_at"), metrics, today: ctx.metrics.find((m) => m.date === T) ?? last, projection: proj, chart: p.chart, table: fit, last, loadPast7: p.loadPast7, loadNext7: p.loadNext7, target: p.weeklyTarget, warnings: p.warnings });
+});
+
+/** Porovnání kondice dvou roků: CTL/ATL/forma po dnech (zarovnané na den v roce) a součty od 1. 1. do stejného dne. */
+api.get("/fitness-years", async (c) => {
+  const ctx = await loadCtx(c.env);
+  const T = ctx.T, cy = T.slice(0, 4);
+  const years = (await all<{ y: string }>(c.env.DB, "SELECT DISTINCT substr(date, 1, 4) AS y FROM daily_metrics WHERE ctl IS NOT NULL ORDER BY y DESC")).map((r) => r.y).filter((y) => y !== cy);
+  const y = /^\d{4}$/.test(c.req.query("y") ?? "") && years.includes(c.req.query("y")!) ? c.req.query("y")! : years[0] ?? null;
+  const md = T.slice(5);
+  const of = async (yy: string) => {
+    const to = `${yy}-${md}`;
+    const rows = await all<{ date: string; ctl: number | null; atl: number | null; form: number | null }>(c.env.DB, "SELECT date, ctl, atl, form FROM daily_metrics WHERE date >= ? AND date <= ? ORDER BY date", `${yy}-01-01`, `${yy}-12-31`);
+    const sum = await first<{ n: number; s: number; km: number; up: number; load: number; bike: number }>(c.env.DB,
+      "SELECT COUNT(*) AS n, SUM(COALESCE(moving_s, 0)) AS s, SUM(COALESCE(distance_m, 0)) / 1000.0 AS km, SUM(COALESCE(elev_gain, 0)) AS up, SUM(COALESCE(load, 0)) AS load, SUM(CASE WHEN sport IN ('ride','mtb','indoor') THEN COALESCE(distance_m, 0) ELSE 0 END) / 1000.0 AS bike FROM activities WHERE date >= ? AND date <= ?",
+      `${yy}-01-01`, to);
+    const upTo = rows.filter((r) => r.date <= to && r.ctl != null);
+    const peak = upTo.reduce((b, r) => (r.ctl! > (b?.ctl ?? -1) ? r : b), null as (typeof rows)[number] | null);
+    return { year: yy, rows: rows.map((r) => ({ md: r.date.slice(5), ctl: r.ctl, atl: r.atl, form: r.form })), atDay: upTo[upTo.length - 1] ?? null, peak: peak ? { date: peak.date, ctl: peak.ctl } : null,
+      ytd: { n: sum?.n ?? 0, h: Math.round(((sum?.s ?? 0) / 3600) * 10) / 10, km: Math.round(sum?.km ?? 0), bikeKm: Math.round(sum?.bike ?? 0), up: Math.round(sum?.up ?? 0), load: Math.round(sum?.load ?? 0) } };
+  };
+  return c.json({ today: T, years, cur: await of(cy), cmp: y ? await of(y) : null });
+});
+
+/** Počasí na 3 dny po hodinách (stránka Počasí z Přehledu) + souřadnice pro Windy / Ventusky. */
+/** místa pro stránku Počasí: domov (Nastavení) a hory */
+const WX_PLACES: Record<string, { name: string; lat: number; lon: number }> = { cinovec: { name: "Cínovec", lat: 50.732, lon: 13.769 } };
+/** modely: best = nejlepší mix Open-Meteo (výchozí, stejné jako v plánu), aladin = ČHMÚ ALADIN 1 km (3 dny) */
+const WX_MODELS: Record<string, string | null> = { best: null, aladin: "chmi_aladin_seamless" };
+
+/** Počasí na 3 dny po hodinách (stránka Počasí z Přehledu) + souřadnice; ?model=best|aladin, ?loc=home|cinovec. */
+api.get("/weather-hours", async (c) => {
+  const ctx = await loadCtx(c.env);
+  const T = ctx.T, end = addDays(T, 3);
+  const model = c.req.query("model") === "aladin" ? "aladin" : "best";
+  const loc = WX_PLACES[c.req.query("loc") ?? ""] ? c.req.query("loc")! : "home";
+  const homeLat = ctx.s.place_lat ?? (c.env.LAT ? Number(c.env.LAT) : null), homeLon = ctx.s.place_lon ?? (c.env.LON ? Number(c.env.LON) : null);
+  const base = { today: T, nowHour: ctx.now.hh, model, loc, places: [{ key: "home", name: ctx.s.place_name || "Domov" }, ...Object.entries(WX_PLACES).map(([key, p]) => ({ key, name: p.name }))] };
+  // výchozí (domov, nejlepší mix): data, která už má sync v databázi
+  if (model === "best" && loc === "home") {
+    return c.json({ ...base, place: ctx.s.place_name, lat: homeLat, lon: homeLon,
+      hours: ctx.hours.filter((h) => h.time >= T && h.time < end),
+      updatedAt: await getState<number>(c.env.DB, "weather_at"),
+      sun: ((await getState<{ date: string; rise: string | null; set: string | null }[]>(c.env.DB, "weather_sun")) ?? []).filter((x) => x.date >= T && x.date < end) });
+  }
+  // jiný model nebo místo: přímo z Open-Meteo, v KV na 1 h
+  const p = loc === "home" ? { name: ctx.s.place_name || "Domov", lat: homeLat, lon: homeLon } : WX_PLACES[loc]!;
+  if (p.lat == null || p.lon == null) return c.json({ error: "Nemám polohu – zadej místo v Nastavení." }, 400);
+  const key = `wxh:${model}:${p.lat}:${p.lon}:${T}`;
+  let data = (await c.env.KV.get(key, "json").catch(() => null)) as { hours: any[]; sun: any[]; updatedAt: number } | null;
+  if (!data) {
+    const m = WX_MODELS[model];
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${p.lat}&longitude=${p.lon}` +
+      "&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,wind_gusts_10m,wind_speed_10m,weather_code" +
+      `&daily=sunrise,sunset&timezone=Europe%2FPrague&forecast_days=3&wind_speed_unit=kmh${m ? `&models=${m}` : ""}`;
+    const r = await fetch(url).catch(() => null);
+    if (!r || !r.ok) return c.json({ error: `Open-Meteo teď neodpovídá (${r?.status ?? "síť"}).` }, 502);
+    const j = (await r.json()) as { hourly: Record<string, (number | null)[]> & { time: string[] }; daily?: { time: string[]; sunrise: string[]; sunset: string[] } };
+    const h = j.hourly, g = (k: string, i: number) => h[k]?.[i] ?? null;
+    data = {
+      hours: h.time.map((t, i) => ({ time: t.slice(0, 13) + ":00", temp: g("temperature_2m", i), feels: g("apparent_temperature", i), precip_prob: g("precipitation_probability", i), precip: g("precipitation", i), gust: g("wind_gusts_10m", i), wind: g("wind_speed_10m", i), code: g("weather_code", i) })),
+      sun: (j.daily?.time ?? []).map((d, i) => ({ date: d, rise: j.daily!.sunrise[i]?.slice(11, 16) ?? null, set: j.daily!.sunset[i]?.slice(11, 16) ?? null })),
+      updatedAt: Date.now(),
+    };
+    await c.env.KV.put(key, JSON.stringify(data), { expirationTtl: 3600 }).catch(() => {});
+  }
+  return c.json({ ...base, place: p.name, lat: p.lat, lon: p.lon, hours: data.hours.filter((x) => x.time >= T && x.time < end), sun: data.sun, updatedAt: data.updatedAt });
 });
 
 api.get("/body", async (c) => {
@@ -835,6 +946,7 @@ api.post("/settings", async (c) => {
   const bad = (k: keyof Settings, v: unknown): string | null => {
     if (["morning_from", "morning_to", "evening_time", "weekly_time"].includes(k)) return typeof v === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? null : "čas ve tvaru HH:MM";
     if (k === "rides_per_week") return Number.isInteger(v) && (v as number) >= 2 && (v as number) <= 5 ? null : "tréninky týdně 2–5";
+    if (k === "sleep_goal_min") return Number.isInteger(v) && (v as number) >= 360 && (v as number) <= 600 ? null : "cíl spánku 6:00–10:00";
     if (k === "place_name") return typeof v === "string" && v.trim() ? null : "místo nesmí být prázdné";
     if (k === "goal") return ["udrzeni", "zvyseni", "pokles", "zavod"].includes(v as string) ? null : "neznámý cíl";
     if (k === "goal_date") return v == null || (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) ? null : "datum cíle";
@@ -860,6 +972,8 @@ api.post("/settings", async (c) => {
     await setState(c.env.DB, "ftp_manual", true);
     await setState(c.env.DB, "ftp_set_at", localNow(new Date(), c.env.TZ_NAME).date);
   }
+  // jiný cíl spánku → přepočítat skóre a potřebu spánku v celé historii
+  if (before.sleep_goal_min !== after.sleep_goal_min) await recomputeSleep(c.env.DB, after.sleep_goal_min);
   if (before.ftp !== after.ftp || JSON.stringify(before.hr_zones) !== JSON.stringify(after.hr_zones)) await recomputeLoads(c.env.DB, after);
   // změna cíle → hned přepočítat naplánované tréninky (návrh změn k potvrzení)
   let proposal: { id: number; count: number } | null = null;
@@ -871,11 +985,11 @@ api.post("/settings", async (c) => {
 });
 
 api.get("/status", async (c) => {
-  const keys = ["last_sync_ok", "bf_act", "bf_well", "metrics_day", "weather_at", "settings_refresh", "vo2_refresh", "analysis_since"];
+  const keys = ["last_sync_ok", "watch_data_until", "bf_act", "bf_well", "metrics_day", "weather_at", "settings_refresh", "vo2_refresh", "analysis_since"];
   const st: Record<string, unknown> = {};
   for (const k of keys) st[k] = await getState(c.env.DB, k);
   const counts = await first<any>(c.env.DB, "SELECT (SELECT COUNT(*) FROM activities) acts, (SELECT MIN(date) FROM activities) a_from, (SELECT COUNT(*) FROM wellness) days, (SELECT COUNT(*) FROM wellness WHERE sleep_s IS NOT NULL) nights, (SELECT COUNT(*) FROM planned_workouts WHERE status='planned') planned");
-  const logs = await all<any>(c.env.DB, "SELECT at, level, msg FROM events_log ORDER BY id DESC LIMIT 20");
+  const logs = await all<any>(c.env.DB, "SELECT at, level, msg FROM events_log ORDER BY id DESC LIMIT 60");
   return c.json({ state: st, counts, logs, source: c.env.DATA_SOURCE, llm: !!c.env.AI, model: c.env.LLM_MODEL });
 });
 

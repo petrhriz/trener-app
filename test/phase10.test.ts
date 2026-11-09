@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coaching, recoveryScore, strainScore, typicalWake, type NightRow } from "../src/core/readinessScore";
+import { coaching, normCdf, recoveryScore, strainScore, typicalWake, type NightRow } from "../src/core/readinessScore";
 import { generatePlan, type PlanInput } from "../src/core/plan";
 import { nextAlert, partKm, type Part } from "../src/api/gear";
 import { addDays } from "../src/lib/time";
@@ -23,7 +23,22 @@ describe("skóre zotavení", () => {
     expect(r.band).toBe("low");
     expect(r.drags.length).toBeGreaterThan(0);
   });
-  it("percentil: dnešní noc proti 60 nocím", () => {
+  it("normální rozdělení", () => {
+    expect(normCdf(0)).toBeCloseTo(0.5, 6);
+    expect(normCdf(1)).toBeCloseTo(0.8413, 3);
+    expect(normCdf(-2)).toBeCloseTo(0.0228, 3);
+  });
+  it("kratší spánek proti potřebě skóre sníží", () => {
+    const n = { date: "2026-11-08", hrv: 74, rhr: 53, sleep_hr: 56, sleep_need_min: 500, sleep_score: 80, sleep_resp: 11.4 };
+    const full = recoveryScore({ ...n, sleep_s: 30000 }, h).score!;
+    const short = recoveryScore({ ...n, sleep_s: 21600 }, h).score!;
+    expect(short).toBeLessThan(full - 5);
+    expect(recoveryScore({ ...n, sleep_s: 21600 }, h).drags.map((c) => c.key)).toContain("sleepDur");
+  });
+  it("bez základny (méně než 20 nocí) nedává", () => {
+    expect(recoveryScore({ date: "2026-11-08", hrv: 74, rhr: 53, sleep_hr: 56, sleep_s: 28800, sleep_need_min: 480, sleep_score: 80, sleep_resp: 11.4 }, h.slice(-10)).score).toBeNull();
+  });
+  it("skóre v rozsahu 0–100", () => {
     const r = recoveryScore({ date: "2026-11-08", hrv: 74, rhr: 53, sleep_hr: 56, sleep_s: 28800, sleep_need_min: 480, sleep_score: 80, sleep_resp: 11.4 }, h);
     expect(r.score!).toBeGreaterThanOrEqual(0);
     expect(r.score!).toBeLessThanOrEqual(100);
@@ -142,4 +157,19 @@ describe("servis vybavení", () => {
     expect(nextAlert({ ...part, notified_km: 60 }, 70)).toBeNull();
     expect(nextAlert({ ...part, notified_km: 60 }, 81)).toBe(80);
   });
+});
+
+describe("semafor + zotavení v %", async () => {
+  const { evaluateRecovery } = await import("../src/core/recovery");
+  const rows = Array.from({ length: 40 }, (_, i) => ({ date: addDays("2026-11-08", i - 39), hrv: 70 + (i % 3), rhr: 52 + (i % 2), sleep_s: 28000 + (i % 3) * 600, sleep_score: 75, sleep_q: null }));
+  const base = { date: "2026-11-08", rows, dayAfter: null, illness: false };
+  it("bez skóre zůstává zelená", () => expect(evaluateRecovery(base).state).toBe("green"));
+  it("pod 34 % → žlutá s důvodem", () => {
+    const r = evaluateRecovery({ ...base, score: { score: 25, drags: ["VST 55 ms"], boosts: [] } });
+    expect(r.state).toBe("yellow");
+    expect(r.reasons.join(" ")).toContain("25 %");
+    expect(r.score).toBe(25);
+  });
+  it("pod 15 % → červená", () => expect(evaluateRecovery({ ...base, score: { score: 10, drags: [], boosts: [] } }).state).toBe("red"));
+  it("vysoké skóre nemoc nepřebije", () => expect(evaluateRecovery({ ...base, illness: true, score: { score: 95, drags: [], boosts: [] } }).state).toBe("red"));
 });

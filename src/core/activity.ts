@@ -67,6 +67,9 @@ export interface LapRow {
   hr: string;
   sub: string;
   iv: boolean;
+  /** začátek a délka úseku v s od startu aktivity (pro výřez průběhu po kliknutí) */
+  start_s?: number | null;
+  dur_s?: number | null;
 }
 
 export interface ZoneRow {
@@ -207,8 +210,12 @@ export function analyzeActivity(a: ActRow, plan: PlannedForAct | null, ftp: numb
   const basics: [string, string][] = [];
   basics.push(["⏱️ Čas v pohybu", hms(moving)]);
   if (!indoor && km != null && km > 0.05) basics.push(["📍 Vzdálenost", `${num(km, 1)} km`]);
-  if (!indoor && a.elev_gain != null && isBike) basics.push(["⛰️ Převýšení", `${num(a.elev_gain)} m`]);
+  if (!indoor && a.elev_gain != null && (isBike || a.elev_gain >= 20)) basics.push(["⛰️ Převýšení", `${num(a.elev_gain)} m`]);
   if (!indoor && speed != null && isBike) basics.push(["🚀 Průměrná rychlost", `${num(speed, 1)} km/h`]);
+  // běh, chůze, turistika, běžky: tempo min/km místo rychlosti
+  if (!indoor && speed != null && speed > 0.5 && FOOT_SPORTS.includes(a.sport)) basics.push(["⏱️ Průměrné tempo", `${paceOf(speed / 3.6)} /km`]);
+  const teL = ((a as any).extra?.te_label as string | undefined) ?? null;
+  if (teL && TE_NAME[teL]) basics.push(["🎯 Hlavní přínos", TE_NAME[teL]!]);
   basics.push(["🔋 Zátěž", `${num(a.load)}${planLoad ? ` (plán ${num(planLoad)})` : ""}`]);
   if (compliance != null) basics.push(["✅ Splnění plánu", `${compliance} %${plan?.compliance != null ? " (intervals.icu)" : ""}`]);
   if (a.avg_hr) basics.push(["❤️ Tep průměr / max", `${num(a.avg_hr)} / ${num(a.max_hr)} bpm`]);
@@ -273,6 +280,13 @@ export function analyzeActivity(a: ActRow, plan: PlannedForAct | null, ftp: numb
   };
 }
 
+/** sporty, kde se ukazuje tempo (min/km) místo rychlosti */
+export const FOOT_SPORTS: string[] = ["run", "walk", "hike", "xc_ski"];
+/** hlavní přínos podle tréninkového efektu Garminu */
+const TE_NAME: Record<string, string> = { RECOVERY: "Regenerace", AEROBIC_BASE: "Aerobní základ", TEMPO: "Tempo", LACTATE_THRESHOLD: "Práh", VO2MAX: "VO2 max", ANAEROBIC_CAPACITY: "Anaerobní kapacita", SPEED: "Sprint" };
+/** tempo min/km z rychlosti v m/s */
+const paceOf = (ms: number) => { const t = Math.round(1000 / ms); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
+
 function buildLaps(a: ActRow, plan: PlannedForAct | null, isZ2: boolean, hasPower: boolean, indoor: boolean) {
   const res = { show: false, rows: [] as LapRow[], note: "", c3: !hasPower };
   if (!BIKE_SPORTS.includes(a.sport) && a.sport !== "run") return res;
@@ -306,8 +320,10 @@ function buildLaps(a: ActRow, plan: PlannedForAct | null, isZ2: boolean, hasPowe
     const iv = isInterval || name === "Z2";
     const sub: string[] = [];
     if (!indoor && l.distance_m) sub.push(`${num(l.distance_m / 1000, 1)} km`);
-    if (!indoor && l.avg_speed) sub.push(`${num(l.avg_speed * 3.6, 1)} km/h`);
-    if (l.avg_cad) sub.push(`${num(l.avg_cad)} rpm`);
+    const run = a.sport === "run";
+    if (!indoor && l.avg_speed) sub.push(run ? `${paceOf(l.avg_speed)} /km` : `${num(l.avg_speed * 3.6, 1)} km/h`);
+    // běh: Garmin/intervals.icu dávají kadenci na jednu nohu → kroky za minutu = 2×
+    if (l.avg_cad) sub.push(run ? `${num(l.avg_cad * 2)} kr/min` : `${num(l.avg_cad)} ot/min`);
     if (!indoor && l.elev_gain != null) sub.push(`${num(l.elev_gain)} m`);
     if (isInterval && hasPower) {
       if (l.np) sub.push(`NP ${num(l.np)} W`);
@@ -323,6 +339,8 @@ function buildLaps(a: ActRow, plan: PlannedForAct | null, isZ2: boolean, hasPowe
       hr: `${num(l.avg_hr)}/${num(l.max_hr)}`,
       sub: sub.join(" · "),
       iv,
+      start_s: typeof l.start_s === "number" ? l.start_s : null,
+      dur_s: l.elapsed_s || l.moving_s || null,
     };
   };
   res.rows = laps.map((l, i) => mk(l, named[i]!));

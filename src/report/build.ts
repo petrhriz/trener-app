@@ -11,6 +11,7 @@ import { bestIn, eftp } from "../core/power";
 import type { PastQuality } from "../core/qualityDesign";
 import type { QualityType } from "../core/quality";
 import { type RecoveryResult, decisionFor, evaluateRecovery } from "../core/recovery";
+import { recoveryScore } from "../core/readinessScore";
 import { type DayWeather, dayWeather } from "../core/weather";
 import type { Workout } from "../core/workout";
 import { all } from "../lib/db";
@@ -44,7 +45,12 @@ export function dayAfterReason(ctx: Ctx): string | null {
 
 export function recoveryFor(ctx: Ctx): RecoveryResult {
   const illness = ctx.constraints.some((c) => c.kind === "nemoc" && (c.date === ctx.T || c.date === addDays(ctx.T, -1)));
+  // Zotavení v % (VST + tep ve spánku proti 60 nocím + délka spánku proti potřebě)
+  const nights = ctx.well.map((w) => ({ date: w.date, hrv: w.hrv, rhr: w.rhr, sleep_hr: w.sleep_hr, sleep_s: w.sleep_s, sleep_need_min: w.sleep_need_min, sleep_score: w.sleep_score, sleep_resp: w.sleep_resp }));
+  const rs = recoveryScore(nights.find((n) => n.date === ctx.T) ?? null, nights);
+  const txt = (c: { label: string; value: string }) => `${c.label} ${c.value}`;
   const r = evaluateRecovery({
+    score: { score: rs.score, drags: rs.drags.map(txt), boosts: rs.boosts.map(txt) },
     date: ctx.T,
     rows: ctx.well.map((w) => ({ date: w.date, hrv: w.hrv, rhr: w.rhr, sleep_s: w.sleep_s, sleep_score: w.sleep_score, sleep_q: w.sleep_q })),
     dayAfter: dayAfterReason(ctx),
@@ -261,6 +267,8 @@ export interface Readiness {
     calendarName: string | null;
   };
   tomorrow: string;
+  /** zítřek strukturovaně (karta Dnes): trénink, délka, počasí */
+  tomorrowInfo: { date: string; name: string | null; tag: string | null; minutes: number | null; tmax: number | null; tmin: number | null; rainProb: number | null; gust: number | null } | null;
   changes: Change[];
   warnings: string[];
   extras: { bb: number | null; stress: number | null; sleepReg: string; steps: number | null; lthrNote: string | null };
@@ -325,6 +333,7 @@ export async function readiness(ctx: Ctx): Promise<Readiness> {
     fitness: fit,
     today: { title: done.length ? done[0]!.name : day?.name ?? cal?.name ?? "Volno", decision, decisionWhy: why, day, done, calendarName: cal?.name ?? null },
     tomorrow,
+    tomorrowInfo: tomorrowDay ? { date: tomorrowDay.date, name: tomorrowDay.name ?? null, tag: tomorrowDay.tag ?? null, minutes: tomorrowDay.durationMin ?? null, tmax: tomorrowDay.weather?.tmax ?? null, tmin: tomorrowDay.weather?.tmin ?? null, rainProb: tomorrowDay.weather?.rainProb ?? null, gust: tomorrowDay.weather?.gustMax ?? null } : null,
     changes,
     warnings,
     extras: { bb: tw?.bb_max ?? null, stress: tw?.stress_avg ?? null, sleepReg: reg.text, steps: tw?.steps ?? null, lthrNote },

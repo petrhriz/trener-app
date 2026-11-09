@@ -13,6 +13,10 @@ import { getSettings, setSettingSql, type Settings } from "../lib/settings";
 import { addDays, daysBetween, localNow } from "../lib/time";
 import { recomputeMetrics } from "./metrics";
 import { refreshWeather } from "./weather";
+import { recomputeSleep } from "./sleep";
+import { computeEnergy } from "./energy";
+import { ENERGY_V } from "../core/energy";
+import { SLEEP_CALC_V } from "../core/sleepCalc";
 
 const ACT_COLS = [
   "id", "start_local", "date", "type_key", "sport", "name", "distance_m", "duration_s", "moving_s", "elev_gain",
@@ -22,11 +26,11 @@ const ACT_COLS = [
 ];
 
 const WELL_COLS = [
-  "date", "hrv", "hrv_weekly", "hrv_status", "rhr", "sleep_s", "sleep_score", "sleep_q", "steps", "bb_max", "bb_min",
+  "date", "hrv", "hrv_weekly", "hrv_status", "rhr", "sleep_s", "sleep_q", "steps",
   "stress_avg", "weight_kg", "vo2max", "intensity_min", "respiration", "fitness_age", "wake_time",
-  "deep_s", "light_s", "rem_s", "awake_s", "awake_count", "sleep_stress", "sleep_hr", "sleep_resp", "sleep_need_min",
-  "sleep_feedback", "sleep_sub", "sleep_start", "bb_charged", "bb_drained", "bb_latest", "stress_max", "stress_dist",
-  "icu_ctl", "icu_atl", "icu_ramp", "floors_up", "floors_down", "sleep_resp_lo", "sleep_resp_hi", "next_sleep_need_min", "updated_at",
+  "deep_s", "light_s", "rem_s", "awake_s", "awake_count", "sleep_stress", "sleep_hr", "sleep_resp",
+  "sleep_feedback", "sleep_sub", "sleep_start", "bb_charged_g", "bb_drained_g", "bb_latest_g", "bb_max_g", "bb_min_g", "stress_max", "stress_dist",
+  "icu_ctl", "icu_atl", "icu_ramp", "floors_up", "floors_down", "sleep_resp_lo", "sleep_resp_hi", "sleep_score_g", "sleep_need_g_min", "next_sleep_need_g_min", "updated_at",
 ];
 
 /** Zátěž z intervals.icu má přednost (stejná čísla jako v intervals.icu). */
@@ -183,6 +187,7 @@ export async function syncTick(env: Env, opts: { force?: boolean; backfillPages?
     const acts = await ds.activitiesPage(0, 10);
     const r = await upsertActivities(env, acts, s);
     rep.newActivities = r.newIds;
+    for (const a of acts.filter((x) => r.newIds.includes(x.id))) await logEvent(env.DB, "info", `sync: 🏅 nová aktivita z ${a.start_local.slice(8, 10)}. ${a.start_local.slice(5, 7)}. ${a.start_local.slice(11, 16)} (${a.sport})`);
     await markDirty(env.DB, r.minDate);
     await setState(env.DB, "last_sync_ok", new Date().toISOString());
     rep.steps.push(`aktivity (${acts.length}, nové ${r.newIds.length})`);
@@ -207,26 +212,52 @@ export async function syncTick(env: Env, opts: { force?: boolean; backfillPages?
       if (full && (now.hh === 7 || now.hh === 12 || now.hh === 20 || opts.force)) parts.push("weight");
       const ws = await ds.wellnessRange(full ? addDays(T, -2) : T, T, parts);
       await execAll(env.DB, wellnessSql(ws));
-      // Body Battery během dne: Garmin vrací jen pár klíčových bodů → průběžně si ukládáme poslední hodnotu
-      // čas = okamžik měření z Garminu, ne čas stažení (hodinky se synchronizují jen občas, v noci vůbec)
+      // záznam synchronizace: hodinky → Garmin Connect (nová data) a stažený spánek
       const tw = ws.find((w) => w.date === T);
-      const bb = tw?.bb_latest;
-      if (bb != null) {
-        const at = tw?.bb_latest_at && tw.bb_latest_at <= Date.now() + 60_000 ? tw.bb_latest_at : Date.now();
-        const k = `bbsnap:${T}`;
-        const arr = ((await env.KV.get(k, "json")) as [number, number][] | null) ?? [];
-        const last = arr[arr.length - 1];
-        // další uživatelé (ne vlastník): nejvýš 1 snímek za 30 min → KV zápisy (free: 1 000 / den) stačí i pro 10 lidí
-        const minGap = (env as any).__uid && (env as any).__uid !== 1 ? 30 * 60_000 : 60_000;
-        if (!last || (Math.abs(last[0] - at) > minGap && last[1] !== bb)) {
-          arr.push([at, bb]);
-          arr.sort((a, b) => a[0] - b[0]);
-          await env.KV.put(k, JSON.stringify(arr.slice(-400)), { expirationTtl: 14 * 86400 });
-        }
+      const until = tw?.data_until ?? null;
+      const prevUntil = await getState<number>(env.DB, "watch_data_until");
+      if (until && until <= Date.now() + 60_000 && (!prevUntil || until > prevUntil + 60_000)) {
+        await setState(env.DB, "watch_data_until", until);
+        const hhmm = new Intl.DateTimeFormat("cs-CZ", { timeZone: env.TZ_NAME || "Europe/Prague", hour: "2-digit", minute: "2-digit" }).format(new Date(until));
+        await logEvent(env.DB, "info", `sync: ⌚ hodinky synchronizovány s Garmin Connect – data do ${hhmm}`);
       }
+      if (parts.includes("sleep") && tw?.sleep_s && (await getState<string>(env.DB, "sleep_logged")) !== T) {
+        await setState(env.DB, "sleep_logged", T);
+        await logEvent(env.DB, "info", "sync: 😴 spánek za dnešní noc stažen a přepočten");
+      }
+      // vlastní skóre a potřeba spánku (Garmin čísla zůstávají v *_g)
+      if (parts.includes("sleep")) await recomputeSleep(env.DB, s.sleep_goal_min, addDays(T, -2), T);
       rep.steps.push(`wellness (${ws.length} dní)`);
     });
   }
+
+  // 2c) energie (náhrada Body Battery, src/core/energy.ts): nejdřív 60 dní historie po 3 dnech, pak každých 15 min dnešek
+  //     (dopoledne i včerejšek – noc přes půlnoc a pozdní synchronizace hodinek)
+  await guard("energie", async () => {
+    if (!(ds instanceof GarminClient) || !quarter) return;
+    let done = await getState<string>(env.DB, "energy_done");
+    if ((await getState<number>(env.DB, "energy_v")) !== ENERGY_V) done = null;
+    const from = done ? addDays(done, 1) : addDays(T, -60);
+    let dates: string[];
+    let newDone: string | null = done;
+    // historie až po včerejšek včetně (dnešek pak navazuje na jeho konec)
+    if (from <= addDays(T, -1)) {
+      dates = [];
+      for (let d = from; d <= addDays(T, -1) && dates.length < 3; d = addDays(d, 1)) dates.push(d);
+      newDone = dates[dates.length - 1]!;
+    } else dates = now.hh < 12 ? [addDays(T, -1), T] : [T];
+    const n = await computeEnergy(env, dates);
+    await execAll(env.DB, [setStateSql("energy_done", newDone ?? addDays(T, -2)), setStateSql("energy_v", ENERGY_V)]);
+    rep.steps.push(`energie (${n} dní: ${dates[0]}–${dates[dates.length - 1]})`);
+  });
+
+  // 2b) jednorázový přepočet spánku celé historie (nová verze výpočtu nebo jiný cíl spánku)
+  await guard("spánek", async () => {
+    if ((await getState<number>(env.DB, "sleep_calc_v")) === SLEEP_CALC_V) return;
+    const n = await recomputeSleep(env.DB, s.sleep_goal_min);
+    await execAll(env.DB, [setStateSql("sleep_calc_v", SLEEP_CALC_V)]);
+    rep.steps.push(`spánek přepočten (${n} nocí)`);
+  });
 
   // 3) doplnění aktivit z intervals.icu po dávkách: zátěž, spárovaný workout + plnění, eFTP, lapy; drift z Garminu
   await guard("doplnění", async () => {
@@ -343,6 +374,8 @@ export async function syncTick(env: Env, opts: { force?: boolean; backfillPages?
     const ws = await ds.wellnessRange(from, st.cursor);
     const useful = ws.filter((w) => w.hrv != null || w.rhr != null || w.sleep_s != null || w.steps != null);
     await execAll(env.DB, wellnessSql(ws));
+    // dluh se přenáší 7 nocí dopředu → přepočet i týden za koncem stažené dávky
+    await recomputeSleep(env.DB, s.sleep_goal_min, from, addDays(st.cursor, 7));
     st.empty = useful.length ? 0 : st.empty + 1;
     st.cursor = addDays(from, -1);
     const oldest = await first<{ d: string }>(env.DB, "SELECT MIN(date) AS d FROM activities");

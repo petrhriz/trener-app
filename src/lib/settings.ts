@@ -35,6 +35,8 @@ export interface Settings {
   /** souřadnice místa pro počasí (dohledané z place_name); null = výchozí z wrangler.jsonc */
   place_lat: number | null;
   place_lon: number | null;
+  /** cíl spánku (min) – základ potřeby spánku a skóre spánku (src/core/sleepCalc.ts) */
+  sleep_goal_min: number;
 }
 
 export const DEFAULTS: Settings = {
@@ -64,6 +66,7 @@ export const DEFAULTS: Settings = {
   ride_temps: { cold: 3, hot: 30, ideal: 18 },
   place_lat: null,
   place_lon: null,
+  sleep_goal_min: 480,
 };
 
 /** Platný stav k datu (po „until“ automaticky zpět aktivní). */

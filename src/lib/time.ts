@@ -63,3 +63,17 @@ export function hm(s: string): number {
   const [h, m] = s.split(":").map(Number);
   return (h ?? 0) * 60 + (m ?? 0);
 }
+
+/** Posun časové zóny (min) pro den – graf kreslí místní čas 0–24 h. */
+export function tzOffsetMin(tz: string, date: string): number {
+  const d = new Date(`${date}T12:00:00Z`);
+  const p = new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(d);
+  const hh = +(p.find((x) => x.type === "hour")?.value ?? 12);
+  const mm = +(p.find((x) => x.type === "minute")?.value ?? 0);
+  return (hh - 12) * 60 + mm;
+}
+
+/** Místní „YYYY-MM-DDTHH:MM“ → ms (UTC). */
+export function localIsoToMs(iso: string, tz: string): number {
+  return Date.parse(iso.slice(0, 16) + ":00Z") - tzOffsetMin(tz, iso.slice(0, 10)) * 60_000;
+}

@@ -35,65 +35,55 @@ export interface RecoveryScore {
   band: "low" | "mid" | "high" | null;
 }
 
-// Váhy podle literatury o sledování zotavení: VST je hlavní ukazatel (Kiviniemi 2007, Plews 2013 – trénink řízený VST),
-// klidový tep (Buchheit 2014), délka spánku proti potřebě (Fullagar 2015), tep ve spánku jako doplněk.
-const W: Record<CompKey, number> = { hrv: 0.4, rhr: 0.25, sleepDur: 0.2, sleepHr: 0.15, sleepScore: 0, resp: 0 };
+// Zotavení jako v Bevelu (odhad ze 70 dní Bevel × Garmin, 1. 9.–9. 11. 2026: průměrná odchylka 4,2 bodu;
+// křížově – nastaveno na září, test na říjnu a naopak – 5,0 bodu proti 5,8 u základny VST 60 nocí):
+//   Zotavení = 100 · Φ(0,174 + 0,403·z_VST − 0,39·z_tep + 1,02·(min(1,1; spánek/potřeba) − 1))
+// z_VST = odchylka ln(VST) od průměru 30 předchozích nocí v SD (Bevel reaguje na pokles proti posledním týdnům),
+// z_tep = odchylka průměrného tepu ve spánku od 60 nocí
+// Zkoušená plynulá (exponenciální) norma ani jiné délky oken křížově nepomohly – zbytek ±5–6 bodů jsou vstupy,
+// které Garmin přes API nedává (teplota zápěstí, SpO2, VST z jednotlivých úderů místo průměru za noc).
+// (Bevel „Resting HR“ je průměr tepu za celou noc, ne Garminův klidový tep). Potřeba = cíl + spánkový dluh (sleepCalc).
+// Zátěž ani klidový tep přímo nevstupují – trénink se projeví přes noční VST a tep (stejně jako v Bevelu).
+const K = { a: 0.174, hrv: 0.403, sleepHr: 0.39, dur: 1.02 };
+const HRV_BASE = 30; // nocí pro základnu VST (tep ve spánku: 60)
 const LABEL: Record<CompKey, string> = { hrv: "VST", rhr: "klidový tep", sleepHr: "tep ve spánku", sleepDur: "délka spánku", sleepScore: "skóre spánku", resp: "dech ve spánku" };
-const clip = (z: number) => Math.max(-3, Math.min(2.5, z));
-const SD_FLOOR = { hrv: 0.05, rhr: 1.5, sleepHr: 1.5 }; // VST v ln(ms)
+const clip = (z: number) => Math.max(-4, Math.min(4, z));
+const SD_FLOOR = { hrv: 0.03, sleepHr: 1 }; // VST v ln(ms)
+const MIN_BASE = 20; // nocí v základně (Bevel se kalibruje až 60 dní)
 
-interface Base { hrv: { m: number; sd: number } | null; rhr: { m: number; sd: number } | null; shr: { m: number; sd: number } | null; durMean: number | null }
-function baseOf(hist: NightRow[]): Base {
-  const nb = (vals: (number | null)[], floor: number) => { const n = norm(vals); return n.n >= 10 ? { m: n.mean, sd: Math.max(floor, n.sd) } : null; };
-  const d = norm(hist.map((h) => h.sleep_s));
-  return {
-    hrv: nb(hist.map((h) => (h.hrv ? Math.log(h.hrv) : null)), SD_FLOOR.hrv),
-    rhr: nb(hist.map((h) => h.rhr), SD_FLOOR.rhr),
-    shr: nb(hist.map((h) => h.sleep_hr), SD_FLOOR.sleepHr),
-    durMean: d.n ? d.mean : null,
-  };
+/** distribuční funkce normálního rozdělení (Abramowitz–Stegun 7.1.26, chyba < 1e-7) */
+export function normCdf(x: number): number {
+  const z = Math.abs(x) / Math.SQRT2;
+  const t = 1 / (1 + 0.3275911 * z);
+  const e = 1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-z * z);
+  return 0.5 * (1 + (x < 0 ? -e : e));
 }
-/** z-skóre složek jedné noci proti základně (kladné = lepší) */
-function zOf(n: NightRow, b: Base): Partial<Record<CompKey, number>> {
-  const z: Partial<Record<CompKey, number>> = {};
-  if (n.hrv && b.hrv) z.hrv = clip((Math.log(n.hrv) - b.hrv.m) / b.hrv.sd);
-  if (n.rhr != null && b.rhr) z.rhr = clip(-(n.rhr - b.rhr.m) / b.rhr.sd);
-  if (n.sleep_hr != null && b.shr) z.sleepHr = clip(-(n.sleep_hr - b.shr.m) / b.shr.sd);
-  const need = n.sleep_need_min ? n.sleep_need_min * 60 : b.durMean;
-  if (n.sleep_s != null && need) z.sleepDur = clip(Math.min(1, (n.sleep_s / need - 1) / 0.08));
-  return z;
-}
-const composite = (z: Partial<Record<CompKey, number>>) => {
-  let t = 0, w = 0;
-  for (const [k, v] of Object.entries(z)) if (v != null) { t += W[k as CompKey] * v; w += W[k as CompKey]; }
-  return w ? t / w : null;
-};
 
 /**
- * Zotavení 0–100 % = PERCENTIL dnešní noci mezi tvými nocemi za 60 dní (27 % = dnešek je lepší než 27 % tvých nocí).
- * Noc se hodnotí složeným skóre z odchylek od tvé normy: VST (ln) 40 %, klidový tep 25 %, délka spánku proti potřebě Garminu 20 %,
- * tep ve spánku 15 %. Žádná vymyšlená stupnice – jen pořadí v tvých vlastních datech. Bez VST i klidového tepu nedávám.
+ * Zotavení 0–100 % podle vzorce výše. Bez VST nedávám (hlavní ukazatel), tep ve spánku a délka spánku jsou doplňky.
+ * Složky (components) ukazují odchylky od normy; drags/boosts = co skóre nejvíc stáhlo / zvedlo.
  */
 export function recoveryScore(night: NightRow | null, history: NightRow[]): RecoveryScore {
   const empty: RecoveryScore = { score: null, components: [], drags: [], boosts: [], band: null };
-  if (!night || (night.hrv == null && night.rhr == null)) return empty;
+  if (!night || night.hrv == null || night.hrv <= 0) return empty;
   const hist = history.filter((h) => h.date < night.date).slice(-60);
-  const b = baseOf(hist);
-  const z = zOf(night, b);
-  if (z.hrv == null && z.rhr == null) return empty;
+  const nb = (vals: (number | null)[], floor: number) => { const n = norm(vals); return n.n >= MIN_BASE ? { m: n.mean, sd: Math.max(floor, n.sd) } : null; };
+  const bH = nb(hist.slice(-HRV_BASE).map((h) => (h.hrv ? Math.log(h.hrv) : null)), SD_FLOOR.hrv);
+  if (!bH) return empty;
+  const bR = nb(hist.map((h) => h.sleep_hr), SD_FLOOR.sleepHr);
+  const zH = clip((Math.log(night.hrv) - bH.m) / bH.sd);
+  const zR = night.sleep_hr != null && bR ? clip((night.sleep_hr - bR.m) / bR.sd) : null;
+  const ratio = night.sleep_s != null && night.sleep_need_min ? Math.min(1.1, night.sleep_s / (night.sleep_need_min * 60)) : null;
+  const x = K.a + K.hrv * zH - K.sleepHr * (zR ?? 0) + K.dur * (ratio != null ? ratio - 1 : 0);
+  const score = Math.round(100 * normCdf(x));
   const ex = Math.exp;
-  const comps: Component[] = [];
-  if (z.hrv != null && b.hrv) comps.push({ key: "hrv", label: LABEL.hrv, value: `${num(night.hrv)} ms`, normText: `${num(ex(b.hrv.m - b.hrv.sd))}–${num(ex(b.hrv.m + b.hrv.sd))} ms`, z: z.hrv, weight: W.hrv });
-  if (z.rhr != null && b.rhr) comps.push({ key: "rhr", label: LABEL.rhr, value: `${num(night.rhr)} bpm`, normText: `${num(b.rhr.m - b.rhr.sd)}–${num(b.rhr.m + b.rhr.sd)} bpm`, z: z.rhr, weight: W.rhr });
-  if (z.sleepDur != null) comps.push({ key: "sleepDur", label: LABEL.sleepDur, value: `${hmm(night.sleep_s)} h`, normText: `${hmm(night.sleep_need_min ? night.sleep_need_min * 60 : b.durMean)} h`, z: z.sleepDur, weight: W.sleepDur });
-  if (z.sleepHr != null && b.shr) comps.push({ key: "sleepHr", label: LABEL.sleepHr, value: `${num(night.sleep_hr)} bpm`, normText: `${num(b.shr.m - b.shr.sd)}–${num(b.shr.m + b.shr.sd)} bpm`, z: z.sleepHr, weight: W.sleepHr });
-  const today = composite(z)!;
-  // pořadí mezi nocemi za 60 dní (stejná základna)
-  const others = hist.map((h) => composite(zOf(h, b))).filter((x): x is number => x != null);
-  if (others.length < 20) return { ...empty, components: comps };
-  const below = others.filter((x) => x < today).length + others.filter((x) => x === today).length / 2;
-  const score = Math.round((below / others.length) * 100);
-  const sorted = [...comps].sort((x, y) => x.z * x.weight - y.z * y.weight);
+  // z kladné = lepší; weight · z = příspěvek do x (délka spánku: z v jednotkách 8 % potřeby)
+  const comps: Component[] = [
+    { key: "hrv", label: LABEL.hrv, value: `${num(night.hrv)} ms`, normText: `${num(ex(bH.m - bH.sd))}–${num(ex(bH.m + bH.sd))} ms`, z: zH, weight: K.hrv },
+  ];
+  if (zR != null && bR) comps.push({ key: "sleepHr", label: LABEL.sleepHr, value: `${num(night.sleep_hr)} bpm`, normText: `${num(bR.m - bR.sd)}–${num(bR.m + bR.sd)} bpm`, z: -zR, weight: K.sleepHr });
+  if (ratio != null) comps.push({ key: "sleepDur", label: LABEL.sleepDur, value: `${hmm(night.sleep_s)} h`, normText: `potřeba ${hmm(night.sleep_need_min! * 60)} h`, z: clip((ratio - 1) / 0.08), weight: K.dur * 0.08 });
+  const sorted = [...comps].sort((p, q) => p.z * p.weight - q.z * q.weight);
   return {
     score,
     components: comps,
@@ -119,6 +109,8 @@ export const STATUS_LABEL: Record<StatusKind, string> = { active: "Aktivní", si
 
 export interface CoachingInput {
   hour: number;
+  /** zpětný den (Přehled k minulému datu) */
+  past?: boolean;
   status: StatusKind;
   statusUntil: string | null;
   /** ranní semafor */
@@ -126,7 +118,7 @@ export interface CoachingInput {
   strain: { score: number; load: number; base: number; basis: "plan" | "ctl" };
   sleepS: number | null;
   sleepNeedMin: number | null;
-  /** potřeba spánku na dnešní noc (Garmin) */
+  /** potřeba spánku na dnešní noc (cíl + spánkový dluh, src/core/sleepCalc.ts) */
   nextNeedMin: number | null;
   /** typické probuzení „HH:MM“ (medián 14 dní) */
   wakeTypical: string | null;
@@ -155,7 +147,7 @@ const minToClock = (m: number) => {
 export function coaching(i: CoachingInput): Coaching {
   const period: Coaching["period"] = i.hour < 12 ? "rano" : i.hour < 18 ? "den" : "vecer";
   const needs: string[] = [];
-  // spánek dnes v noci: potřeba Garminu → kdy jít spát
+  // spánek dnes v noci: potřeba (cíl + dluh) → kdy jít spát
   const need = i.nextNeedMin ?? i.sleepNeedMin;
   let bedtime: string | null = null;
   if (need && i.wakeTypical) {
@@ -181,7 +173,10 @@ export function coaching(i: CoachingInput): Coaching {
   const reasons = sem && sem.reasons.length ? sem.reasons.join(", ") : null;
   let title: string;
   let text: string;
-  if (!sem || sem.missing) {
+  if (!sem && i.past) {
+    title = "Data z hodinek nemám";
+    text = "Pro tento den chybí VST, klidový tep i spánek – zotavení nejde spočítat.";
+  } else if (!sem || sem.missing) {
     title = "Ranní data zatím nemám";
     text = "Počkej na synchronizaci hodinek (VST, klidový tep a spánek z noci).";
   } else if (band === "low") {
@@ -210,11 +205,17 @@ export function coaching(i: CoachingInput): Coaching {
   if (i.remLow) needs.push("Málo REM: poslední jídlo 3 h před spaním, bez alkoholu a obrazovek pozdě večer.");
   else if (i.deepLow) needs.push("Málo hlubokého spánku: chladnější ložnice, pravidelný čas usínání.");
   if (i.stressAvg != null && i.stressNorm != null && i.stressAvg > i.stressNorm + 8) needs.push(`Stres dne ${num(i.stressAvg)} je nad tvým průměrem ${num(i.stressNorm)} – 10 min dechového cvičení nebo procházka.`);
-  if (period === "vecer" && i.bbNow != null && i.bbNow < 25) needs.push(`Body Battery ${i.bbNow} – večer už nic náročného.`);
-  if (period !== "rano" && (i.steps ?? 0) < 4000 && !p.done) needs.push(`Kroky ${num(i.steps ?? 0)} – krátká procházka pomůže regeneraci.`);
+  if (period === "vecer" && i.bbNow != null && i.bbNow < 15) needs.push(`Energie ${i.bbNow} – večer už nic náročného.`); // stupnice jako v Bevelu: večer běžně 20–35
+  if (period !== "rano" && i.steps != null && i.steps < 4000 && !p.done) needs.push(`Kroky ${num(i.steps ?? 0)} – krátká procházka pomůže regeneraci.`);
   if (period === "vecer") {
-    title = `Večer · ${title.charAt(0).toLowerCase()}${title.slice(1)}`;
-    text = `Zátěž dne ${i.strain.load} TSS (${i.strain.score} % ${i.strain.basis === "plan" ? "plánu" : "průměrného dne"})${i.bbNow != null ? `, Body Battery teď ${i.bbNow}` : ""}. ${bedtime ? `Na zítřek potřebuješ ${hmm((need ?? 0) * 60)} h spánku.` : ""}`.trim();
+    if (!i.past) title = `Večer · ${title.charAt(0).toLowerCase()}${title.slice(1)}`;
+    const loadTxt = i.strain.load <= 0 ? (i.past ? "Bez tréninku" : "Dnes bez tréninku") : i.strain.basis === "plan" ? `Zátěž dne ${i.strain.load} (${i.strain.score} % plánu ${i.strain.base})` : `Zátěž dne ${i.strain.load} (${i.strain.score} % tvého běžného dne – průměr 6 týdnů je ${i.strain.base})`;
+    text = `${loadTxt}${i.bbNow != null ? `, energie ${i.bbNow} %` : ""}. ${bedtime ? `Na zítřek potřebuješ ${hmm((need ?? 0) * 60)} h spánku.` : ""}`.trim();
+  }
+  // zpětný den: jen shrnutí, rady „co dělat“ k minulému dni nedávají smysl
+  if (i.past) {
+    const loadP = i.strain.load <= 0 ? "Bez tréninku" : `Zátěž dne ${i.strain.load} (${i.strain.score} % ${i.strain.basis === "plan" ? `plánu ${i.strain.base}` : `běžného dne – průměr 6 týdnů ${i.strain.base}`})`;
+    return { period, title, text: sem ? `${loadP}${i.bbNow != null ? `, energie na konci dne ${i.bbNow} %` : ""}.` : text, needs: [] };
   }
   return { period, title, text, needs: needs.slice(0, 5) };
 }
