@@ -1847,3 +1847,14 @@ html[data-rings="glow"] .dn-rings { position: relative; }
   background: radial-gradient(closest-side, color-mix(in srgb, var(--gc) 8%, transparent) 0%, color-mix(in srgb, var(--gc) 10%, transparent) 42%, color-mix(in srgb, var(--gc) 24%, transparent) 56%, color-mix(in srgb, var(--gc) 9%, transparent) 72%, transparent 100%) !important; } }
 html[data-theme="dark"][data-rings="glow"] .dn-rings .gring::before {
   background: radial-gradient(closest-side, color-mix(in srgb, var(--gc) 8%, transparent) 0%, color-mix(in srgb, var(--gc) 10%, transparent) 42%, color-mix(in srgb, var(--gc) 24%, transparent) 56%, color-mix(in srgb, var(--gc) 9%, transparent) 72%, transparent 100%) !important; }
+/* Záře v3: jen prstenec kolem kroužku – od kroužku ven i dovnitř postupně mizí do pozadí, střed s číslem zůstává čistý.
+   Kroužek leží v ::before (1,75 × velikost) na ~51 % poloměru → maximum 46–56 %, střed do 30 % průhledný. */
+html[data-rings="glow"] .dn-rings .gring::before { filter: blur(3px);
+  background: radial-gradient(closest-side, transparent 0%, transparent 30%, color-mix(in srgb, var(--gc) 26%, transparent) 46%, color-mix(in srgb, var(--gc) 30%, transparent) 54%, color-mix(in srgb, var(--gc) 12%, transparent) 70%, transparent 88%) !important; }
+/* tmavý režim: světlejší odstín barvy kroužku (tmavě fialová na tmavém pozadí skoro není vidět) a o něco silnější */
+@media (prefers-color-scheme: dark) { html:not([data-theme="light"])[data-rings="glow"] .dn-rings .gring::before {
+  background: radial-gradient(closest-side, transparent 0%, transparent 30%, color-mix(in srgb, var(--gc2) 24%, transparent) 46%, color-mix(in srgb, var(--gc2) 30%, transparent) 54%, color-mix(in srgb, var(--gc2) 11%, transparent) 70%, transparent 88%) !important; } }
+html[data-theme="dark"][data-rings="glow"] .dn-rings .gring::before {
+  background: radial-gradient(closest-side, transparent 0%, transparent 30%, color-mix(in srgb, var(--gc2) 24%, transparent) 46%, color-mix(in srgb, var(--gc2) 30%, transparent) 54%, color-mix(in srgb, var(--gc2) 11%, transparent) 70%, transparent 88%) !important; }
+/* „%“ jako v Bevelu: stejná barva jako číslo, zhruba 0,6 jeho velikosti, těsně za ním → „71%“ působí opticky uprostřed */
+.gr-p { font-size: 18px !important; font-weight: 700 !important; fill: var(--fg) !important; fill-opacity: 1 !important; }

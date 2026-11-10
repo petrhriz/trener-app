@@ -821,9 +821,9 @@ function gradRing(v, kind, { size = 112, stroke = 10, label = "", home = false }
   // „%“ hned za číslem na stejném účaří (poloviční velikost), celé „71 %“ uprostřed kroužku
   const pct = home && v != null && ringPref().pct;
   const txt = pct
-    ? `<text x="50" y="61" text-anchor="middle"><tspan class="gr-v">${Math.round(v)}</tspan><tspan class="gr-p" dx="1.5">%</tspan></text>`
+    ? `<text x="50" y="61" text-anchor="middle"><tspan class="gr-v">${Math.round(v)}</tspan><tspan class="gr-p" dx="0.6">%</tspan></text>`
     : `<text x="50" y="51" text-anchor="middle" dominant-baseline="central" class="gr-v">${v == null ? DASH : Math.round(v)}</text>`;
-  return `<span class="gring" style="--rs:${size}px;--gc:${c1}"><svg viewBox="0 0 100 100" width="${size}" height="${size}" role="img" aria-label="${esc(label)} ${v ?? "–"} %">
+  return `<span class="gring" style="--rs:${size}px;--gc:${c1};--gc2:${mixHex(c0, c1, 0.45)}"><svg viewBox="0 0 100 100" width="${size}" height="${size}" role="img" aria-label="${esc(label)} ${v ?? "–"} %">
     <circle class="gr-track" cx="50" cy="50" r="${R.toFixed(2)}" fill="none" stroke="var(--card2)" stroke-width="${stroke}"/>${segs}${caps}
     ${txt}</svg>${label ? `<b>${esc(label)}</b>` : ""}</span>`;
 }
