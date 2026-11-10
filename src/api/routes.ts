@@ -119,6 +119,11 @@ api.get("/overview", async (c) => {
   const load7 = Math.round(ctx.acts.filter((a) => a.date > addDays(D, -7) && a.date <= D).reduce((s, a) => s + (a.load ?? 0), 0));
   // VST: průměr každé noci za 14 dní (jen přehled, detail po 5 min není potřeba)
   const hrv14 = ctx.well.filter((w) => w.date > addDays(D, -14) && w.date <= D).map((w) => ({ date: w.date, v: w.hrv ?? null }));
+  // spánková bilance: součet (spánek − cíl) za 7 nocí do dne D, v minutách; + jednotlivé noci pro graf
+  const goalMin = ctx.s.sleep_goal_min ?? 480;
+  const nights7 = ctx.well.filter((w) => w.date > addDays(D, -7) && w.date <= D).map((w) => ({ date: w.date, d: w.sleep_s ? Math.round(w.sleep_s / 60 - goalMin) : null }));
+  const nOk = nights7.filter((x) => x.d != null);
+  const sleepBal = nOk.length >= 4 ? { min: nOk.reduce((t, x) => t + x.d!, 0), nights: nights7, goalMin } : null;
   const fit = r.fitness;
   const day = r.today.day;
   const wm = weatherMap(ctx, T, 7);
@@ -173,6 +178,7 @@ api.get("/overview", async (c) => {
     isToday: !past,
     minDate: await firstDay(c.env, T),
     hrv14,
+    sleepBal,
     lastSync: ctx.lastSyncOk,
     acts: ctx.acts.filter((a) => a.date === D).map((a) => ({ id: a.id, name: a.name, sport: a.sport, km: a.distance_m ? Math.round(a.distance_m / 100) / 10 : null, moving_s: a.moving_s, load: a.load })),
     ...(past ? {

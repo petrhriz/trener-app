@@ -780,7 +780,7 @@ export function generatePlan(inp: PlanInput): PlanResult {
   const todaySlot = slots.find((s) => s.date === T);
   if (todaySlot && inp.recovery && inp.recovery !== "green" && (todaySlot.kind === "z2" || todaySlot.kind === "quality" || todaySlot.kind === "long" || todaySlot.kind === "recovery")) {
     if (inp.recovery === "red") {
-      todaySlot.why.push("🔴 neodpočatý: volno nebo Z1 do 45 min");
+      todaySlot.why.push("🔴 nezotavený: volno nebo Z1 do 45 min");
       todaySlot.kind = "recovery";
       todaySlot.minutes = Math.min(45, todaySlot.minutes || 45);
       todaySlot.qualityType = null;
@@ -789,11 +789,11 @@ export function generatePlan(inp: PlanInput): PlanResult {
       todaySlot.kind = "z2";
       todaySlot.qualityType = null;
       todaySlot.changed = "upravit";
-      todaySlot.why.push("🟡 částečně odpočatý: kvalita → Z2");
+      todaySlot.why.push("🟡 částečně zotavený: kvalita → Z2");
     } else if (todaySlot.kind === "z2" || todaySlot.kind === "long") {
       todaySlot.minutes = Math.max(45, Math.round((todaySlot.minutes * 2) / 3 / 5) * 5);
       todaySlot.changed = "upravit";
-      todaySlot.why.push("🟡 částečně odpočatý: zkráceno o třetinu");
+      todaySlot.why.push("🟡 částečně zotavený: zkráceno o třetinu");
     }
     if (todaySlot.changed === "upravit") todaySlot.fixedName = undefined;
   }
@@ -957,7 +957,7 @@ export function generatePlan(inp: PlanInput): PlanResult {
     const whyTxt = cap(s.why.join("; ")) + ".";
     if (s.why.length && s.changed && !noteParts.some((n) => n.toLowerCase() === whyTxt.toLowerCase())) noteParts.push(whyTxt);
     if (s.reason && (s.kind === "quality" || s.own)) noteParts.push(s.reason);
-    if (s.date === T && inp.recovery === "green" && ride) noteParts.unshift("🟢 ráno odpočatý, beze změny.");
+    if (s.date === T && inp.recovery === "green" && ride) noteParts.unshift("🟢 ráno zotavený, beze změny.");
     return {
       date: s.date,
       isToday: s.date === T,

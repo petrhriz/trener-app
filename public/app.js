@@ -858,6 +858,16 @@ function sleepRing(sp, size = 112) {
     ${sp?.garminScore != null ? `<text x="60" y="82" text-anchor="middle" class="rr-l">Garmin ${Math.round(sp.garminScore)}</text>` : ""}</svg>`;
 }
 /** Baterie energie: plná výplň = teď, světlá = maximum dne (co se od něj vybilo), číslo uprostřed. */
+/** Spánková bilance: součet „spánek − cíl“ za 7 nocí; sloupečky = jednotlivé noci (nahoru nad cíl, dolů pod cíl) */
+function sleepBalTile(sb) {
+  if (!sb) return metricTile({ label: "😴 Spánková bilance", value: DASH, href: "#/detail/spanek", foot: "7 nocí proti cíli" });
+  const m = sb.min, h = `${m < 0 ? "−" : "+"}${hmm(Math.abs(m) * 60)}`;
+  const tone = m >= -60 ? "good" : m >= -240 ? "warn" : "bad";
+  const word = m >= 60 ? "rezerva" : m >= -60 ? "vyrovnaná" : m >= -240 ? "mírný dluh" : "dluh";
+  const mx = Math.max(60, ...sb.nights.map((n) => Math.abs(n.d ?? 0)));
+  const bars = sb.nights.map((n) => n.d == null ? `<span></span>` : `<span><i class="${n.d >= 0 ? "up" : "dn"}" style="height:${Math.max(3, (Math.abs(n.d) / mx) * 50)}%"></i></span>`).join("");
+  return metricTile({ label: "😴 Spánková bilance", value: h, unit: "h", state: word, tone, spark: `<div class="sbal">${bars}</div>`, href: "#/detail/spanek", foot: `7 nocí · cíl ${hmm(sb.goalMin * 60)} h` });
+}
 /** malá energie do dlaždice: pruh v barvě úrovně, světlá část = maximum dne */
 function energyMini(now, max) {
   if (now == null) return "";
@@ -945,7 +955,7 @@ async function pagePrehled(el) {
       : `<div class="today-act"><span class="ico">🛋️</span><div><b>${paused ? "Plán stojí" : "Dnes volno"}</b>${tomorrowHtml(t)}</div></div>`;
   const dnes = true
     ? card(`c8 dnes ${tone}`, "", "", `<div class="dn-wrap">${r.score != null ? `<div class="dn-rings"><a class="dn-side" href="#/detail/bb">${gradRing(d.bb.latest ?? d.bb.min, "energy", { size: 84, stroke: 9, label: "Energie", home: true })}</a><a class="dn-ring" href="#/zotaveni">${recRing(r.score, 132, true)}</a><a class="dn-side" href="#/detail/spanek">${gradRing(d.sleep?.score ?? null, "sleep", { size: 84, stroke: 9, label: "Spánek", home: true })}</a></div>` : ""}<div class="dn-body">${paused ? `<div class="dn-top"><span class="badge">${(STATUS[d.status.kind]?.[0] || "") + " " + esc(d.status.label)}</span></div>` : ""}
-      <h2 class="dn-title"><span class="dn-dot ${paused ? "" : tone}" aria-hidden="true"></span>${esc(co.title)}</h2>${d.isToday ? "" : `<p class="dn-text">${esc(co.text)}</p>`}${d.isToday ? `<div class="ainote" data-ainote="prehled"></div>` : ""}
+      <div class="dn-head"><h2 class="dn-title"><span class="dn-dot ${paused ? "" : tone}" aria-hidden="true"></span>${esc(co.title)}</h2>${d.isToday ? `<div class="ainote side" data-ainote="prehled"></div>` : ""}</div>${d.isToday ? "" : `<p class="dn-text">${esc(co.text)}</p>`}
       <div class="dn-grid"><div>${co.needs.length ? `<div class="sl">Co tělo potřebuje</div><ul class="needs">${co.needs.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}</div><div><div class="sl">${d.isToday ? "Trénink" : "Odjeto"}</div>${todayLine}${d.isToday && t.name && !t.done?.length && !paused ? `<p class="note">Zítra: ${esc(t.tomorrow)}</p>` : ""}</div></div></div></div>`)
     : ""; // zpětný den: bez horní karty, aktivita je dole
 
@@ -968,7 +978,7 @@ async function pagePrehled(el) {
     ${metricTile({ label: "🫀 VST", value: num(hv.today), unit: "ms", state: hvS, tone: hvT, spark: sparkRolling(hv.series.map((x) => x.v), stateColor(hv.today, hv.norm), 76), href: "#/detail/vst", foot: hv.norm ? `norma ${num(hv.norm.mean - hv.norm.sd)}–${num(hv.norm.mean + hv.norm.sd)}` : "" })}
     ${metricTile({ label: "❤️ Klidový tep", value: num(rh.today), unit: "bpm", state: rhS, tone: rhT, spark: sparkRolling(rh.series.map((x) => x.v), stateColor(rh.today, rh.norm, true), 76), href: "#/detail/tep", foot: rh.norm ? `norma ${num(rh.norm.mean)} ± ${num(rh.norm.sd, 1)}` : "" })}
     ${metricTile({ label: "😮‍💨 Stres", value: num(st.avg), state: stS, tone: stT, spark: sparkRolling(st.series.map((x) => x.v), stateColor(st.avg, st.norm, true), 76), href: "#/detail/stres", foot: st.max != null ? `max ${num(st.max)}` : "" })}
-    ${(() => { const z = d.scores?.strain; const pct = z && z.base ? Math.round((z.load / z.base) * 100) : null; return metricTile({ label: "🔥 Zátěž dne", value: z ? num(z.load) : DASH, state: pct != null ? `${pct} % ${z.basis === "plan" ? "plánu" : "běžného dne"}` : "", tone: pct == null ? "" : pct > 130 ? "warn" : pct >= 70 ? "good" : "", spark: z && z.base ? `<div class="prog zprog"><i style="width:${clamp(pct, 0, 100)}%"></i>${pct > 100 ? `<b style="left:${clamp(10000 / pct, 0, 100)}%"></b>` : ""}</div>` : "", href: "#/kondice", foot: z ? `${z.basis === "plan" ? "plán" : "běžně"} ${num(z.base)} · 7 dní ${thou(sn.load7)}` : "" }); })()}
+    ${sleepBalTile(d.sleepBal)}
     ${metricTile({ label: "👣 Kroky", value: thou(stp.today), state: stp.today != null ? `${num(Math.min(100, (stp.today / stp.goal) * 100))} %` : "", tone: (stp.today ?? 0) >= stp.goal ? "good" : "", spark: `<div class="prog"><i style="width:${clamp(((stp.today || 0) / stp.goal) * 100, 0, 100)}%"></i></div>`, href: "#/chuze", foot: `cíl ${thou(stp.goal)}${stp.floors != null ? ` · ${num(stp.floors)} pater` : ""}` })}
   </div>`;
 
@@ -1560,24 +1570,24 @@ function extraHtml(a) {
   const rows = [
     // průměrné tempo a stoupání jsou nahoře v základních údajích → tady jen nejrychlejší tempo
     x.max_speed && foot ? ["⏱️ Nejrychlejší tempo", u(paceTxt(60 / x.max_speed), "/km"), ""] : null,
-    x.max_speed && !foot ? ["🚀 Rychlost", u(num(x.avg_speed, 1), "km/h"), `max ${num(x.max_speed, 1)} km/h`] : null,
+    // průměrná rychlost je nahoře → tady jen maximální
+    x.max_speed && !foot ? ["🚀 Max. rychlost", u(num(x.max_speed, 1), "km/h"), ""] : null,
     run && a.avgPower ? ["⚡ Výkon", u(num(a.avgPower), "W"), a.np ? `NP ${num(a.np)} W` : ""] : null,
     a.avgCad ? [run ? "👟 Kadence" : "🔄 Kadence", u(num(x.run_cad || a.avgCad), run ? "kr/min" : "ot/min"), x.max_cad ? `max ${num(x.max_cad)}` : ""] : null,
     x.strokes ? [run || foot ? "👟 Kroků" : "🔄 Otáček", thou(x.strokes), "celkem"] : a.avgCad && a.moving && !run ? ["🔄 Otáček", thou((a.avgCad * a.moving) / 60), "celkem (odhad)"] : null,
     x.stride_m ? ["📏 Délka kroku", u(num(x.stride_m, 2), "m"), ""] : null,
     x.gct_ms ? ["🦶 Kontakt se zemí", u(num(x.gct_ms), "ms"), ""] : null,
     x.vosc_cm ? ["↕️ Vertikální oscilace", u(num(x.vosc_cm, 1), "cm"), x.vratio ? `poměr ${num(x.vratio, 1)} %` : ""] : null,
-    x.avg_resp ? ["🫁 Dech", u(num(x.avg_resp), "/min"), `rozsah ${num(x.min_resp)}–${num(x.max_resp)}`] : null,
+    x.avg_resp ? ["🫁 Dech", u(num(x.avg_resp), "/min"), `${num(x.min_resp)}–${num(x.max_resp)}`] : null,
     a.calories && !a.usedTop?.has("calories") ? ["🔥 Kalorie", u(thou(a.calories), "kcal"), ""] : null,
-    x.elev_loss != null && a.elevGain ? ["↘️ Klesání", u(num(x.elev_loss), "m"), ""] : null,
-    x.min_elev != null || x.max_elev != null ? ["⛰️ Nejvýš", u(num(x.max_elev), "m n. m."), `nejníž ${num(x.min_elev)} m`] : null,
+    x.min_elev != null || x.max_elev != null ? ["⛰️ Nejvýš", u(num(x.max_elev), "m"), `nejníž ${num(x.min_elev)}`] : null,
     x.bb_diff != null ? ["🔋 Body Battery", u(signed(x.bb_diff), ""), "dopad aktivity"] : null,
-    a.minTemp != null || a.maxTemp != null ? ["🌡️ Teplota", `<em id="tAvg" class="tavg">…</em><small> °C</small>`, `rozsah ${num(a.minTemp)}–${num(a.maxTemp)} °C`] : null,
+    a.minTemp != null || a.maxTemp != null ? ["🌡️ Teplota", `<em id="tAvg" class="tavg">…</em><small> °C</small>`, `${num(a.minTemp)}–${num(a.maxTemp)}`] : null,
     a.aerobicTe != null && !a.usedTop?.has("aerobic") ? ["💚 Aerobní efekt", num(a.aerobicTe, 1), teWord(a.aerobicTe)] : null,
     x.ana_te != null ? ["💥 Anaerobní efekt", num(x.ana_te, 1), teWord(x.ana_te)] : null,
   ].filter(Boolean);
   // sudý počet buněk: lichý → pryč nejméně důležitý údaj
-  if (rows.length % 2) { const i = rows.findIndex((r) => /Otáček|Kroků|Klesání|Nejvýš/.test(r[0])); if (i >= 0) rows.splice(i, 1); }
+  if (rows.length % 2) { const i = rows.findIndex((r) => /Otáček|Kroků|Nejvýš/.test(r[0])); if (i >= 0) rows.splice(i, 1); }
   return rows.length ? `<div class="abasics xtra">${rows.map(([k, v, sub]) => `<div><span>${k}</span><b>${v}</b>${sub ? `<i>${esc(sub)}</i>` : ""}</div>`).join("")}</div>` : `<div class="empty">Další údaje nemám.</div>`;
 }
 // hlavní přínos aktivity podle Garminu: [název, skupina zátěže] – skupiny stejně jako graf zátěže na Kondici
@@ -2179,10 +2189,10 @@ function sleepBankCard(all, goalMin, range) {
   const hm = (h) => (h == null ? DASH : `${h < 0 ? "−" : "+"}${hmm(Math.abs(h) * 3600)}`);
   const tone = now == null ? "" : now >= -1 ? "good" : now >= -4 ? "warn" : "bad";
   const word = now == null ? "" : now >= 1 ? "naspáno do zásoby" : now >= -1 ? "vyrovnaná" : now >= -4 ? "mírný dluh" : "velký dluh";
-  return card("c12", "🏦 Spánková banka · 7 nocí", "výpočet", `<div class="stats tight">${stat("Banka teď", hm(now), " h", word, tone)}${stat("Poslední noc", hm(nv[nv.length - 1]), " h", `proti cíli ${hmm(goalMin * 60)} h`, "")}</div>`
+  return card("c12", "😴 Spánková bilance · 7 nocí", "výpočet", `<div class="stats tight">${stat("Bilance teď", hm(now), " h", word, tone)}${stat("Poslední noc", hm(nv[nv.length - 1]), " h", `proti cíli ${hmm(goalMin * 60)} h`, "")}</div>`
     + lineChart({ x: xs, xfmt: dm, height: 180, fmt: (v) => hm(v) + " h", yfmt: (v) => (v > 0 ? "+" : "") + num(v) + " h", avgLine: { v: 0, label: "vyrovnáno", color: "var(--muted)" }, include: [-2, 2], minSpan: 3,
-        series: [{ name: "banka 7 nocí", values: b, color: "var(--srem)", width: 2.4, area: true }, { name: "noc proti cíli", values: nv, color: "var(--slight)", width: 0.01, dots: true }] })
-    + `<p class="note">Banka = součet rozdílů „spánek − cíl ${hmm(goalMin * 60)} h“ za posledních 7 nocí (tečky = jednotlivé noci). Pod nulou máš spánkový dluh – ten zvyšuje potřebu spánku na další noci. Cíl spánku změníš v Nastavení.</p>`);
+        series: [{ name: "bilance 7 nocí", values: b, color: "var(--srem)", width: 2.4, area: true }, { name: "noc proti cíli", values: nv, color: "var(--slight)", width: 0.01, dots: true }] })
+    + `<p class="note">Bilance = součet rozdílů „spánek − cíl ${hmm(goalMin * 60)} h“ za posledních 7 nocí (tečky = jednotlivé noci). Pod nulou máš spánkový dluh – ten zvyšuje potřebu spánku na další noci. Cíl spánku změníš v Nastavení.</p>`);
 }
 let detRange = 30;
 async function pageDetail(el, which) {

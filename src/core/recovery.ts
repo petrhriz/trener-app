@@ -79,9 +79,9 @@ export interface RecoveryResult {
 }
 
 export const STATE_LABEL: Record<State, string> = {
-  green: "Odpočatý",
-  yellow: "Částečně odpočatý",
-  red: "Neodpočatý",
+  green: "Zotavený",
+  yellow: "Částečně zotavený",
+  red: "Nezotavený",
 };
 export const STATE_EMOJI: Record<State, string> = { green: "🟢", yellow: "🟡", red: "🔴" };
 

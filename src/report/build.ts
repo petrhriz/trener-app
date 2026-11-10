@@ -304,7 +304,7 @@ export async function readiness(ctx: Ctx): Promise<Readiness> {
     why = day.note || "Špatné počasí.";
   } else if (rec.state === "yellow") {
     decision = dec.label;
-    why = kind === "quality" ? "🟡 částečně odpočatý: kvalitu změň na Z2." : "🟡 částečně odpočatý: zkrať o třetinu.";
+    why = kind === "quality" ? "🟡 částečně zotavený: kvalitu změň na Z2." : "🟡 částečně zotavený: zkrať o třetinu.";
   } else {
     decision = "Jet beze změny";
     why = "Zotavení v normě.";

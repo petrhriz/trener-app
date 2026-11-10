@@ -73,7 +73,7 @@ describe("zhodnocení dne", () => {
   };
   it("červený semafor: lehký pohyb místo tréninku a čas spánku z potřeby Garminu", () => {
     const c = coaching({ ...base, semafor: { state: "red", reasons: ["VST pod normou"], missing: false } });
-    expect(c.title).toContain("Neodpočatý");
+    expect(c.title).toContain("Nezotavený");
     expect(c.text).toContain("VST pod normou");
     expect(c.needs.join(" ")).toContain("3×10 min práh");
     expect(c.needs.join(" ")).toContain("22:45"); // 7:30 − 8:30 h − 15 min

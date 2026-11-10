@@ -218,10 +218,10 @@ export function analyzeActivity(a: ActRow, plan: PlannedForAct | null, ftp: numb
   if (teL && TE_NAME[teL]) basics.push(["🎯 Hlavní přínos", TE_NAME[teL]!]);
   basics.push(["🔋 Zátěž", `${num(a.load)}${planLoad ? ` (plán ${num(planLoad)})` : ""}`]);
   if (compliance != null) basics.push(["✅ Splnění plánu", `${compliance} %${plan?.compliance != null ? " (intervals.icu)" : ""}`]);
-  if (a.avg_hr) basics.push(["❤️ Tep průměr / max", `${num(a.avg_hr)} / ${num(a.max_hr)} bpm`]);
+  if (a.avg_hr) basics.push(["❤️ Tep", `${num(a.avg_hr)} bpm${a.max_hr ? ` (max ${num(a.max_hr)})` : ""}`]);
   if (hasPower) {
-    basics.push(["⚡ Výkon průměr / NP", `${num(a.avg_power)} / ${num(a.np)} W`]);
-    basics.push(["⚡ VI · intenzita", `${num(vi, 2)} · ${intensity != null ? `${num(intensity)} %` : "–"}`]);
+    basics.push(["⚡ Výkon", `${num(a.avg_power)} W (NP ${num(a.np)})`]);
+    basics.push(["⚡ VI", `${num(vi, 2)}${intensity != null ? ` (intenzita ${num(intensity)} %)` : ""}`]);
     basics.push(["Aerobní drift", steady && a.drift != null ? `${num(a.drift, 1)} %` : "–"]);
   }
   let basicsNote = "";

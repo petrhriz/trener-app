@@ -1927,3 +1927,19 @@ html[data-rings="glow"] .dn-rings .gring::before { opacity: .85; }
 .zprog { position: relative; height: 12px; overflow: visible; }
 .zprog i { background: var(--acc); }
 .zprog b { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--fg); opacity: .55; border-radius: 1px; }
+/* Přehled: AI shrnutí vpravo vedle stavu, pod stavem rovnou „Co tělo potřebuje“ */
+.dn-head { display: flex; align-items: flex-start; gap: 12px; }
+.dn-head .dn-title { flex: none; }
+.dn-head .ainote.side { flex: 1 1 0; min-width: 0; margin-top: 4px; font-size: 12.5px; line-height: 1.4; padding: 8px 10px; }
+.dn-head .ainote.side.folded { flex: 1 1 0; text-align: right; padding: 4px 0; margin-top: 10px; }
+.dn-head .ainote.side .an-m { font-size: 11px; }
+/* Energie v dlaždici: baterie přes celou šířku jako grafy */
+.ebat { width: 100%; }
+.ebat svg.battery { width: 100% !important; height: 100% !important; max-height: 70px; }
+/* spánková bilance: 7 sloupečků kolem nulové čáry */
+.sbal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; height: 100%; position: relative; }
+.sbal::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px dashed var(--line); }
+.sbal span { position: relative; }
+.sbal i { position: absolute; left: 15%; right: 15%; border-radius: 3px; }
+.sbal i.up { bottom: 50%; background: var(--slight); }
+.sbal i.dn { top: 50%; background: var(--srem); opacity: .85; }
