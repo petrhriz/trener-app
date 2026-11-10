@@ -1118,7 +1118,7 @@ async function pageTrener(el) {
   const doneActs = (t.done || []).filter((x) => x.id);
   const todayCard = `<section class="card tdark c12" data-tt="tyden"><span class="td-d">Dnes · ${dayDm(r.date)} · <span class="${tone}">${rec.emoji} ${esc(rec.stateLabel)}</span></span>
     ${doneActs.length && !paused ? doneActs.map((x) => `<a class="td-h td-done" href="#/aktivita/${x.id}">✅ Odjeto: ${esc(x.name)} <span class="go">→</span></a>`).join("") : `<b class="td-h">${esc(paused ? `${d.status.label} – plán stojí` : skipped ? "Dnes volno (tvoje volba)" : t.decision)}${!paused && t.day && t.day.name && t.decision !== "Odjeto" ? ` · ${dur((t.day.durationMin || 0) * 60)}` : ""}</b>`}
-    <p class="td-p">${esc(paused ? "Stav změníš na Přehledu." : skipped ? "Omylem? Vrať to tlačítkem." : doneActs.length ? doneActs.map((x) => (x.load != null ? `zátěž ${num(x.load)}` : "")).filter(Boolean).join(", ") : t.decisionWhy)}</p>
+    <p class="td-p">${esc(paused ? "Stav změníš na Přehledu." : skipped ? "Omylem? Vrať to tlačítkem." : doneActs.length ? doneActs.map((x) => (x.load != null ? `zátěž ${num(x.load)} ${x.unit || ""}`.trim() : "")).filter(Boolean).join(", ") : t.decisionWhy)}</p>
     <p class="td-tm"><b>Zítra:</b> ${tmLine}</p>
     <div class="btns">${paused ? "" : skipped ? `<button class="btn pri" data-undo="${r.date}" data-kind="${skipped.kind}">↩️ Vrátit – dnes pojedu</button>` : t.decision === "Odjeto" || t.decision === "Volno" ? "" : `<button class="btn" data-skip="${r.date}">🚫 Dnes nepojedu</button>`}</div></section>`;
   // --- týden: 7 dní jako ikony (odjeto zeleně, dnes orámované) + pruh hotovo / plán / cíl ---
@@ -1135,7 +1135,7 @@ async function pageTrener(el) {
     const ico = done ? (SPORT_ICON[(acts[0] || {}).sport] || "✅") : pd && pd.name ? (pd.kind === "quality" ? "⚡" : tSportIco(pd.sport)) : date < r.date ? "—" : "·";
     return `<button type="button" class="tsd ${done ? "done" : ""} ${date === r.date ? "today" : ""} ${pd && pd.kind === "quality" ? "q" : ""}" ${pd && date >= r.date ? `data-peek="${date}"` : ""} title="${dayDm(date)}${pd && pd.name ? ` · ${esc(pd.name)}` : ""}"><i>${ico}</i><b>${DAYS[dow(date) - 1]}</b><small>${Number(date.slice(8, 10))}.</small></button>`;
   };
-  const strip = `<div class="tstrip">${[0, 1, 2, 3, 4, 5, 6].map((k) => stripDay(addDay(mon, k))).join("")}</div>`;
+  const strip = `<div class="tstrip-sc" id="tStrip">${[-7, 0, 7].map((o) => `<div class="tstrip" data-wk="${o}">${[0, 1, 2, 3, 4, 5, 6].map((k) => stripDay(addDay(mon, o + k))).join("")}</div>`).join("")}</div>`;
   const bars = (cur ? weekBar({ ...cur, target: d.weeks.target }, `Tento týden · ${wkLabel(cur)}`) : "") + (inPlan(next) ? weekBar({ ...next, target: d.weeks.target }, `Příští týden · ${wkLabel(next)}`) : "");
   const weekCard = card("c12 t-week", "", "", strip + bars, 'data-tt="tyden"');
   // --- dny ---
@@ -1160,7 +1160,7 @@ async function pageTrener(el) {
       <span class="td-main">${ride ? `<span class="td-ico">${tSportIco(x.sport)}</span>` : ""}<span class="td-t"><b>${esc(x.name || (x.kind === "blocked" ? x.tag : x.kind === "hockey" ? "Hokej" : "Volno"))}</b>${tags}${x.targetText && ride ? `<small>${esc(x.targetText)}</small>` : ""}</span></span>
       <span class="td-n num">${ride ? `${dur((x.durationMin || 0) * 60)}<small>zátěž ${num(x.load)}</small>${x.targetText ? `<small class="td-tg">${esc(String(x.targetText).replace(/\s*\(.*$/, ""))}</small>` : ""}` : ""}</span>
       <span class="td-w">${wtxt}</span>
-      ${x.kind === "blocked" ? "<span></span>" : `<button class="td-btn ${ride ? "" : "add"}" data-open="${x.date}" aria-expanded="${open}" title="${ride ? "Upravit" : "Přidat trénink"}">${open ? "Zavřít" : ride ? "Upravit" : "＋<span> Přidat</span>"}</button>`}</div>${!open && ride ? `<div class="tpeek">${x.steps && x.steps.length ? `<ol class="steps">${x.steps.map((st) => `<li>${esc(st)}</li>`).join("")}</ol>` : `<p class="sub">${esc(x.targetText || "Kroky tréninku nemám.")}</p>`}${x.why && x.why.length ? `<p class="note">${esc(x.why.join(" · "))}</p>` : ""}</div>` : ""}${panel}</div>`;
+      ${x.kind === "blocked" ? "<span></span>" : `<button class="td-btn ${ride ? "" : "add"}" data-open="${x.date}" aria-expanded="${open}" title="${ride ? "Upravit" : "Přidat trénink"}">${open ? "Zavřít" : ride ? "Upravit" : "Přidat"}</button>`}</div>${!open && ride ? `<div class="tpeek">${x.steps && x.steps.length ? `<ol class="steps">${x.steps.map((st) => `<li>${esc(st)}</li>`).join("")}</ol>` : `<p class="sub">${esc(x.targetText || "Kroky tréninku nemám.")}</p>`}${x.why && x.why.length ? `<p class="note">${esc(x.why.join(" · "))}</p>` : ""}</div>` : ""}${panel}</div>`;
   };
   const RS = { done: ["✅", "splněno", "good"], partial: ["🟡", "částečně", "warn"], missed: ["❌", "vynecháno", "bad"], skipped: ["⏸️", "volno (tvoje volba)", ""], extra: ["➕", "navíc mimo plán", ""] };
   const nPlan = rc.filter((x) => x.plan && x.status !== "skipped").length, nOk = rc.filter((x) => x.status === "done").length;
@@ -1189,7 +1189,7 @@ async function pageTrener(el) {
   const eC = Math.pow(41 / 42, 7), eA = Math.pow(6 / 7, 7);
   const ctl7 = f.ctl != null ? f.ctl * eC + (plan7 / 7) * (1 - eC) : null, atl7 = f.atl != null ? f.atl * eA + (plan7 / 7) * (1 - eA) : null;
   const proj = ctl7 != null ? `<p class="tproj">Když odjedeš plán (zátěž ${thou(plan7)} za 7 dní): kondice <b>${num(f.ctl, 1)} → ${num(ctl7, 1)}</b> (${signed(ctl7 - f.ctl, 1)}), forma ${atl7 != null ? `<b>${signed(ctl7 - atl7, 0)}</b>` : "–"}.</p>` : "";
-  const stateCard = card("t-state", "Z čeho trenér vychází", "intervals.icu · Garmin", `<div class="twhy"><b>Proto tento týden</b><p>${why} Cíl zátěže ${p.weeklyTarget.lo}–${p.weeklyTarget.hi}, ${qn ? `${qn}× kvalita` : "bez kvality"}, ${p.days.filter((x) => x.name).length} tréninků.</p>${proj}<div class="ainote inwhy" data-ainote="trener"></div></div>
+  const stateCard = card("t-state", "Z čeho trenér vychází", "intervals.icu · Garmin", `<div class="twhy"><b>Jak je týden postavený</b><p>${why} Cíl zátěže ${p.weeklyTarget.lo}–${p.weeklyTarget.hi}, ${qn ? `${qn}× kvalita` : "bez kvality"}, ${p.days.filter((x) => x.name).length} tréninků.</p>${proj}</div>
     <div class="tstate">
       <div><span>Kondice (CTL)</span><b class="num">${num(f.ctl, 1)}</b><small class="${f.ramp != null && f.ramp < -1 ? "warn" : ""}">${f.ramp != null ? `${signed(f.ramp, 1)} za týden` : ""}</small></div>
       <div><span>Únava (ATL)</span><b class="num">${num(f.atl, 1)}</b><small>zátěž 7 dní ${thou(f.load7)}</small></div>
@@ -1206,7 +1206,7 @@ async function pageTrener(el) {
   const weatherCard = card("c12 t-weather", "🌤️ Počasí na trénink · 7 dní", "Open-Meteo", weatherList(p.days.map((x) => ({ label: x.isToday ? "Dnes" : dayDm(x.date), w: x.weather })).filter((x) => x.w)) + `<p style="margin-top:10px"><a class="btn sm" href="#/pocasi">Počasí po hodinách →</a></p>`, 'id="pocasi" data-tt="pocasi"');
   const loadsCard = card("t-loads", "📈 Zátěž po týdnech", "TSS / HRSS", weekLoadsHtml(d.weeks), 'data-tt="proc"');
   const intens = card("t-int", "Průvodce intenzitou", "FTP", `<details><summary>Watty pro jednotlivé jednotky (FTP ${d.intensity.ftp} W)</summary><table class="t"><tr><th>Jednotka</th><th class="r">% FTP</th><th class="r">Watty</th></tr>${d.intensity.targets.map((x) => `<tr><td>${esc(x.name)}</td><td class="r">${x.pct[0]}–${x.pct[1]} %</td><td class="r">${x.w[0]}–${x.w[1]} W</td></tr>`).join("")}</table></details>`, 'data-tt="cil"');
-  const TABS = [["tyden", "Týden"], ["proc", "Proč"], ["pocasi", "Počasí"], ["cil", "Cíl"]];
+  const TABS = [["tyden", "Týden"], ["proc", "Stav"], ["pocasi", "Počasí"], ["cil", "Cíl"]];
   el.innerHTML = `<div class="head"><div><h1>Trenér</h1><div class="sub">cíl ${esc(d.goalLabel || "")} · zátěž týdne ${p.weeklyTarget.lo}–${p.weeklyTarget.hi}</div></div></div>
   <div class="ioseg ttabs" role="tablist">${TABS.map(([k, l]) => `<button type="button" role="tab" data-ttab="${k}" class="${tTab === k ? "on" : ""}" aria-selected="${tTab === k}">${l}</button>`).join("")}</div>
   <div class="grid tgrid">
@@ -1219,6 +1219,9 @@ async function pageTrener(el) {
   showTab(tTab);
   el.querySelectorAll("[data-ttab]").forEach((b) => b.addEventListener("click", () => { showTab(b.dataset.ttab); scrollTo(0, 0); fitCells(el); }));
   el.querySelector(".tmore")?.addEventListener("toggle", (e) => { tMoreOpen = e.currentTarget.open; });
+  // proužek: výchozí poloha = tento týden
+  { const sc = el.querySelector("#tStrip"), cw = sc?.querySelector('[data-wk="0"]'); if (sc && cw) requestAnimationFrame(() => { sc.scrollLeft = cw.offsetLeft - sc.offsetLeft; }); }
+  el.querySelectorAll(".tday .td-row").forEach((row) => row.addEventListener("click", (e) => { if (e.target.closest("button, a, select, input")) return; const tr = row.closest(".tday"); if (!tr.querySelector(".tpeek")) return; const on = !tr.classList.contains("peek"); el.querySelectorAll(".tday.peek").forEach((x) => x.classList.remove("peek")); tr.classList.toggle("peek", on); }));
   el.querySelectorAll("[data-peek]").forEach((b) => b.addEventListener("click", () => { const row = el.querySelector(`.tday[data-day="${b.dataset.peek}"]`); if (!row) return; const on = !row.classList.contains("peek"); el.querySelectorAll(".tday.peek").forEach((x) => x.classList.remove("peek")); row.classList.toggle("peek", on); row.scrollIntoView({ behavior: "smooth", block: "center" }); }));
   bindHours(el);
   const keepScroll = async () => { const y = scrollY; cache.clear(); await route(); requestAnimationFrame(() => scrollTo(0, y)); };

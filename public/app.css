@@ -2040,3 +2040,14 @@ html[data-rings="glow"] .dn-rings .gring::before { opacity: .85; }
 .tproj { margin: 6px 0 0; font-size: 13.5px; color: var(--muted); }
 .tproj b { color: var(--fg); }
 .t-goal .tproj { margin: 8px 0 4px; }
+/* Trenér – doladění */
+.td-btn, .td-btn.add { min-width: 74px !important; text-align: center; font-size: 12.5px !important; padding: 5px 10px !important; }
+.tday .td-row { cursor: pointer; }
+/* ⋯ u plánu: tlačítko vpravo nahoře, obsah se rozbalí přímo v kartě (ne jako plovoucí okno) */
+.tmore { position: static !important; }
+.tmore > summary { position: absolute; top: 10px; right: 12px; z-index: 3; }
+.tmore-in { position: static !important; width: auto !important; box-shadow: none !important; border-radius: 12px !important; background: var(--card2) !important; border: 0 !important; margin: 0 0 12px; }
+/* proužek dní: minulý · tento · příští týden, posouvání do stran po týdnech */
+.tstrip-sc { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; margin-bottom: 12px; gap: 12px; }
+.tstrip-sc::-webkit-scrollbar { display: none; }
+.tstrip-sc > .tstrip { flex: 0 0 100%; scroll-snap-align: start; margin-bottom: 0; }

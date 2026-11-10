@@ -335,7 +335,14 @@ api.get("/coach", async (c) => {
   const longRide = weekActs.some((a) => isBike(a.sport) && (a.moving_s ?? 0) >= 90 * 60 && dow(a.date) >= 6);
   const longPlanned = r.plan.days.some((d) => d.date <= addDays(mon, 6) && dow(d.date) >= 6 && (d.durationMin ?? 0) >= 90);
   const pz = powerZones(ftp, ctx.s.power_zones_pct);
-  const open = await openProposal(c.env);
+  // návrh změn vždy podle aktuálního plánu (počasí, úpravy, AI) – uložený starší návrh se nahradí
+  let open = await openProposal(c.env);
+  const key = (x: { date: string; action: string; name: string }) => `${x.date}|${x.action}|${x.name}`;
+  const curCh = r.plan.changes ?? [];
+  if ((open?.items.map(key).sort().join(";") ?? "") !== curCh.map(key).sort().join(";")) {
+    const id = await saveProposal(c.env, "dashboard", curCh);
+    open = id ? { id, items: curCh } : null;
+  }
   const insights = await analyticsOf(c.env, ctx).then(insightsOf).catch(() => []);
   // posledních 7 tréninkových dnů (14 dní zpět): plán vs. skutečnost
   const recent: any[] = [];

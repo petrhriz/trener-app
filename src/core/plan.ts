@@ -778,7 +778,7 @@ export function generatePlan(inp: PlanInput): PlanResult {
         continue;
       }
       s.indoor = true;
-      s.minutes = Math.max(45, Math.round((s.minutes * 2) / 3 / 15) * 15);
+      s.minutes = Math.max(45, Math.round((s.minutes * 2) / 3 / 5) * 5);
       if (s.kind === "long") s.kind = "z2";
       s.changed = s.changed ?? (s.cal ? "upravit" : "nová");
       s.why.push(`${weatherWhy(w)} → trenažér 2/3 délky`);

@@ -72,12 +72,14 @@ function planFormat(pl: NonNullable<PastQuality["plan"]>): Format {
 }
 
 /** Krok 2: na co kvalitu zaměřit. */
-export function chooseFocus(acts: ActPower[], today: string, lastWeekType: QualityType | null, avoid: QualityType[] = []) {
+export function chooseFocus(acts: ActPower[], today: string, lastWeekType: QualityType | null, avoid: QualityType[] = [], goal: DesignInput["goal"] = "zvyseni") {
   const curve = curveCompare(acts, today);
   const stim = lastStimulus(acts, today);
   const pct = (s: number) => curve.rows.find((r) => r.secs === s)?.pct ?? null;
   const decl = (s: number) => Math.max(0, -(pct(s) ?? 0));
-  const cands: Exclude<QualityType, "tempo">[] = isOffSeason(today) ? ["vo2", "prah", "vo2short"] : ["vo2", "prah", "sweetspot", "vo2short"];
+  // v zimě (mimo sezónu) žádné ostré intervaly, když se nezlepšuje: zpocený a pak zima, VO2 jen pro Zlepšit / Závod
+  const off = isOffSeason(today);
+  const cands: Exclude<QualityType, "tempo">[] = !off ? ["vo2", "prah", "sweetspot", "vo2short"] : goal === "pokles" ? ["sweetspot"] : goal === "udrzeni" ? ["sweetspot", "prah"] : ["prah", "sweetspot", "vo2"];
   const score: Record<string, number> = {
     // mimo sezónu priorita VO2 a práh (klesají nejrychleji)
     vo2: decl(300) * 2 + Math.min(daysSince(stim.vo2, today), 21) / 3 + 1,
@@ -171,7 +173,7 @@ function pickFormat(type: keyof typeof LADDER, outcome: Outcome, last: Format | 
 }
 
 export function designQuality(inp: DesignInput): Design {
-  const ch = chooseFocus(inp.acts, inp.today, inp.lastWeekType, inp.avoid ?? []);
+  const ch = chooseFocus(inp.acts, inp.today, inp.lastWeekType, inp.avoid ?? [], inp.goal ?? "zvyseni");
   const type = (inp.forceFocus && inp.forceFocus !== "tempo" ? inp.forceFocus : ch.focus) as keyof typeof LADDER;
   const ev = evaluatePast(inp.past(type));
   // cíl mění progresi: udržení posun nedělá, pokles bere menší dávku
