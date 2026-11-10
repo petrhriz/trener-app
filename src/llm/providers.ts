@@ -1,6 +1,6 @@
 // Poskytovatelé AI modelů (všichni přes OpenAI-kompatibilní chat/completions, kromě Workers AI):
 // - google: Google AI Studio (Gemma), klíč GEMINI_API_KEY – free tier, pozor: na free tieru může Google data použít ke zlepšování
-// - nvidia: build.nvidia.com (Nemotron), klíč NVIDIA_API_KEY – free kredity pro vývojáře
+// - nvidia: build.nvidia.com (Nemotron), klíč NVIDIA_API_KEY (nvapi-…); klíč OpenRouter (sk-or-…) ve stejném poli → openrouter.ai, jen modely :free
 // - workers: Cloudflare Workers AI (Mistral Small) – záloha, když nic jiného není nebo selže
 import type { Env } from "../env";
 import { getSettings } from "../lib/settings";
@@ -22,17 +22,20 @@ export const WORKERS_DEFAULT = "@cf/mistralai/mistral-small-3.1-24b-instruct";
 /** výchozí modely, když se seznam od poskytovatele nepodaří načíst */
 const FALLBACK: Record<"google" | "nvidia", string> = { google: "gemma-3-27b-it", nvidia: "nvidia/llama-3.3-nemotron-super-49b-v1.5" };
 
-const base = (p: "google" | "nvidia") => (p === "google" ? GOOGLE_URL : NVIDIA_URL);
-const keyOf = (env: Env, p: "google" | "nvidia") => (p === "google" ? env.GEMINI_API_KEY : env.NVIDIA_API_KEY);
+const OPENROUTER_URL = "https://openrouter.ai/api/v1";
+const keyOf = (env: Env, p: "google" | "nvidia") => (p === "google" ? env.GEMINI_API_KEY : env.NVIDIA_API_KEY)?.trim();
+/** Do pole NVIDIA jde vložit i klíč OpenRouter (sk-or-…) – Nemotron se pak volá přes openrouter.ai. */
+const isOpenRouter = (env: Env) => /^sk-or-/.test(env.NVIDIA_API_KEY?.trim() ?? "");
+const base = (env: Env, p: "google" | "nvidia") => (p === "google" ? GOOGLE_URL : isOpenRouter(env) ? OPENROUTER_URL : NVIDIA_URL);
 
 /** Seznam modelů poskytovatele (cache v KV na den). */
 export async function listModels(env: Env, p: "google" | "nvidia"): Promise<string[]> {
   const key = keyOf(env, p);
   if (!key) return [];
-  const kvKey = `llm_models:v2:${p}`;
+  const kvKey = `llm_models:v3:${p}${p === "nvidia" && isOpenRouter(env) ? "-or" : ""}`;
   const cached = await env.KV.get<string[]>(kvKey, "json").catch(() => null);
   if (cached?.length) return cached;
-  const res = await fetch(`${base(p)}/models`, { headers: { Authorization: `Bearer ${key}` } });
+  const res = await fetch(`${base(env, p)}/models`, { headers: { Authorization: `Bearer ${key}` } });
   if (!res.ok) {
     await res.body?.cancel();
     return [];
@@ -41,8 +44,10 @@ export async function listModels(env: Env, p: "google" | "nvidia"): Promise<stri
   const ids = (j?.data ?? []).map((m) => String(m.id).replace(/^models\//, ""));
   // Google: Gemma a Gemini Flash (oba na free tieru); bez obrázků, řeči, embeddingů a náhledů
   const useful = p === "google" ? ids.filter((x) => (/gemma/i.test(x) || /^gemini-[\d.]+-flash(-lite)?$/i.test(x)) && !/image|tts|audio|live|embed|preview|exp/i.test(x)) : ids.filter((x) => /nemotron/i.test(x) && !/embed|rerank|reward|safety|guard|parse|vl\b|nano-vl|ocr/i.test(x));
-  if (useful.length) await env.KV.put(kvKey, JSON.stringify(useful), { expirationTtl: 86400 }).catch(() => {});
-  return useful;
+  // OpenRouter: jen bezplatné modely (…:free), placené klíč bez kreditu odmítne
+  const list = p === "nvidia" && isOpenRouter(env) && useful.some((x) => /:free$/.test(x)) ? useful.filter((x) => /:free$/.test(x)) : useful;
+  if (list.length) await env.KV.put(kvKey, JSON.stringify(list), { expirationTtl: 86400 }).catch(() => {});
+  return list;
 }
 
 /** Číslo verze a velikost z názvu („gemma-4-31b-it“ → [4, 31]) – na výběr nejnovějšího a největšího. */
@@ -64,7 +69,10 @@ export async function bestModel(env: Env, p: "google" | "nvidia"): Promise<strin
     const pool = it.length ? it : ids;
     return [...pool].sort((a, b) => { const ra = rank(a), rb = rank(b); return rb[0] - ra[0] || rb[1] - ra[1]; })[0]!;
   }
-  const pref = ids.find((x) => /nemotron.*super/i.test(x)) ?? ids.find((x) => /nemotron.*ultra/i.test(x)) ?? ids.find((x) => /nemotron/i.test(x));
+  // OpenRouter: přednost bezplatné verze (…:free)
+  const free = ids.filter((x) => /:free$/.test(x));
+  const pool = free.length ? free : ids;
+  const pref = pool.find((x) => /nemotron.*super/i.test(x)) ?? pool.find((x) => /nemotron.*ultra/i.test(x)) ?? pool.find((x) => /nemotron/i.test(x));
   return pref ?? FALLBACK.nvidia;
 }
 
@@ -105,10 +113,12 @@ async function callOpenAi(env: Env, p: "google" | "nvidia", model: string, messa
   const body: Record<string, unknown> = { model, messages: msgs, max_tokens: maxTokens, temperature };
   // Nemotron: bez „přemýšlení“ nahlas (rychlejší, kratší odpověď)
   if (p === "nvidia" && /nemotron/i.test(model)) body.messages = [{ role: "system", content: "/no_think" }, ...msgs];
+  // OpenRouter: „přemýšlení“ se počítá do max_tokens a obsah pak bývá prázdný → nízké úsilí, skryté, s rezervou tokenů
+  if (p === "nvidia" && isOpenRouter(env)) { body.reasoning = { effort: "low", exclude: true }; body.max_tokens = maxTokens + 1500; }
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), timeoutMs);
   try {
-    const res = await fetch(`${base(p)}/chat/completions`, {
+    const res = await fetch(`${base(env, p)}/chat/completions`, {
       method: "POST",
       headers: { Authorization: `Bearer ${(keyOf(env, p) ?? "").trim()}`, "content-type": "application/json" },
       body: JSON.stringify(body),
@@ -119,6 +129,7 @@ async function callOpenAi(env: Env, p: "google" | "nvidia", model: string, messa
     const j = JSON.parse(txt) as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } };
     // případné <think>…</think> pryč
     const text = String(j.choices?.[0]?.message?.content ?? "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    if (!text) throw new Error(`${p}: prázdná odpověď (${(j as any).choices?.[0]?.finish_reason ?? "?"}) ${txt.slice(0, 200)}`);
     return { text, model: `${p}:${model}`, usage: j.usage };
   } catch (e) {
     if ((e as Error).name === "AbortError") throw new Error(`${p}: bez odpovědi do ${Math.round(timeoutMs / 1000)} s`);
@@ -176,7 +187,8 @@ async function callWorkers(env: Env, model: string, messages: ChatMsg[], maxToke
 async function callOne(env: Env, p: Provider, model: string, messages: ChatMsg[], maxTokens: number, temperature: number, timeoutMs = 25_000): Promise<ChatOut> {
   if (p === "workers") return callWorkers(env, model, messages, maxTokens, temperature);
   if (p === "google") return callGoogle(env, model, messages, maxTokens, temperature, timeoutMs);
-  return callOpenAi(env, p, model, messages, maxTokens, temperature, timeoutMs);
+  // bezplatný Nemotron přes OpenRouter je s delším kontextem pomalejší (20–40 s)
+  return callOpenAi(env, p, model, messages, maxTokens, temperature, isOpenRouter(env) && timeoutMs === 25_000 ? 45_000 : timeoutMs);
 }
 
 /** Test každého modelu z řetězu zvlášť (Nastavení → AI model → Vyzkoušet): kdo odpověděl, za jak dlouho, nebo proč ne. */
@@ -188,7 +200,7 @@ export async function testModels(env: Env, only?: string): Promise<{ model: stri
     const t0 = Date.now();
     const key = p === "workers" ? null : keyOf(env, p) ?? "";
     // NVIDIA klíč začíná „nvapi-“; chyba „Invalid JWT“ = vložený jiný řetězec (např. s mezerou, uvozovkami nebo jiný typ klíče)
-    const hint = p === "nvidia" && key && !/^nvapi-[\w-]{20,}$/.test(key.trim()) ? "klíč NVIDIA nemá tvar nvapi-… – zkopíruj ho znovu z build.nvidia.com (Get API Key)" : p === "google" && key && !/^AIza[\w-]{30,}$/.test(key.trim()) ? "klíč Google nemá tvar AIza… – vytvoř ho v aistudio.google.com (Get API key)" : undefined;
+    const hint = p === "nvidia" && key && !/^(nvapi-|sk-or-)[\w-]{20,}$/.test(key.trim()) ? "klíč nemá tvar nvapi-… (build.nvidia.com) ani sk-or-… (openrouter.ai) – zkopíruj ho znovu" : p === "google" ? "zkontroluj klíč Google z aistudio.google.com (Get API key)" : undefined;
     try {
       const out = await callOne(env, p, model, msgs, 120, 0.2, 20_000);
       return { model: `${p}:${model}`, ok: !!out.text, ms: Date.now() - t0, answer: out.text.slice(0, 200) };

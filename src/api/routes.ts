@@ -69,7 +69,7 @@ api.route("/", round6);
 /** AI: dostupné modely (Gemma z Google AI Studia, Nemotron z NVIDIE, Workers AI) a pořadí, ve kterém se zkouší. */
 api.get("/llm-models", async (c) => {
   const [google, nvidia, chain] = await Promise.all([listModels(c.env, "google").catch(() => []), listModels(c.env, "nvidia").catch(() => []), modelChain(c.env)]);
-  return c.json({ google, nvidia, workers: c.env.AI ? [c.env.LLM_MODEL || "@cf/mistralai/mistral-small-3.1-24b-instruct"] : [], chain: chain.map((x) => `${x.p}:${x.model}`), keys: { google: !!c.env.GEMINI_API_KEY, nvidia: !!c.env.NVIDIA_API_KEY } });
+  return c.json({ google, nvidia, workers: c.env.AI ? [c.env.LLM_MODEL || "@cf/mistralai/mistral-small-3.1-24b-instruct"] : [], chain: chain.map((x) => `${x.p}:${x.model}`), keys: { google: !!c.env.GEMINI_API_KEY, nvidia: !!c.env.NVIDIA_API_KEY }, openrouter: /^sk-or-/.test(c.env.NVIDIA_API_KEY?.trim() ?? "") });
 });
 /** AI: krátký test (který model odpověděl a za jak dlouho). */
 api.post("/llm-test", async (c) => {
