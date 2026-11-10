@@ -63,6 +63,7 @@ export async function aiUsedToday(env: Env): Promise<number> {
 
 /** Poslední použitý model (pro Nastavení / odpověď chatu). */
 export let lastModel: string | null = null;
+export const getLastModel = () => lastModel;
 
 /** Jedno volání modelu (řetěz Gemma → Nemotron → Workers AI, src/llm/providers.ts). null = nic neodpovědělo. */
 export async function runChat(env: Env, messages: ChatMsg[], maxTokens = 350, temperature = 0.2): Promise<string | null> {

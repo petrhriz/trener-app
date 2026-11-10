@@ -702,12 +702,12 @@ function weatherDayPill(w) {
 }
 function openStatusModal(cur, onDone) {
   const ov = document.createElement("div");
-  ov.className = "modal";
+  ov.className = "modal stmodal";
   let kind = cur.kind;
   const durs = [["", "Do odvolání"], ["0", "Jen dnes"], ["2", "3 dny"], ["6", "Týden"], ["13", "2 týdny"], ["date", "Do data…"]];
   const today = localToday();
   const render = () => {
-    ov.innerHTML = `<div class="modal-in"><div class="ch"><h2>Jak se máš?</h2><button class="btn sm" data-x>✕</button></div>
+    ov.innerHTML = `<div class="modal-in"><div class="ch"><h2>Stav</h2><button class="btn sm" data-x>✕</button></div>
       <div class="stgrid">${Object.entries(STATUS).map(([k, [i, l, t]]) => `<button class="stopt st-${t} ${k === kind ? "on" : ""}" data-k="${k}"><span>${i}</span>${l}</button>`).join("")}</div>
       ${kind === "active" ? `<p class="note">Aktivní = trénink podle plánu, zátěž se hodnotí.</p><div class="btns"><button class="btn pri" data-save="">Uložit</button></div>`
         : `<div class="sl" style="margin:14px 0 8px">Na jak dlouho?</div><div class="chips2">${durs.map(([v, l]) => `<button class="btn" data-save="${v}">${l}</button>`).join("")}</div><input type="date" id="stDate" min="${today}" style="display:none">
@@ -939,7 +939,7 @@ async function pagePrehled(el) {
       : `<div class="today-act"><span class="ico">🛋️</span><div><b>${paused ? "Plán stojí" : "Dnes volno"}</b>${tomorrowHtml(t)}</div></div>`;
   const dnes = true
     ? card(`c8 dnes ${tone}`, "", "", `<div class="dn-wrap">${r.score != null ? `<div class="dn-rings"><a class="dn-side" href="#/detail/bb">${gradRing(d.bb.latest ?? d.bb.min, "energy", { size: 84, stroke: 9, label: "Energie", home: true })}</a><a class="dn-ring" href="#/zotaveni">${recRing(r.score, 132, true)}</a><a class="dn-side" href="#/detail/spanek">${gradRing(d.sleep?.score ?? null, "sleep", { size: 84, stroke: 9, label: "Spánek", home: true })}</a></div>` : ""}<div class="dn-body">${paused ? `<div class="dn-top"><span class="badge">${(STATUS[d.status.kind]?.[0] || "") + " " + esc(d.status.label)}</span></div>` : ""}
-      <h2 class="dn-title"><span class="dn-dot ${paused ? "" : tone}" aria-hidden="true"></span>${esc(co.title)}</h2><p class="dn-text">${esc(co.text)}</p>
+      <h2 class="dn-title"><span class="dn-dot ${paused ? "" : tone}" aria-hidden="true"></span>${esc(co.title)}</h2><p class="dn-text">${esc(co.text)}</p>${d.isToday ? `<div class="ainote" data-ainote="prehled"></div>` : ""}
       <div class="dn-grid"><div>${co.needs.length ? `<div class="sl">Co tělo potřebuje</div><ul class="needs">${co.needs.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}</div><div><div class="sl">${d.isToday ? "Trénink" : "Odjeto"}</div>${todayLine}${d.isToday && t.name && !t.done?.length && !paused ? `<p class="note">Zítra: ${esc(t.tomorrow)}</p>` : ""}</div></div></div></div>`)
     : ""; // zpětný den: bez horní karty, aktivita je dole
 
@@ -948,7 +948,7 @@ async function pagePrehled(el) {
   const spTone = sp ? sp.scoreTone : "";
   const sleepCard = card("c4 sleepmini", `<a href="#/detail/spanek">😴 Spánek →</a>`, "výpočet", sp ? `<a class="sm-wrap" href="#/detail/spanek">${sleepRing(sp, 112)}<div class="sm-r"><div class="mt-v">${dur(sp.durationS).replace(/ (h|min)/g, "<small> $1</small>")}</div><div class="sub">${sp.start && sp.end ? `${sp.start}–${sp.end}` : ""}${sp.needMin ? ` · potřeba ${dur(sp.needMin * 60)}` : ""}</div><span class="chipt ${spTone}">${esc(sp.verdict.replace(/^Skóre \d+ – /, ""))}</span></div></a>
     <div class="sm-st">${sp.stages.map((x) => `<span><i style="background:${STAGE_COLOR[x.key]}"></i>${esc(x.label)} <b>${dur(x.secs)}</b></span>`).join("")}</div>
-    ${sp.nextNeedMin ? `<p class="note">${d.isToday ? "Na dnešní noc potřebuješ" : "Na další noc byla potřeba"} ${dur(sp.nextNeedMin * 60)} (cíl + spánkový dluh).</p>` : ""}` : `<div class="empty">Spánek pro tento den nemám.</div>`);
+    ${sp.nextNeedMin ? `<p class="note">${d.isToday ? "Na dnešní noc potřebuješ" : "Na další noc byla potřeba"} ${dur(sp.nextNeedMin * 60)}.</p>` : ""}` : `<div class="empty">Spánek pro tento den nemám.</div>`);
 
   // 3) Dlaždice
   const hv = d.hrv, rh = d.rhr, st = d.stress, stp = d.steps, sn = d.strain, bb = d.bb;
@@ -1097,7 +1097,7 @@ async function pageTrener(el) {
   // --- dnešek (tmavá karta) ---
   const todayCard = `<section class="card tdark c12"><span class="td-d">Dnes · ${dayDm(r.date)} · <span class="${tone}">${rec.emoji} ${esc(rec.stateLabel)}</span></span>
     <b class="td-h">${esc(paused ? `${d.status.label} – plán stojí` : skipped ? "Dnes volno (tvoje volba)" : t.decision)}${!paused && t.day && t.day.name && t.decision !== "Odjeto" ? ` · ${dur((t.day.durationMin || 0) * 60)}` : ""}</b>
-    <p class="td-p">${esc(paused ? "Stav změníš na Přehledu." : skipped ? "Omylem? Vrať to tlačítkem." : t.decisionWhy)} ${esc("Zítra: " + r.tomorrow)}</p>
+    <p class="td-p">${esc(paused ? "Stav změníš na Přehledu." : skipped ? "Omylem? Vrať to tlačítkem." : t.decisionWhy)} ${esc("Zítra: " + r.tomorrow)}</p><div class="ainote" data-ainote="trener"></div>
     <div class="btns">${paused ? "" : skipped ? `<button class="btn pri" data-undo="${r.date}" data-kind="${skipped.kind}">↩️ Vrátit – dnes pojedu</button>` : t.decision === "Odjeto" || t.decision === "Volno" ? "" : `<button class="btn" data-skip="${r.date}">🚫 Dnes nepojedu</button>`}</div></section>`;
   // --- pruh zátěže: tento a příští týden (plán zasahuje do obou) ---
   const wk = d.weeks.weeks;
@@ -1525,12 +1525,13 @@ function streamsChart(s, opts = {}) {
 function halvesHtml(h, a) {
   const rows = [];
   if (h) {
-    rows.push(["❤️ Průměrný tep", `${num(h.hr[0])} bpm`, `${num(h.hr[1])} bpm`, signed(h.hr[1] - h.hr[0]) + " bpm"]);
-    if (h.w) rows.push(["⚡ Průměrný výkon", `${num(h.w[0])} W`, `${num(h.w[1])} W`, signed(h.w[1] - h.w[0]) + " W"]);
-    else if (h.spd) rows.push(["🚀 Průměrná rychlost", `${num(h.spd[0], 1)} km/h`, `${num(h.spd[1], 1)} km/h`, signed(h.spd[1] - h.spd[0], 1)]);
-    if (h.ef) rows.push([h.w ? "⚖️ Výkon / tep <small>W na 1 tep</small>" : "⚖️ Rychlost / tep", num(h.ef[0], h.w ? 2 : 3), num(h.ef[1], h.w ? 2 : 3), h.ef[0] ? signed(((h.ef[1] - h.ef[0]) / h.ef[0]) * 100, 1) + " %" : ""]);
+    rows.push(["❤️ Tep", `${num(h.hr[0])} bpm`, `${num(h.hr[1])} bpm`, signed(h.hr[1] - h.hr[0]) + " bpm"]);
+    if (h.w) rows.push(["⚡ Výkon", `${num(h.w[0])} W`, `${num(h.w[1])} W`, signed(h.w[1] - h.w[0]) + " W"]);
+    else if (h.spd && FOOT.includes(a.sport)) rows.push(["⏱️ Tempo", `${paceTxt(60 / h.spd[0])} /km`, `${paceTxt(60 / h.spd[1])} /km`, ""]);
+    else if (h.spd) rows.push(["🚀 Rychlost", `${num(h.spd[0], 1)} km/h`, `${num(h.spd[1], 1)} km/h`, signed(h.spd[1] - h.spd[0], 1)]);
+    if (h.ef) rows.push([h.w ? "⚖️ Výkon / tep" : FOOT.includes(a.sport) ? "⚖️ Rychlost / tep" : "⚖️ Rychlost / tep", num(h.ef[0], h.w ? 2 : 3), num(h.ef[1], h.w ? 2 : 3), h.ef[0] ? signed(((h.ef[1] - h.ef[0]) / h.ef[0]) * 100, 1) + " %" : ""]);
   }
-  const table = rows.length ? `<table class="t halvest"><tr><th></th><th class="r">1. polovina</th><th class="r">2. polovina</th></tr>${rows.map((r) => `<tr><td><b>${r[0]}</b></td><td class="r">${r[1]}</td><td class="r">${r[2]}</td><td hidden class="r">${r[3]}</td></tr>`).join("")}</table>` : `<div class="empty">Na rozdělení na poloviny je aktivita krátká.</div>`;
+  const table = rows.length ? `<table class="t halvest"><tr><th></th><th class="r">1. půlka</th><th class="r">2. půlka</th></tr>${rows.map((r) => `<tr><td><b>${r[0]}</b></td><td class="r">${r[1]}</td><td class="r">${r[2]}</td><td hidden class="r">${r[3]}</td></tr>`).join("")}</table>` : `<div class="empty">Na rozdělení na poloviny je aktivita krátká.</div>`;
   const dec = a.icuDecoupling != null ? a.icuDecoupling : h ? h.dec : null;
   const decTone = dec == null ? "" : Math.abs(dec) < 5 ? "good" : dec <= 8 ? "warn" : "bad";
   const tiles = [
@@ -1813,9 +1814,10 @@ async function pageAktivita(el, id) {
   const statsTop = top.map(([k, v]) => cell(k, v)).join("");
   // vybavení a „s kým“ jen u kola, běhu a běžek; vybavení jen odpovídajícího druhu (kolo / boty / lyže)
   const gk = { ride: "bike", mtb: "bike", indoor: "bike", run: "shoe", xc_ski: "ski" }[a.sport];
-  if (a.gear) a.gear.list = a.gear.list.filter((g) => g.kind === gk || g.kind === "other" || g.id === a.gear.id);
+  if (a.gear) a.gear.list = a.gear.list.filter((g) => g.kind === gk || g.kind === "other");
   const gearSel = a.gear && a.gear.list.length && gk
-    ? `<div class="gearsel">🚲 <select id="gearSel" title="vybavení (výchozí podle sportu, změníš tady)"><option value="auto">${a.gear.manual ? "podle sportu" : a.gear.id ? esc(a.gear.list.find((g) => g.id === a.gear.id)?.name || "podle sportu") : "bez vybavení"}</option>${a.gear.list.map((g) => `<option value="${g.id}" ${a.gear.manual && a.gear.id === g.id ? "selected" : ""}>${esc(g.name)}</option>`).join("")}<option value="none" ${a.gear.manual && a.gear.id == null ? "selected" : ""}>bez vybavení</option></select><span class="sub" id="gearMsg"></span></div>` : "";
+    // každé vybavení jen jednou (vybrané = to, které se počítá); „podle sportu“ jen když je zvolené ručně
+    ? `<div class="gearsel">${{ bike: "🚲", shoe: "👟", ski: "🎿" }[gk] || "🎒"} <select id="gearSel" title="vybavení (výchozí podle sportu, změníš tady)">${a.gear.list.map((g) => `<option value="${g.id}" ${a.gear.id === g.id ? "selected" : ""}>${esc(g.name)}</option>`).join("")}<option value="none" ${a.gear.id == null ? "selected" : ""}>bez vybavení</option>${a.gear.manual ? `<option value="auto">↺ výchozí podle sportu</option>` : ""}</select><span class="sub" id="gearMsg"></span></div>` : "";
   const endur = ["ride", "mtb", "run", "xc_ski"].includes(a.sport);
   const verb = a.sport === "run" ? ["Běžel", "běžel"] : ["Jel", "jel"];
   const compSel = endur ? `<div class="gearsel">👥 <select id="compSel"><option value="">${verb[0]} jsem sám</option><option value="skupina" ${a.company === "skupina" ? "selected" : ""}>Ve skupině</option>${a.company && a.company !== "skupina" ? `<option value="${esc(a.company)}" selected>S: ${esc(a.company)}</option>` : ""}<option value="__new">S někým… (jméno)</option></select><span class="sub" id="compMsg">${a.company ? "přetažená Z2 se nebere jako chyba" : ""}</span></div>` : "";
@@ -2118,6 +2120,7 @@ async function pageZotaveni(el) {
   const why = rc ? [...(rc.flags?.counted || []), ...(rc.reasons || [])] : [];
   const sem = rc ? `<div class="semhead ${stTone}"><span class="badge ${stTone}">${rc.emoji} ${esc(rc.stateLabel)}${rc.score != null ? ` · ${rc.score} %` : ""}</span><span>${esc(why.length ? why.join(", ") : "VST, klidový tep ani spánek nepřekročily hranice semaforu")}</span><span class="sub">ranní semafor${isToday ? "" : ` · ${dayDm(d.date)}`} · normy z ${rc.normDays} dní</span></div>` : "";
   el.innerHTML = `<div class="head"><div><h1>Zotavení</h1><div class="sub">Pravidelnost spánku (14 dní): ${esc(d.sleepReg.text)}</div></div>${dateNav(d.date, d.minDate, d.today, "znav")}</div><div class="grid">
+   ${isToday ? `<div class="c12 ainote big" data-ainote="zotaveni"></div>` : ""}
    ${card("c12 semcard", "", "", sem + `<div class="mtiles six">${["vst", "tep", "spanek", "stres", "bb", "dech"].map(tile).join("")}</div><p class="note">Zotavení v % = VST a tep ve spánku proti tvým 60 nocím a délka spánku proti potřebě (jako v Bevelu; pod 34 % semafor aspoň žlutý, pod 15 % červený).${rc && (rc.scoreDrags?.length || rc.scoreBoosts?.length) ? ` ${rc.scoreDrags?.length ? `Stahuje: ${esc(rc.scoreDrags.join(", "))}.` : ""} ${rc.scoreBoosts?.length ? `Zvedá: ${esc(rc.scoreBoosts.join(", "))}.` : ""}` : ""} Semafor = VST, klidový tep a spánek proti tvé normě (průměr 60 dní ± 1 směrodatná odchylka). Stres, Body Battery a dech jsou doplňkové.</p>`)}
    ${card("c12", `<a href="#/detail/spanek">😴 Spánek · noc na ${isToday ? "dnešek" : dayDm(d.date)} →</a>`, "výpočet", sleepBlock(d.sleep))}
   </div>`;
@@ -2670,6 +2673,7 @@ async function pageNastaveni(el) {
   const f = (k, label, type = "text", extra = "") => `<label>${label}<input name="${k}" type="${type}" value="${esc(s[k] ?? "")}" ${extra}></label>`;
   const bf = st.state.bf_act || {}, bw = st.state.bf_well || {};
   el.innerHTML = `<div class="head"><h1>Nastavení</h1></div><div class="grid">
+   ${card("c12", "Vzhled a účet", "", `<div class="sl" style="margin-bottom:6px">Motiv</div><div class="skins">${SKINS.map(([k, l, d2]) => `<button class="skinopt ${getSkin() === k ? "on" : ""}" data-skin="${k}"><span class="sk-sw sk-${k}"></span><b>${l}</b><small>${d2}</small></button>`).join("")}</div><div class="sl" style="margin:14px 0 6px">Kroužky na Přehledu</div><div class="seg" id="ringSeg">${[["classic", "Klasické"], ["glow", "Záře"], ["tint", "Podle stavu"]].map(([k, l]) => `<button type="button" class="${ringPref().style === k ? "on" : ""}" data-ringstyle="${k}">${l}</button>`).join("")}</div><label class="chk" style="margin-top:8px"><input type="checkbox" id="ringPct" ${ringPref().pct ? "checked" : ""}> „%“ u čísla v kroužku (71 %)</label><p class="note">Záře = jemné světlo za každým kroužkem. Podle stavu = karta Dnes slabě podbarvená podle ranního semaforu (zelená / žlutá / červená). U obou jsou kroužky stejně velké. Platí pro toto zařízení.</p><div class="sl" style="margin:14px 0 6px">Světlý / tmavý (platí pro oba motivy)</div><div class="btns" style="margin-top:0">${["auto", "light", "dark"].map((t) => `<button class="btn" data-theme="${t}">${{ auto: "Podle systému", light: "Světlý", dark: "Tmavý" }[t]}</button>`).join("")}<a class="btn" href="/logout">Odhlásit</a></div>`)}
    ${card("c8", "Trénink a zprávy", "", `<form id="sf"><div class="form-grid">
      ${f("ftp", "FTP (W)", "number", 'min="80" max="600"')}
      <label>Cíl (stejný jako v Trenérovi, platí do změny)<select name="goal">${[["zvyseni", "Zlepšit kondici"], ["udrzeni", "Udržet formu"], ["pokles", "Řízený pokles (zima)"], ["zavod", "Závod"]].map(([v, l]) => `<option value="${v}" ${s.goal === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
@@ -2707,7 +2711,6 @@ async function pageNastaveni(el) {
    ${await accountCard(el)}
    ${card("c12", "🤖 AI model", "", `<div id="aiModels" class="loading sm">Načítám modely…</div>`)}
    ${secCard}
-   ${card("c12", "Vzhled a účet", "", `<div class="sl" style="margin-bottom:6px">Motiv</div><div class="skins">${SKINS.map(([k, l, d2]) => `<button class="skinopt ${getSkin() === k ? "on" : ""}" data-skin="${k}"><span class="sk-sw sk-${k}"></span><b>${l}</b><small>${d2}</small></button>`).join("")}</div><div class="sl" style="margin:14px 0 6px">Kroužky na Přehledu</div><div class="seg" id="ringSeg">${[["classic", "Klasické"], ["glow", "Záře"], ["tint", "Podle stavu"]].map(([k, l]) => `<button type="button" class="${ringPref().style === k ? "on" : ""}" data-ringstyle="${k}">${l}</button>`).join("")}</div><label class="chk" style="margin-top:8px"><input type="checkbox" id="ringPct" ${ringPref().pct ? "checked" : ""}> „%“ u čísla v kroužku (71 %)</label><p class="note">Záře = jemné světlo za každým kroužkem. Podle stavu = karta Dnes slabě podbarvená podle ranního semaforu (zelená / žlutá / červená). U obou jsou kroužky stejně velké. Platí pro toto zařízení.</p><div class="sl" style="margin:14px 0 6px">Světlý / tmavý (platí pro oba motivy)</div><div class="btns" style="margin-top:0">${["auto", "light", "dark"].map((t) => `<button class="btn" data-theme="${t}">${{ auto: "Podle systému", light: "Světlý", dark: "Tmavý" }[t]}</button>`).join("")}<a class="btn" href="/logout">Odhlásit</a></div>`)}
   </div>`;
   el.querySelector("#sf").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -3041,7 +3044,9 @@ function menu(active) {
   const TAB = MAIN.filter(([k]) => k !== "zotaveni"), SHEET = [...MAIN.filter(([k]) => k === "zotaveni"), ...MORE];
   const moreOn = SHEET.some(([k]) => k === active);
   document.getElementById("tabbar").innerHTML = TAB.map(link).join("") + `<button class="${moreOn ? "on" : ""}" id="moreBtn"><span class="ico">${icon("vice")}</span><span>Více</span></button>`;
-  document.getElementById("sheet").innerHTML = `<div class="sheet-in">${SHEET.map(link).join("")}</div>`;
+  const curTheme = () => document.documentElement.getAttribute("data-theme") || "auto";
+  document.getElementById("sheet").innerHTML = `<div class="sheet-in">${SHEET.map(link).join("")}<div class="sh-theme" role="group" aria-label="Světlý nebo tmavý režim">${[["auto", "◐", "Auto"], ["light", "☀️", "Světlý"], ["dark", "🌙", "Tmavý"]].map(([k, i, l]) => `<button type="button" data-shtheme="${k}" class="${curTheme() === k ? "on" : ""}">${i} ${l}</button>`).join("")}</div></div>`;
+  document.querySelectorAll("[data-shtheme]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); setTheme(b.dataset.shtheme); document.querySelectorAll("[data-shtheme]").forEach((x) => x.classList.toggle("on", x === b)); }));
   document.getElementById("moreBtn").addEventListener("click", (e) => { e.stopPropagation(); document.getElementById("sheet").classList.toggle("on"); });
 }
 document.addEventListener("click", (e) => { const sh = document.getElementById("sheet"); if (sh.classList.contains("on") && !e.target.closest(".sheet-in")) sh.classList.remove("on"); });
@@ -3158,6 +3163,22 @@ function foldNotes(root) {
 let foldQ = false;
 new MutationObserver(() => { if (foldQ) return; foldQ = true; requestAnimationFrame(() => { foldQ = false; const m = document.getElementById("main"); if (m) foldNotes(m); }); }).observe(document.getElementById("main"), { childList: true, subtree: true });
 
+/** AI shrnutí na stránce (Přehled, Trenér, Zotavení) – načte se dodatečně, bez AI se blok skryje */
+function loadAiNotes(root) {
+  root.querySelectorAll("[data-ainote]").forEach((box) => {
+    const page = box.dataset.ainote;
+    const load = (force) => {
+      box.classList.add("busy"); box.innerHTML = `<span class="an-t">🤖 píšu shrnutí…</span>`;
+      api(`ai-note?page=${page}${force ? "&force=1" : ""}`).then((r) => {
+        box.classList.remove("busy");
+        if (!r || !r.text) { box.remove(); return; }
+        box.innerHTML = `<span class="an-t">🤖 ${esc(r.text)}</span><small class="an-m">${r.model ? esc(String(r.model).replace(/^[a-z]+:/, "").split("/").pop()) + " · " : ""}<button type="button" class="linkbtn">napsat znovu</button></small>`;
+        box.querySelector("button").addEventListener("click", () => load(true));
+      }).catch(() => box.remove());
+    };
+    load(false);
+  });
+}
 async function route() {
   const seq = ++routeSeq;
   scrollMem.set(curHash, scrollY);
@@ -3187,6 +3208,7 @@ async function route() {
   if (seq !== routeSeq) return;
   addAiButton(el);
   main.replaceChildren(el);
+  loadAiNotes(el);
   const back = scrollMem.get(location.hash);
   if (back && (page === "aktivity" || page === "kolo" || (page === "vybaveni" && arg) || page === "kalendar")) requestAnimationFrame(() => scrollTo(0, back));
   else scrollTo(0, 0);

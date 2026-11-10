@@ -157,7 +157,7 @@ async function callGoogle(env: Env, model: string, messages: ChatMsg[], maxToken
   const contents = rest.map((x, k) => ({ role: x.role === "assistant" ? "model" : "user", parts: [{ text: gemma && k === i0 && sys ? `${sys}\n\n---\n\n${x.content}` : x.content }] }));
   // Gemini 3 „přemýšlí“ a myšlení se počítá do limitu výstupu → nízká úroveň myšlení a rezerva tokenů
   const gemini3 = /^gemini-[3-9]/i.test(model);
-  const body: Record<string, unknown> = { contents, generationConfig: { maxOutputTokens: gemini3 ? maxTokens + 1500 : maxTokens, temperature, ...(gemini3 ? { thinkingConfig: { thinkingLevel: "low" } } : {}) } };
+  const body: Record<string, unknown> = { contents, generationConfig: { maxOutputTokens: gemini3 || /gemma-[4-9]/i.test(model) ? maxTokens + 1500 : maxTokens, temperature, ...(gemini3 ? { thinkingConfig: { thinkingLevel: "low" } } : {}) } };
   if (!gemma && sys) body.systemInstruction = { parts: [{ text: sys }] };
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), timeoutMs);

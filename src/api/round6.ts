@@ -123,11 +123,29 @@ ${wk}
 
 Změny (${p.changes.length}) čekají na potvrzení v Trenérovi → Návrh změn.${own.with ? " U jízdy s někým se nedivím, když Z2 přetáhneš – v rozboru aktivity to označ „Jel jsem s někým“." : ""}`, checked: true, action: { kind: "jizda", date: own.date, proposal: pid } });
   }
+  const context = {
+    ...(await aiContext(c.env, ctx)),
+    // co uživatel právě vidí na stránce dashboardu (panel 🤖) – odpovídej hlavně k tomu
+    ...(page?.text ? { stranka_kterou_vidi: { nazev: String(page.title ?? "").slice(0, 80), obsah: String(page.text).slice(0, 3500) } } : {}),
+  };
+  const out = await answerChat(c.env, msgs, context);
+  if (!out) return c.json({ error: "AI teď neodpovídá (Workers AI nedostupné, nebo vypnuté v Nastavení)." }, 503);
+  return c.json({ ...out, ai: { used: await aiUsedToday(c.env), limit: AI_DAILY_NEURONS } });
+});
+
+/** Kolik denního limitu Workers AI už padlo (odhad, celý účet). */
+round6.get("/ai-usage", async (c) => c.json({ used: await aiUsedToday(c.env), limit: AI_DAILY_NEURONS }));
+
+/**
+ * Data pro AI (chat, shrnutí na stránkách): dnešek, plán, posledních 30 dní zdraví, aktivity 45 dní,
+ * součty po měsících (14 měsíců) a po letech – ať AI umí i „porovnej srpen se zářím“.
+ */
+export async function aiContext(env: Env, ctx: Awaited<ReturnType<typeof loadCtx>>) {
   const r = await readiness(ctx);
   const tw = ctx.well.find((w) => w.date === ctx.T) ?? null;
   const st = statusOn(ctx.s, ctx.T);
-  const tags = new Map((await all<{ activity_id: string; company: string }>(c.env.DB, "SELECT activity_id, company FROM activity_tags").catch(() => [])).map((t) => [t.activity_id, t.company]));
-  const context = {
+  const tags = new Map((await all<{ activity_id: string; company: string }>(env.DB, "SELECT activity_id, company FROM activity_tags").catch(() => [])).map((t) => [t.activity_id, t.company]));
+  return {
     dnes: ctx.T,
     cas: `${ctx.now.hh}:${String(ctx.now.mm).padStart(2, "0")}`,
     stav: STATUS_LABEL[st.kind as StatusKind],
@@ -148,13 +166,53 @@ Změny (${p.changes.length}) čekají na potvrzení v Trenérovi → Návrh změ
     tydenni_cil_zateze: r.plan.weeklyTarget,
     posledni_aktivity: ctx.acts.slice(-8).reverse().map((a) => ({ datum: a.date, sport: a.sport, nazev: a.name, s_kym: tags.get(a.id) ?? null, km: a.distance_m ? Math.round(a.distance_m / 100) / 10 : null, minut: Math.round((a.moving_s ?? 0) / 60), zatez: a.load, np_w: a.np, tep: a.avg_hr })),
     pocasi_dnes: r.plan.days.find((d) => d.date === ctx.T)?.weatherText ?? null,
-    // co uživatel právě vidí na stránce dashboardu (panel 🤖) – odpovídej hlavně k tomu
-    ...(page?.text ? { stranka_kterou_vidi: { nazev: String(page.title ?? "").slice(0, 80), obsah: String(page.text).slice(0, 3500) } } : {}),
+    zdravi_30_dni: ctx.well.filter((w) => w.date >= addDays(ctx.T, -30)).map((w) => ({ d: w.date.slice(5), vst: w.hrv ?? null, tep: w.rhr ?? null, spanek_h: w.sleep_s ? Math.round((w.sleep_s / 3600) * 10) / 10 : null, skore: w.sleep_score ?? null, stres: w.stress_avg ?? null, kroky: w.steps ?? null })),
+    aktivity_45_dni: ctx.acts.filter((a) => a.date >= addDays(ctx.T, -45)).reverse().map((a) => ({ d: a.date, sport: a.sport, nazev: a.name, km: a.distance_m ? Math.round(a.distance_m / 100) / 10 : null, min: Math.round((a.moving_s ?? 0) / 60), zatez: a.load != null ? Math.round(a.load) : null, tep: a.avg_hr ?? null, np: a.np ?? null })),
+    souhrn_po_mesicich: await monthSums(env, ctx.T),
+    souhrn_po_letech: await yearSums(env),
   };
-  const out = await answerChat(c.env, msgs, context);
-  if (!out) return c.json({ error: "AI teď neodpovídá (Workers AI nedostupné, nebo vypnuté v Nastavení)." }, 503);
-  return c.json({ ...out, ai: { used: await aiUsedToday(c.env), limit: AI_DAILY_NEURONS } });
-});
+}
+const GROUP_SQL = "CASE WHEN sport IN ('ride','mtb','indoor') THEN 'kolo' WHEN sport = 'run' THEN 'beh' WHEN sport = 'xc_ski' THEN 'bezky' WHEN sport IN ('walk','hike') THEN 'chuze' ELSE 'ostatni' END";
+async function monthSums(env: Env, T: string) {
+  const rows = await all<{ m: string; g: string; n: number; s: number; d: number; e: number; l: number }>(env.DB, `SELECT substr(date, 1, 7) AS m, ${GROUP_SQL} AS g, COUNT(*) AS n, SUM(COALESCE(moving_s, 0)) AS s, SUM(COALESCE(distance_m, 0)) AS d, SUM(COALESCE(elev_gain, 0)) AS e, SUM(COALESCE(load, 0)) AS l FROM activities WHERE date >= ? GROUP BY m, g ORDER BY m`, addDays(T, -430)).catch(() => []);
+  const out: Record<string, Record<string, { pocet: number; hodin: number; km: number; prevyseni_m: number; zatez: number }>> = {};
+  for (const r of rows) (out[r.m] ??= {})[r.g] = { pocet: r.n, hodin: Math.round((r.s / 3600) * 10) / 10, km: Math.round(r.d / 1000), prevyseni_m: Math.round(r.e), zatez: Math.round(r.l) };
+  return out;
+}
+async function yearSums(env: Env) {
+  const rows = await all<{ y: string; g: string; n: number; s: number; d: number }>(env.DB, `SELECT substr(date, 1, 4) AS y, ${GROUP_SQL} AS g, COUNT(*) AS n, SUM(COALESCE(moving_s, 0)) AS s, SUM(COALESCE(distance_m, 0)) AS d FROM activities GROUP BY y, g ORDER BY y`).catch(() => []);
+  const out: Record<string, Record<string, { pocet: number; hodin: number; km: number }>> = {};
+  for (const r of rows) (out[r.y] ??= {})[r.g] = { pocet: r.n, hodin: Math.round(r.s / 3600), km: Math.round(r.d / 1000) };
+  return out;
+}
 
-/** Kolik denního limitu Workers AI už padlo (odhad, celý účet). */
-round6.get("/ai-usage", async (c) => c.json({ used: await aiUsedToday(c.env), limit: AI_DAILY_NEURONS }));
+/**
+ * Krátké AI shrnutí pro stránku (Přehled, Trenér, Zotavení): 2–3 věty nad stejnými daty jako chat.
+ * Cache v KV po 3 hodinách (a znovu po nové aktivitě); ?force=1 = napsat znovu.
+ */
+const NOTE_ASK: Record<string, string> = {
+  prehled: "Napiš krátké shrnutí dne pro hlavní přehled: jak na tom tělo je (zotavení, spánek, energie, stres) a co z toho plyne pro zbytek dne. Večer shrň den a co udělat pro dobrý spánek.",
+  trener: "Napiš krátký komentář trenéra k tréninku: jak jde tento týden proti plánu a cíli zátěže, co je dnes / zítra důležité a na co si dát pozor.",
+  zotaveni: "Napiš krátké shrnutí zotavení: jak se vyvíjí VST, klidový tep a spánek za posledních 30 dní proti normě, a co to znamená pro trénink.",
+};
+round6.get("/ai-note", async (c) => {
+  const page = c.req.query("page") ?? "";
+  if (!NOTE_ASK[page]) return c.json({ error: "bad page" }, 400);
+  const ctx = await loadCtx(c.env);
+  const key = `ainote:v1:${page}:${ctx.T}:${Math.floor(ctx.now.hh / 3)}:${ctx.acts.length}`;
+  if (c.req.query("force") !== "1") {
+    const hit = await c.env.KV.get<{ text: string; model: string | null }>(key, "json").catch(() => null);
+    if (hit?.text) return c.json(hit);
+  }
+  const llm = await import("../llm/llm");
+  const { llmAvailable, numbersOk, runChat } = llm;
+  if (!(await llmAvailable(c.env))) return c.json({ text: null });
+  const context = await aiContext(c.env, ctx);
+  const sys = `Jsi osobní trenér vytrvalostních sportů a zdraví. Česky, tykej, 2–3 krátké věty, max. 55 slov, bez nadpisů, odrážek a emoji.
+Neopisuj čísla, která uživatel vidí na stránce – max. jedno nebo dvě klíčová. Řekni, co z dat plyne a co udělat. Používej POUZE fakta z JSON kontextu. Aktuální čas je v poli „cas“.`;
+  const out = await runChat(c.env, [{ role: "system", content: sys }, { role: "user", content: `KONTEXT (JSON):\n${JSON.stringify(context)}\n\n${NOTE_ASK[page]}` }], 260, 0.3);
+  if (!out || !numbersOk(out, context)) return c.json({ text: null });
+  const res = { text: out.trim(), model: llm.getLastModel() };
+  await c.env.KV.put(key, JSON.stringify(res), { expirationTtl: 12 * 3600 }).catch(() => {});
+  return c.json(res);
+});

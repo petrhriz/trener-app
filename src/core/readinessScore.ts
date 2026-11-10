@@ -208,7 +208,7 @@ export function coaching(i: CoachingInput): Coaching {
   if (period === "vecer" && i.bbNow != null && i.bbNow < 15) needs.push(`Energie ${i.bbNow} – večer už nic náročného.`); // stupnice jako v Bevelu: večer běžně 20–35
   if (period !== "rano" && i.steps != null && i.steps < 4000 && !p.done) needs.push(`Kroky ${num(i.steps ?? 0)} – krátká procházka pomůže regeneraci.`);
   if (period === "vecer") {
-    if (!i.past) title = `Večer · ${title.charAt(0).toLowerCase()}${title.slice(1)}`;
+    // večer: stejný titul jako přes den (dřív „Večer · …“ mátlo), text pod ním je shrnutí dne
     const loadTxt = i.strain.load <= 0 ? (i.past ? "Bez tréninku" : "Dnes bez tréninku") : i.strain.basis === "plan" ? `Zátěž dne ${i.strain.load} (${i.strain.score} % plánu ${i.strain.base})` : `Zátěž dne ${i.strain.load} (${i.strain.score} % tvého běžného dne – průměr 6 týdnů je ${i.strain.base})`;
     text = `${loadTxt}${i.bbNow != null ? `, energie ${i.bbNow} %` : ""}. ${bedtime ? `Na zítřek potřebuješ ${hmm((need ?? 0) * 60)} h spánku.` : ""}`.trim();
   }
