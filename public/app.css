@@ -2051,3 +2051,18 @@ html[data-rings="glow"] .dn-rings .gring::before { opacity: .85; }
 .tstrip-sc { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; margin-bottom: 12px; gap: 12px; }
 .tstrip-sc::-webkit-scrollbar { display: none; }
 .tstrip-sc > .tstrip { flex: 0 0 100%; scroll-snap-align: start; margin-bottom: 0; }
+/* Trenér – zarovnání řádků: u volna není sloupec čísel (jinak vznikl navíc a „Přidat“ se posunulo) */
+.tday.rest .td-n:empty { display: none; }
+.td-btn, .td-btn.add { width: 84px; min-width: 84px !important; justify-self: end; }
+/* zvýrazněný den s kroky: pozadí i s datem, kroky zarovnané pod názvem */
+.tday.peek { margin: 0 -10px; padding: 0 10px; border-radius: 14px; background: color-mix(in srgb, var(--acc) 8%, transparent); }
+.tday .tpeek { padding: 0 0 12px 58px; }
+@media (min-width: 761px) { .tday .tpeek { padding-left: 82px; } }
+.tpeek .steps { margin: 2px 0 0; padding-left: 18px; font-size: 13px; color: var(--muted); gap: 2px; }
+.tpeek .steps li::marker { color: var(--acc); }
+.tpeek .note { font-size: 12px; }
+/* Stav: mezera mezi „Jak je týden postavený“ a čísly */
+.t-state .twhy { margin: 0 0 12px; }
+/* dnešek: jednotka zátěže menší a šedá, splnění barevně */
+.tdark .td-p small.u { font-size: 11px; color: var(--muted); font-weight: 600; }
+.tdark .td-p b.good { color: var(--ok); } .tdark .td-p b.warn { color: var(--warn); }

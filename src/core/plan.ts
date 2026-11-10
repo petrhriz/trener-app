@@ -6,7 +6,7 @@ import { FORM_ZONE_RANGE, formZone, project, weeklyLoadTarget } from "./fitness"
 import { type Carbs, carbsFor } from "./nutrition";
 import type { ActPower } from "./power";
 import { QUALITY_NAME, type QualityType, isOffSeason, qualityFromName, qualityLimit } from "./quality";
-import { type PastQuality, designQuality } from "./qualityDesign";
+import { type PastQuality, designQuality, qualityCandidates } from "./qualityDesign";
 import { type OwnRide, ownRideName, readOwnRide } from "./ownRide";
 import type { State } from "./recovery";
 import type { DayWeather } from "./weather";
@@ -882,7 +882,8 @@ export function generatePlan(inp: PlanInput): PlanResult {
       continue;
     }
     let keepCal = s.fixedName && !s.changed && s.workout;
-    if (keepCal && s.kind === "quality" && s.qualityType && avoidFor(s.date).includes(s.qualityType)) {
+    // jiné zaměření jen když nějaké jiné připadá v úvahu (v zimě při poklesu je jen sweet spot → nechat, jinak se mění pořád dokola)
+    if (keepCal && s.kind === "quality" && s.qualityType && avoidFor(s.date).includes(s.qualityType) && qualityCandidates(s.date, inp.goal).some((t) => !avoidFor(s.date).includes(t))) {
       // stejné zaměření jako předchozí kvalita → navrhnout jiné
       s.changed = "upravit";
       s.why.push(`jiné zaměření než předchozí ${QUALITY_NAME[s.qualityType]}`);

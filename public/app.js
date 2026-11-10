@@ -1118,7 +1118,7 @@ async function pageTrener(el) {
   const doneActs = (t.done || []).filter((x) => x.id);
   const todayCard = `<section class="card tdark c12" data-tt="tyden"><span class="td-d">Dnes · ${dayDm(r.date)} · <span class="${tone}">${rec.emoji} ${esc(rec.stateLabel)}</span></span>
     ${doneActs.length && !paused ? doneActs.map((x) => `<a class="td-h td-done" href="#/aktivita/${x.id}">✅ Odjeto: ${esc(x.name)} <span class="go">→</span></a>`).join("") : `<b class="td-h">${esc(paused ? `${d.status.label} – plán stojí` : skipped ? "Dnes volno (tvoje volba)" : t.decision)}${!paused && t.day && t.day.name && t.decision !== "Odjeto" ? ` · ${dur((t.day.durationMin || 0) * 60)}` : ""}</b>`}
-    <p class="td-p">${esc(paused ? "Stav změníš na Přehledu." : skipped ? "Omylem? Vrať to tlačítkem." : doneActs.length ? doneActs.map((x) => (x.load != null ? `zátěž ${num(x.load)} ${x.unit || ""}`.trim() : "")).filter(Boolean).join(", ") : t.decisionWhy)}</p>
+    <p class="td-p">${paused ? "Stav změníš na Přehledu." : skipped ? "Omylem? Vrať to tlačítkem." : doneActs.length ? doneActs.map((x) => `${x.load != null ? `zátěž <b>${num(x.load)}</b> <small class="u">${x.unit || ""}</small>` : ""}${x.compliance != null ? ` · splněno <b class="${x.compliance >= 80 && x.compliance <= 125 ? "good" : "warn"}">${x.compliance} %</b>` : ""}`).join("<br>") : esc(t.decisionWhy)}</p>
     <p class="td-tm"><b>Zítra:</b> ${tmLine}</p>
     <div class="btns">${paused ? "" : skipped ? `<button class="btn pri" data-undo="${r.date}" data-kind="${skipped.kind}">↩️ Vrátit – dnes pojedu</button>` : t.decision === "Odjeto" || t.decision === "Volno" ? "" : `<button class="btn" data-skip="${r.date}">🚫 Dnes nepojedu</button>`}</div></section>`;
   // --- týden: 7 dní jako ikony (odjeto zeleně, dnes orámované) + pruh hotovo / plán / cíl ---
@@ -1185,10 +1185,13 @@ async function pageTrener(el) {
   const why = form == null ? "Formu zatím neznám." : form < -30 ? `Jsi hodně unavený (forma ${signed(form, 1)}) → týden výrazně lehčí, víc volna.` : form < -20 ? `Únava je vysoká (forma ${signed(form, 1)}) → týden lehčí.` : form > 15 && goalUp ? `Jsi odpočatý (forma ${signed(form, 1)})${f.ramp != null && f.ramp < 0 ? " a kondice klesá" : ""} → přidávám zátěž.` : form > 15 ? `Jsi odpočatý (forma ${signed(form, 1)}) – při cíli ${esc(d.goalLabel || "")} držím zátěž.` : `Forma ${signed(form, 1)} je v tréninkovém pásmu → plán drží zátěž.`;
   const qn = p.days.filter((x) => x.kind === "quality").length;
   // odhad: kondice (CTL, 42 dní) a únava (ATL, 7 dní) za 7 dní, když odjedeš plán
-  const plan7 = p.days.reduce((tt, x) => tt + (x.isPast ? 0 : x.load || 0), 0);
-  const eC = Math.pow(41 / 42, 7), eA = Math.pow(6 / 7, 7);
-  const ctl7 = f.ctl != null ? f.ctl * eC + (plan7 / 7) * (1 - eC) : null, atl7 = f.atl != null ? f.atl * eA + (plan7 / 7) * (1 - eA) : null;
-  const proj = ctl7 != null ? `<p class="tproj">Když odjedeš plán (zátěž ${thou(plan7)} za 7 dní): kondice <b>${num(f.ctl, 1)} → ${num(ctl7, 1)}</b> (${signed(ctl7 - f.ctl, 1)}), forma ${atl7 != null ? `<b>${signed(ctl7 - atl7, 0)}</b>` : "–"}.</p>` : "";
+  const fut = (p.chart || []).filter((c) => c.planned && !c.today);
+  const todayLoad = (p.chart || []).find((c) => c.today)?.load ?? 0;
+  let ctl7 = f.ctl, atl7 = f.atl;
+  const plan7 = fut.reduce((tt, c) => tt + (c.load || 0), 0);
+  if (ctl7 != null && atl7 != null) for (const ld of [todayLoad, ...fut.map((c) => c.load || 0)]) { ctl7 += (ld - ctl7) / 42; atl7 += (ld - atl7) / 7; }
+  const lastDay = fut.length ? fut[fut.length - 1].date : null;
+  const proj = ctl7 != null && lastDay ? `<p class="tproj">Když odjedeš plán (zátěž ${thou(plan7)} do ${dayDm(lastDay)}): kondice <b>${num(f.ctl, 1)} → ${num(ctl7, 1)}</b> (${signed(ctl7 - f.ctl, 1)}), forma <b>${signed(ctl7 - atl7, 0)}</b>.</p>` : "";
   const stateCard = card("t-state", "Z čeho trenér vychází", "intervals.icu · Garmin", `<div class="twhy"><b>Jak je týden postavený</b><p>${why} Cíl zátěže ${p.weeklyTarget.lo}–${p.weeklyTarget.hi}, ${qn ? `${qn}× kvalita` : "bez kvality"}, ${p.days.filter((x) => x.name).length} tréninků.</p>${proj}</div>
     <div class="tstate">
       <div><span>Kondice (CTL)</span><b class="num">${num(f.ctl, 1)}</b><small class="${f.ramp != null && f.ramp < -1 ? "warn" : ""}">${f.ramp != null ? `${signed(f.ramp, 1)} za týden` : ""}</small></div>

@@ -71,6 +71,12 @@ function planFormat(pl: NonNullable<PastQuality["plan"]>): Format {
   return { reps: pl.reps, work_s: pl.work_s, rest_s: 0, sets: pl.sets };
 }
 
+/** Jaká zaměření kvality připadají v úvahu: v zimě (mimo sezónu) podle cíle bez ostrých intervalů. */
+export function qualityCandidates(date: string, goal: DesignInput["goal"] = "zvyseni"): Exclude<QualityType, "tempo">[] {
+  if (!isOffSeason(date)) return ["vo2", "prah", "sweetspot", "vo2short"];
+  return goal === "pokles" ? ["sweetspot"] : goal === "udrzeni" ? ["sweetspot", "prah"] : ["prah", "sweetspot", "vo2"];
+}
+
 /** Krok 2: na co kvalitu zaměřit. */
 export function chooseFocus(acts: ActPower[], today: string, lastWeekType: QualityType | null, avoid: QualityType[] = [], goal: DesignInput["goal"] = "zvyseni") {
   const curve = curveCompare(acts, today);
@@ -78,8 +84,7 @@ export function chooseFocus(acts: ActPower[], today: string, lastWeekType: Quali
   const pct = (s: number) => curve.rows.find((r) => r.secs === s)?.pct ?? null;
   const decl = (s: number) => Math.max(0, -(pct(s) ?? 0));
   // v zimě (mimo sezónu) žádné ostré intervaly, když se nezlepšuje: zpocený a pak zima, VO2 jen pro Zlepšit / Závod
-  const off = isOffSeason(today);
-  const cands: Exclude<QualityType, "tempo">[] = !off ? ["vo2", "prah", "sweetspot", "vo2short"] : goal === "pokles" ? ["sweetspot"] : goal === "udrzeni" ? ["sweetspot", "prah"] : ["prah", "sweetspot", "vo2"];
+  const cands = qualityCandidates(today, goal);
   const score: Record<string, number> = {
     // mimo sezónu priorita VO2 a práh (klesají nejrychleji)
     vo2: decl(300) * 2 + Math.min(daysSince(stim.vo2, today), 21) / 3 + 1,
@@ -196,7 +201,10 @@ export function designQuality(inp: DesignInput): Design {
   const warmupMin = inp.indoor ? 15 : 25;
   const pause = type === "vo2short" ? 180 : 300;
   const coreSec = sets.reduce((t, s) => t + s.reps * (s.work_s + (s.reps > 1 ? s.rest_s : 0)), 0) + (sets.length - 1) * pause;
-  const cooldownMin = Math.max(inp.indoor ? 10 : 15, Math.round((inp.targetMin * 60 - warmupMin * 60 - coreSec) / 60 / 5) * 5);
+  let cooldownMin = Math.max(inp.indoor ? 10 : 15, Math.round((inp.targetMin * 60 - warmupMin * 60 - coreSec) / 60 / 5) * 5);
+  // celá jednotka na celých 5 min (1:15, ne 1:14): zbytek přidat k dojezdu
+  const totalMin = warmupMin + coreSec / 60 + cooldownMin;
+  cooldownMin += (5 - (Math.round(totalMin) % 5)) % 5;
   const spec: IntervalSpec = { warmupMin, sets, pauseBetweenS: pause, cooldownMin };
   const workout = intervalWorkout({ ftp: inp.ftp }, spec);
 

@@ -1091,6 +1091,8 @@ api.post("/settings", async (c) => {
   // změna cíle → hned přepočítat naplánované tréninky (návrh změn k potvrzení)
   let proposal: { id: number; count: number } | null = null;
   if (before.goal !== after.goal) {
+    // AI doporučení byla pro starý cíl (délky, kvalita) → pryč, plán se postaví znovu podle nového cíle
+    await c.env.DB.prepare("DELETE FROM constraints WHERE note LIKE 'ai:%' AND date >= ?").bind(localNow(new Date(), c.env.TZ_NAME).date).run();
     const p = await planFor(await loadCtx(c.env));
     proposal = { id: await saveProposal(c.env, "cil", p.changes), count: p.changes.length };
   }
