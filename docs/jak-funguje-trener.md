@@ -84,7 +84,9 @@ Soubor `src/core/plan.ts` (`generatePlan`).
 
 ### Kvalitní jednotka
 Soubor `src/core/qualityDesign.ts`. Žádná pevná knihovna:
-- **zaměření** podle dat: mimo sezónu přednost VO2max a práh (klesají nejrychleji), ne stejné jako minule;
+- **zaměření** podle dat a cíle. V zimě (říjen–únor) bez ostrých intervalů: Řízený pokles jen sweet spot,
+  Udržet sweet spot nebo práh, VO2max jen při Zlepšit / Závod. V sezóně VO2, práh, sweet spot i krátké VO2;
+  ne stejné zaměření jako minule;
 - **dávka** podle toho, jak jsi zvládl poslední stejnou jednotku;
 - **watty** z tvé křivky výkonu, pásmo vždy ±10 W. U Řízeného poklesu je dávka o 30 % menší.
 
