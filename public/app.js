@@ -802,7 +802,11 @@ const mixHex = (a, b, t) => "#" + [1, 3, 5].map((i) => Math.round(parseInt(a.sli
  * Kroužek s přechodem podél oblouku: barva v každém místě odpovídá poloze na CELÉM kruhu, takže nízká hodnota
  * končí světlým tónem a vysoká sytým (čím lepší, tím sytější). Číslo přesně uprostřed, popisek pod kroužkem (mimo SVG).
  */
-function gradRing(v, kind, { size = 112, stroke = 10, label = "" } = {}) {
+// vzhled kroužků na Přehledu (Nastavení → Vzhled): classic | glow (záře) | tint (karta podle stavu), pct = „%“ u čísla
+const ringPref = () => { try { return { style: localStorage.getItem("ringStyle") || "classic", pct: localStorage.getItem("ringPct") === "1" }; } catch { return { style: "classic", pct: false }; } };
+function applyRingPref() { const p = ringPref(); document.documentElement.setAttribute("data-rings", p.style); }
+applyRingPref();
+function gradRing(v, kind, { size = 112, stroke = 10, label = "", home = false } = {}) {
   const [c0, c1] = RING_COL[kind] || RING_COL.rec;
   const R = 50 - stroke / 2 - 1, C = 2 * Math.PI * R, val = v == null ? 0 : clamp(v, 0, 100);
   const len = (C * val) / 100, n = Math.max(1, Math.ceil(len / 2.5));
@@ -814,12 +818,17 @@ function gradRing(v, kind, { size = 112, stroke = 10, label = "" } = {}) {
   // zaoblené konce oblouku
   const cap = (frac, col) => { const ang = frac * 2 * Math.PI - Math.PI / 2; return `<circle cx="${(50 + R * Math.cos(ang)).toFixed(2)}" cy="${(50 + R * Math.sin(ang)).toFixed(2)}" r="${stroke / 2}" fill="${col}"/>`; };
   const caps = val > 0 ? cap(0, c0) + cap(val / 100, mixHex(c0, c1, val / 100)) : "";
-  return `<span class="gring" style="--rs:${size}px"><svg viewBox="0 0 100 100" width="${size}" height="${size}" role="img" aria-label="${esc(label)} ${v ?? "–"} %">
-    <circle cx="50" cy="50" r="${R.toFixed(2)}" fill="none" stroke="var(--card2)" stroke-width="${stroke}"/>${segs}${caps}
-    <text x="50" y="51" text-anchor="middle" dominant-baseline="central" class="gr-v">${v == null ? DASH : Math.round(v)}</text></svg>${label ? `<b>${esc(label)}</b>` : ""}</span>`;
+  // „%“ hned za číslem na stejném účaří (poloviční velikost), celé „71 %“ uprostřed kroužku
+  const pct = home && v != null && ringPref().pct;
+  const txt = pct
+    ? `<text x="50" y="61" text-anchor="middle"><tspan class="gr-v">${Math.round(v)}</tspan><tspan class="gr-p" dx="1.5">%</tspan></text>`
+    : `<text x="50" y="51" text-anchor="middle" dominant-baseline="central" class="gr-v">${v == null ? DASH : Math.round(v)}</text>`;
+  return `<span class="gring" style="--rs:${size}px;--gc:${c1}"><svg viewBox="0 0 100 100" width="${size}" height="${size}" role="img" aria-label="${esc(label)} ${v ?? "–"} %">
+    <circle class="gr-track" cx="50" cy="50" r="${R.toFixed(2)}" fill="none" stroke="var(--card2)" stroke-width="${stroke}"/>${segs}${caps}
+    ${txt}</svg>${label ? `<b>${esc(label)}</b>` : ""}</span>`;
 }
 /** Zotavení 0–100 % (karta Dnes). */
-function recRing(v, size = 132) { return gradRing(v, "rec", { size, stroke: 9, label: "Zotavení" }); }
+function recRing(v, size = 132, home = false) { return gradRing(v, "rec", { size, stroke: 9, label: "Zotavení", home }); }
 /**
  * Kroužek spánku: oblouk dlouhý podle skóre (47 = 47 % kruhu), rozdělený barvami fází v poměru jejich délky
  * (hluboký → REM → lehký, od vrcholu doprava). Zbytek kruhu šedý.
@@ -929,7 +938,7 @@ async function pagePrehled(el) {
       ? `<a class="today-act" href="#/trener"><span class="ico">${({ run: "🏃", xc_ski: XC_SVG, walk: "🚶" })[t.sport] || "🚴"}</span><div><b>${esc(t.name)}</b><div class="sub">${dur((t.durationMin || 0) * 60)}${t.targetText ? " · " + esc(t.targetText) : ""}</div></div><span class="go">→</span></a>`
       : `<div class="today-act"><span class="ico">🛋️</span><div><b>${paused ? "Plán stojí" : "Dnes volno"}</b>${tomorrowHtml(t)}</div></div>`;
   const dnes = true
-    ? card(`c8 dnes ${tone}`, "", "", `<div class="dn-wrap">${r.score != null ? `<div class="dn-rings"><a class="dn-side" href="#/detail/bb">${gradRing(d.bb.latest ?? d.bb.min, "energy", { size: 84, stroke: 9, label: "Energie" })}</a><a class="dn-ring" href="#/zotaveni">${recRing(r.score)}</a><a class="dn-side" href="#/detail/spanek">${gradRing(d.sleep?.score ?? null, "sleep", { size: 84, stroke: 9, label: "Spánek" })}</a></div>` : ""}<div class="dn-body">${paused ? `<div class="dn-top"><span class="badge">${(STATUS[d.status.kind]?.[0] || "") + " " + esc(d.status.label)}</span></div>` : ""}
+    ? card(`c8 dnes ${tone}`, "", "", `<div class="dn-wrap">${r.score != null ? `<div class="dn-rings"><a class="dn-side" href="#/detail/bb">${gradRing(d.bb.latest ?? d.bb.min, "energy", { size: 84, stroke: 9, label: "Energie", home: true })}</a><a class="dn-ring" href="#/zotaveni">${recRing(r.score, 132, true)}</a><a class="dn-side" href="#/detail/spanek">${gradRing(d.sleep?.score ?? null, "sleep", { size: 84, stroke: 9, label: "Spánek", home: true })}</a></div>` : ""}<div class="dn-body">${paused ? `<div class="dn-top"><span class="badge">${(STATUS[d.status.kind]?.[0] || "") + " " + esc(d.status.label)}</span></div>` : ""}
       <h2 class="dn-title"><span class="dn-dot ${paused ? "" : tone}" aria-hidden="true"></span>${esc(co.title)}</h2><p class="dn-text">${esc(co.text)}</p>
       <div class="dn-grid"><div>${co.needs.length ? `<div class="sl">Co tělo potřebuje</div><ul class="needs">${co.needs.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}</div><div><div class="sl">${d.isToday ? "Trénink" : "Odjeto"}</div>${todayLine}${d.isToday && t.name && !t.done?.length && !paused ? `<p class="note">Zítra: ${esc(t.tomorrow)}</p>` : ""}</div></div></div></div>`)
     : ""; // zpětný den: bez horní karty, aktivita je dole
@@ -2698,7 +2707,7 @@ async function pageNastaveni(el) {
    ${await accountCard(el)}
    ${card("c12", "🤖 AI model", "", `<div id="aiModels" class="loading sm">Načítám modely…</div>`)}
    ${secCard}
-   ${card("c12", "Vzhled a účet", "", `<div class="sl" style="margin-bottom:6px">Motiv</div><div class="skins">${SKINS.map(([k, l, d2]) => `<button class="skinopt ${getSkin() === k ? "on" : ""}" data-skin="${k}"><span class="sk-sw sk-${k}"></span><b>${l}</b><small>${d2}</small></button>`).join("")}</div><div class="sl" style="margin:14px 0 6px">Světlý / tmavý (platí pro oba motivy)</div><div class="btns" style="margin-top:0">${["auto", "light", "dark"].map((t) => `<button class="btn" data-theme="${t}">${{ auto: "Podle systému", light: "Světlý", dark: "Tmavý" }[t]}</button>`).join("")}<a class="btn" href="/logout">Odhlásit</a></div>`)}
+   ${card("c12", "Vzhled a účet", "", `<div class="sl" style="margin-bottom:6px">Motiv</div><div class="skins">${SKINS.map(([k, l, d2]) => `<button class="skinopt ${getSkin() === k ? "on" : ""}" data-skin="${k}"><span class="sk-sw sk-${k}"></span><b>${l}</b><small>${d2}</small></button>`).join("")}</div><div class="sl" style="margin:14px 0 6px">Kroužky na Přehledu</div><div class="seg" id="ringSeg">${[["classic", "Klasické"], ["glow", "Záře"], ["tint", "Podle stavu"]].map(([k, l]) => `<button type="button" class="${ringPref().style === k ? "on" : ""}" data-ringstyle="${k}">${l}</button>`).join("")}</div><label class="chk" style="margin-top:8px"><input type="checkbox" id="ringPct" ${ringPref().pct ? "checked" : ""}> „%“ u čísla v kroužku (71 %)</label><p class="note">Záře = jemné světlo za každým kroužkem. Podle stavu = karta Dnes slabě podbarvená podle ranního semaforu (zelená / žlutá / červená). U obou jsou kroužky stejně velké. Platí pro toto zařízení.</p><div class="sl" style="margin:14px 0 6px">Světlý / tmavý (platí pro oba motivy)</div><div class="btns" style="margin-top:0">${["auto", "light", "dark"].map((t) => `<button class="btn" data-theme="${t}">${{ auto: "Podle systému", light: "Světlý", dark: "Tmavý" }[t]}</button>`).join("")}<a class="btn" href="/logout">Odhlásit</a></div>`)}
   </div>`;
   el.querySelector("#sf").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -2733,6 +2742,8 @@ async function pageNastaveni(el) {
     box.querySelector("#llmTest").addEventListener("click", async (e) => { const b = e.currentTarget, msg = box.querySelector("#llmMsg"), out = box.querySelector("#llmRes"); b.disabled = true; msg.textContent = "Ptám se všech modelů…"; out.innerHTML = ""; try { const r = await api("llm-test", { method: "POST", body: JSON.stringify({ model: box.querySelector("#llmSel").value }) }); msg.textContent = ""; out.innerHTML = r.rows.map((x) => `<div class="llmrow ${x.ok ? "good" : "bad"}"><b>${x.ok ? "✓" : "✗"} ${esc(x.model)}</b><small>${(x.ms / 1000).toFixed(1)} s</small><span>${esc(x.ok ? `„${x.answer}“` : x.error || "prázdná odpověď")}</span>${x.hint ? `<em>${esc(x.hint)}</em>` : ""}</div>`).join(""); } catch (err) { msg.textContent = err.message; } b.disabled = false; });
   }).catch(() => { const box = el.querySelector("#aiModels"); if (box) box.innerHTML = '<div class="empty">Seznam modelů se nepodařilo načíst.</div>'; });
   el.querySelectorAll("[data-theme]").forEach((b) => b.addEventListener("click", () => setTheme(b.dataset.theme)));
+  el.querySelectorAll("[data-ringstyle]").forEach((b) => b.addEventListener("click", () => { try { localStorage.setItem("ringStyle", b.dataset.ringstyle); } catch {} applyRingPref(); el.querySelectorAll("[data-ringstyle]").forEach((x) => x.classList.toggle("on", x === b)); toast("Uloženo – uvidíš na Přehledu"); }));
+  el.querySelector("#ringPct")?.addEventListener("change", (e) => { try { localStorage.setItem("ringPct", e.target.checked ? "1" : "0"); } catch {} toast("Uloženo – uvidíš na Přehledu"); });
   el.querySelectorAll("[data-skin]").forEach((b) => b.addEventListener("click", () => { setSkin(b.dataset.skin); el.querySelectorAll("[data-skin]").forEach((x) => x.classList.toggle("on", x === b)); }));
   el.querySelector("#secSave")?.addEventListener("click", async () => {
     const msg = el.querySelector("#secMsg");

@@ -1820,3 +1820,21 @@ body:has(.sheet.on) .shell, body:has(> .modal) .shell { filter: blur(3px) bright
 #actAi .ai-t { flex: 1 1 100%; }
 #actAi .ai-m { font-size: 11.5px; font-weight: 500; color: var(--muted); }
 #actAi .linkbtn { border: 0; background: none; color: var(--acc); font: inherit; font-weight: 650; cursor: pointer; padding: 0; }
+/* ===== kroužky na Přehledu: vzhled podle Nastavení (html[data-rings]) ===== */
+.gr-p { font-size: 16px; font-weight: 750; fill: var(--fg); fill-opacity: .55; }
+/* Záře a Podle stavu: tři stejně velké kroužky, zarovnané na střed */
+html[data-rings="glow"] .dn-rings, html[data-rings="tint"] .dn-rings { align-items: center !important; }
+html[data-rings="glow"] .dn-rings .gring, html[data-rings="tint"] .dn-rings .gring { --rs: 98px !important; }
+@media (max-width: 380px) { html[data-rings="glow"] .dn-rings .gring, html[data-rings="tint"] .dn-rings .gring { --rs: 88px !important; } }
+/* Záře: měkké světlo jen kousek za okrajem kroužku (žádné rozmazané skvrny) */
+.dn-rings .gring { position: relative; }
+.dn-rings .gring svg { position: relative; z-index: 1; }
+html[data-rings="glow"] .dn-rings .gring::before { content: ""; position: absolute; left: 50%; top: calc(var(--rs) / 2); width: calc(var(--rs) * 1.32); height: calc(var(--rs) * 1.32); transform: translate(-50%, -50%); border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--gc) 20%, transparent) 55%, color-mix(in srgb, var(--gc) 7%, transparent) 78%, transparent); pointer-events: none; z-index: 0; }
+html[data-rings="glow"] .dn-rings .gr-track { stroke: color-mix(in srgb, var(--gc) 10%, var(--card2)); }
+@media (prefers-color-scheme: dark) { html:not([data-theme="light"])[data-rings="glow"] .dn-rings .gring::before { background: radial-gradient(closest-side, color-mix(in srgb, var(--gc) 13%, transparent) 58%, color-mix(in srgb, var(--gc) 4%, transparent) 80%, transparent); } }
+html[data-theme="dark"][data-rings="glow"] .dn-rings .gring::before { background: radial-gradient(closest-side, color-mix(in srgb, var(--gc) 13%, transparent) 58%, color-mix(in srgb, var(--gc) 4%, transparent) 80%, transparent); }
+/* Podle stavu: karta Dnes podbarvená podle semaforu (zelená / žlutá / červená), stopa kroužku v barvě kroužku */
+html[data-rings="tint"] .dn-rings .gr-track { stroke: color-mix(in srgb, var(--gc) 15%, transparent); }
+html[data-rings="tint"] .card.dnes { --st: var(--ok); background: linear-gradient(180deg, color-mix(in srgb, var(--st) 12%, var(--card)) 0%, var(--card) 62%) !important; border-color: color-mix(in srgb, var(--st) 28%, var(--line)) !important; }
+html[data-rings="tint"] .card.dnes.warn { --st: var(--warn); }
+html[data-rings="tint"] .card.dnes.bad { --st: var(--bad); }
