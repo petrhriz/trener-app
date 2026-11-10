@@ -1104,6 +1104,7 @@ function weekBar(w, label) {
     <div class="wb-t"><i class="wb-band" style="left:${pc(t.lo || 0)}%;width:${pc(t.hi || 0) - pc(t.lo || 0)}%"></i><i class="wb-done" style="width:${pc(w.done || 0)}%"></i><i class="wb-plan" style="left:${pc(w.done || 0)}%;width:${pc(w.planned || 0)}%"></i></div>
     <div class="wb-l"><span><i class="wb-sw done"></i>hotovo ${thou(w.done || 0)}</span><span><i class="wb-sw plan"></i>plán ${thou(w.planned || 0)}</span><span><i class="wb-sw band"></i>cíl týdne</span></div></div>`;
 }
+let tTab = (() => { try { return localStorage.getItem("tTab") || "tyden"; } catch { return "tyden"; } })(), tMoreOpen = false;
 async function pageTrener(el) {
   const [d, mine] = await Promise.all([api("coach"), api("plan/mine").catch(() => [])]);
   const r = d.readiness, rec = r.recovery, f = r.fitness, p = r.plan;
@@ -1111,17 +1112,32 @@ async function pageTrener(el) {
   const paused = d.status && d.status.kind !== "active";
   const skipped = (d.constraints || []).find((c) => c.date === r.date && ["nepojedu", "nemuzu", "dovolena", "nemoc"].includes(c.kind));
   const t = r.today;
-  // --- dnešek (tmavá karta) ---
-  const todayCard = `<section class="card tdark c12"><span class="td-d">Dnes · ${dayDm(r.date)} · <span class="${tone}">${rec.emoji} ${esc(rec.stateLabel)}</span></span>
-    <b class="td-h">${esc(paused ? `${d.status.label} – plán stojí` : skipped ? "Dnes volno (tvoje volba)" : t.decision)}${!paused && t.day && t.day.name && t.decision !== "Odjeto" ? ` · ${dur((t.day.durationMin || 0) * 60)}` : ""}</b>
-    <p class="td-p">${esc(paused ? "Stav změníš na Přehledu." : skipped ? "Omylem? Vrať to tlačítkem." : t.decisionWhy)} ${esc("Zítra: " + r.tomorrow)}</p><div class="ainote" data-ainote="trener"></div>
+  // --- dnešek: stav, co dnes (nebo odjeto s odkazem), zítřek jedním řádkem ---
+  const ti = r.tomorrowInfo || t.tomorrowInfo || null;
+  const tmLine = ti ? `${ti.name ? esc(ti.name) : esc(ti.tag || "volno")}${ti.minutes ? ` · ${dur(ti.minutes * 60)}` : ""}${ti.rainProb != null && ti.rainProb > 40 ? ` · 🌧️ déšť ${num(ti.rainProb)} %` : ti.tmax != null ? ` · ${num(ti.tmax)}°` : ""}` : esc(String(r.tomorrow || "").replace(/^[^:]*:\s*/, ""));
+  const doneActs = (t.done || []).filter((x) => x.id);
+  const todayCard = `<section class="card tdark c12" data-tt="tyden"><span class="td-d">Dnes · ${dayDm(r.date)} · <span class="${tone}">${rec.emoji} ${esc(rec.stateLabel)}</span></span>
+    ${doneActs.length && !paused ? doneActs.map((x) => `<a class="td-h td-done" href="#/aktivita/${x.id}">✅ Odjeto: ${esc(x.name)} <span class="go">→</span></a>`).join("") : `<b class="td-h">${esc(paused ? `${d.status.label} – plán stojí` : skipped ? "Dnes volno (tvoje volba)" : t.decision)}${!paused && t.day && t.day.name && t.decision !== "Odjeto" ? ` · ${dur((t.day.durationMin || 0) * 60)}` : ""}</b>`}
+    <p class="td-p">${esc(paused ? "Stav změníš na Přehledu." : skipped ? "Omylem? Vrať to tlačítkem." : doneActs.length ? doneActs.map((x) => (x.load != null ? `zátěž ${num(x.load)}` : "")).filter(Boolean).join(", ") : t.decisionWhy)}</p>
+    <p class="td-tm"><b>Zítra:</b> ${tmLine}</p>
     <div class="btns">${paused ? "" : skipped ? `<button class="btn pri" data-undo="${r.date}" data-kind="${skipped.kind}">↩️ Vrátit – dnes pojedu</button>` : t.decision === "Odjeto" || t.decision === "Volno" ? "" : `<button class="btn" data-skip="${r.date}">🚫 Dnes nepojedu</button>`}</div></section>`;
-  // --- pruh zátěže: tento a příští týden (plán zasahuje do obou) ---
+  // --- týden: 7 dní jako ikony (odjeto zeleně, dnes orámované) + pruh hotovo / plán / cíl ---
   const wk = d.weeks.weeks;
   const cur = wk.find((x) => x.current), next = wk.find((x) => x.future);
   const wkLabel = (w) => `${dm(w.from)}–${dm(addDay(w.from, 6))}`;
   const inPlan = (w) => w && p.days.some((x) => x.date >= w.from && x.date <= addDay(w.from, 6));
-  const bars = (inPlan(cur) ? weekBar({ ...cur, target: d.weeks.target }, `Tento týden · ${wkLabel(cur)}`) : "") + (inPlan(next) ? weekBar({ ...next, target: d.weeks.target }, `Příští týden · ${wkLabel(next)}`) : "");
+  const rc = d.recent || [];
+  const mon = addDay(r.date, -(dow(r.date) - 1));
+  const stripDay = (date) => {
+    const pd = p.days.find((x) => x.date === date), past = rc.find((x) => x.date === date);
+    const acts = (past && past.acts) || [];
+    const done = acts.length > 0 || (date === r.date && doneActs.length > 0);
+    const ico = done ? (SPORT_ICON[(acts[0] || {}).sport] || "✅") : pd && pd.name ? (pd.kind === "quality" ? "⚡" : tSportIco(pd.sport)) : date < r.date ? "—" : "·";
+    return `<button type="button" class="tsd ${done ? "done" : ""} ${date === r.date ? "today" : ""} ${pd && pd.kind === "quality" ? "q" : ""}" ${pd && date >= r.date ? `data-open="${date}"` : ""} title="${dayDm(date)}${pd && pd.name ? ` · ${esc(pd.name)}` : ""}"><i>${ico}</i><b>${DAYS[dow(date) - 1]}</b><small>${Number(date.slice(8, 10))}.</small></button>`;
+  };
+  const strip = `<div class="tstrip">${[0, 1, 2, 3, 4, 5, 6].map((k) => stripDay(addDay(mon, k))).join("")}</div>`;
+  const bars = (cur ? weekBar({ ...cur, target: d.weeks.target }, `Tento týden · ${wkLabel(cur)}`) : "") + (inPlan(next) ? weekBar({ ...next, target: d.weeks.target }, `Příští týden · ${wkLabel(next)}`) : "");
+  const weekCard = card("c12 t-week", "", "", strip + bars, 'data-tt="tyden"');
   // --- dny ---
   const others = (x) => p.days.filter((y) => y.date !== x.date);
   const dayRow = (x) => {
@@ -1147,43 +1163,57 @@ async function pageTrener(el) {
       ${x.kind === "blocked" ? "<span></span>" : `<button class="td-btn ${ride ? "" : "add"}" data-open="${x.date}" aria-expanded="${open}" title="${ride ? "Upravit" : "Přidat trénink"}">${open ? "Zavřít" : ride ? "Upravit" : "＋<span> Přidat</span>"}</button>`}</div>${panel}</div>`;
   };
   const RS = { done: ["✅", "splněno", "good"], partial: ["🟡", "částečně", "warn"], missed: ["❌", "vynecháno", "bad"], skipped: ["⏸️", "volno (tvoje volba)", ""], extra: ["➕", "navíc mimo plán", ""] };
-  const rc = d.recent || [];
   const nPlan = rc.filter((x) => x.plan && x.status !== "skipped").length, nOk = rc.filter((x) => x.status === "done").length;
-  const recentHtml = rc.length ? `<details class="trecent"><summary><b>Posledních ${rc.length} tréninků</b><span class="sub">splněno ${nOk} z ${nPlan} plánovaných</span></summary><div class="tr-list">${rc.map((x) => { const [ic, lab, tn] = RS[x.status] || ["•", x.status, ""]; return `<div class="tr-row"><span class="tr-d"><b>${DAYS[dow(x.date) - 1]}</b> ${dm(x.date)}</span><span class="tr-m"><span class="tr-p">${x.plan ? `plán: ${esc(x.plan.name)}${x.plan.min ? ` · ${dur(x.plan.min * 60)}` : ""}${x.plan.load ? ` · zátěž ${num(x.plan.load)}` : ""}` : "bez plánu"}</span>${x.acts.length ? x.acts.map((a) => `<a href="#/aktivita/${a.id}" class="tr-a">${SPORT_ICON[a.sport] || "🏅"} ${esc(a.name || SPORT_NAME[a.sport] || "")} · ${hUt(a.moving_s)} · zátěž ${num(a.load)}</a>`).join("") : `<span class="sub">nic odjeto</span>`}</span><span class="tr-s ${tn}">${ic} ${lab}${x.compliance != null ? `<small>${x.compliance} %</small>` : ""}</span></div>`; }).join("")}</div><p class="note">Splněno = intervals.icu hlásí splnění aspoň 80 % (nebo zátěž 80–125 % plánu, když workout nebyl spárovaný).</p></details>` : "";
+  const recentRows = rc.map((x) => { const [ic, lab, tn] = RS[x.status] || ["•", x.status, ""]; return `<div class="tr-row"><span class="tr-d"><b>${DAYS[dow(x.date) - 1]}</b> ${dm(x.date)}</span><span class="tr-m"><span class="tr-p">${x.plan ? `plán: ${esc(x.plan.name)}${x.plan.min ? ` · ${dur(x.plan.min * 60)}` : ""}${x.plan.load ? ` · zátěž ${num(x.plan.load)}` : ""}` : "bez plánu"}</span>${x.acts.length ? x.acts.map((a) => `<a href="#/aktivita/${a.id}" class="tr-a">${SPORT_ICON[a.sport] || "🏅"} ${esc(a.name || SPORT_NAME[a.sport] || "")} · ${hUt(a.moving_s)} · zátěž ${num(a.load)}</a>`).join("") : `<span class="sub">nic odjeto</span>`}</span><span class="tr-s ${tn}">${ic} ${lab}${x.compliance != null ? `<small>${x.compliance} %</small>` : ""}</span></div>`; }).join("");
+  const recentCard = rc.length ? card("t-recent", `Posledních ${rc.length} tréninků`, nPlan ? `splněno ${nOk} z ${nPlan}` : "bez plánu", `<details class="trecent2"><summary>${nPlan ? `Splněno <b>${nOk} z ${nPlan}</b> plánovaných` : "Žádný z nich nebyl v plánu"} · zobrazit</summary><div class="tr-list">${recentRows}</div><p class="note">Splněno = intervals.icu hlásí splnění aspoň 80 % (nebo zátěž 80–125 % plánu, když workout nebyl spárovaný).</p></details>`, 'data-tt="proc"') : "";
+  // --- změny čekají: plovoucí lišta nad spodní lištou (jen když něco čeká) ---
   const prop = d.proposal;
-  const pending = prop && prop.items.length ? `<div class="tpend"><span><b>${prop.items.length} ${prop.items.length === 1 ? "změna čeká" : prop.items.length < 5 ? "změny čekají" : "změn čeká"}</b> · do kalendáře a intervals.icu jdou až po potvrzení</span>
-    <span class="btns"><button class="btn pri" id="applyAll">✅ Zapsat do intervals.icu</button><button class="btn" id="resetMine">↩ Vrátit moje úpravy</button></span>
-    <details class="tp-list"><summary>Co se změní</summary>${prop.items.map((c) => `<div class="tp-ch"><b>${dayDm(c.date)}</b> ${esc(c.action)} – ${esc(c.name)}${c.why ? `<small>${esc(c.why)}</small>` : ""}</div>`).join("")}</details><p class="note" id="applyMsg"></p></div>`
-    : `<div class="tpend ok"><span>✓ Kalendář odpovídá plánu</span><span class="btns">${mine.length ? '<button class="btn sm" id="resetMine">↩ Vrátit moje úpravy</button>' : ""}<button class="btn sm" id="newProp">↻ Přepočítat</button></span><p class="note" id="applyMsg"></p></div>`;
-  const planCard = card("c12 t-plan", `🗓️ Plán ${dm(p.from)}–${dm(p.to)}`, "plán · Open-Meteo", `${pending}<form class="aiweek" id="aiWeek"><input name="t" placeholder="Pokyn pro AI (nepovinné) – např. víc objemu o víkendu, ve středu nemám čas" autocomplete="off"><button class="btn" type="submit">🤖 AI návrh týdne</button></form>${bars}<div class="tdleg mob-only"><span><i class="me"></i>tvoje úprava</span><span><i class="nz"></i>nezapsáno</span></div><div class="tdays">${p.days.map(dayRow).join("")}</div>${recentHtml}${p.warnings.length ? `<ul class="alerts">${p.warnings.map((w) => `<li>⚠️ ${esc(w)}</li>`).join("")}</ul>` : ""}<p class="note">Úpravy: tlačítko „Upravit“ u dne${matchMedia("(pointer: fine)").matches ? " nebo přetáhni trénink myší na jiný den" : ""}. Plán se hned přepočítá, do intervals.icu se zapíše až po potvrzení nahoře.</p>`);
+  const nItems = prop && prop.items.length ? prop.items.length : 0;
+  const pendBar = nItems ? `<div class="tpendbar" data-tt="tyden"><details><summary><b>${nItems} ${nItems === 1 ? "změna čeká" : nItems < 5 ? "změny čekají" : "změn čeká"}</b> na zápis <span class="sub">· co se změní</span></summary><div class="tp-list2">${prop.items.map((c) => `<div class="tp-ch"><b>${dayDm(c.date)}</b> ${esc(c.action)} – ${esc(c.name)}${c.why ? `<small>${esc(c.why)}</small>` : ""}</div>`).join("")}</div></details><button class="btn pri" id="applyAll">Zapsat</button><p class="note" id="applyMsg"></p></div>` : "";
+  // --- ⋯ u plánu: přepočítat, vrátit úpravy, AI návrh týdne (+ poslední odpověď AI) ---
+  let hist = []; try { hist = JSON.parse(localStorage.getItem(COACH_KEY) || "[]"); } catch {}
+  const lastAiIdx = hist.map((m) => m.role === "user" && /^🤖 AI návrh týdne/.test(m.text)).lastIndexOf(true);
+  const lastAi = lastAiIdx >= 0 ? hist[lastAiIdx + 1] : null;
+  const more = `<details class="tmore"${tMoreOpen ? " open" : ""}><summary aria-label="Další akce s plánem">⋯</summary><div class="tmore-in">
+    <div class="btns"><button class="btn sm" id="newProp">↻ Přepočítat</button>${mine.length ? '<button class="btn sm" id="resetMine">↩ Vrátit moje úpravy</button>' : ""}</div>
+    <form class="aiweek" id="aiWeek"><input name="t" placeholder="Pokyn pro AI (nepovinné) – např. víc objemu o víkendu" autocomplete="off"><button class="btn" type="submit">🤖 AI návrh týdne</button></form>
+    ${lastAi ? `<div class="aiw-res"><p>${esc(lastAi.text)}</p>${lastAi.applied && lastAi.applied.length ? `<small class="sub">${lastAi.applied.map(esc).join(" · ")}</small>` : ""}</div>` : ""}
+    ${!nItems ? `<p class="note">✓ Kalendář odpovídá plánu.</p>` : ""}</div></details>`;
+  const planCard = card("c12 t-plan", `🗓️ Plán ${dm(p.from)}–${dm(p.to)}`, "", `${more}<div class="tdays">${p.days.map(dayRow).join("")}</div><div class="tdleg"><span><i class="me"></i>tvoje úprava</span><span><i class="nz"></i>nezapsáno</span></div>${p.warnings.length ? `<ul class="alerts">${p.warnings.map((w) => `<li>⚠️ ${esc(w)}</li>`).join("")}</ul>` : ""}<p class="note">Úpravy: tlačítko „Upravit“ u dne${matchMedia("(pointer: fine)").matches ? " nebo přetáhni trénink myší na jiný den" : ""}. Plán se hned přepočítá, do intervals.icu se zapíše až po potvrzení.</p>`, 'data-tt="tyden"');
   // --- z čeho trenér vychází ---
   const form = f.form, goalUp = d.goal === "zvyseni" || d.goal === "zavod";
   const why = form == null ? "Formu zatím neznám." : form < -30 ? `Jsi hodně unavený (forma ${signed(form, 1)}) → týden výrazně lehčí, víc volna.` : form < -20 ? `Únava je vysoká (forma ${signed(form, 1)}) → týden lehčí.` : form > 15 && goalUp ? `Jsi odpočatý (forma ${signed(form, 1)})${f.ramp != null && f.ramp < 0 ? " a kondice klesá" : ""} → přidávám zátěž.` : form > 15 ? `Jsi odpočatý (forma ${signed(form, 1)}) – při cíli ${esc(d.goalLabel || "")} držím zátěž.` : `Forma ${signed(form, 1)} je v tréninkovém pásmu → plán drží zátěž.`;
   const qn = p.days.filter((x) => x.kind === "quality").length;
-  const stateCard = card("t-state", "Z čeho trenér vychází", "intervals.icu · Garmin", `<div class="tstate">
+  const stateCard = card("t-state", "Z čeho trenér vychází", "intervals.icu · Garmin", `<div class="twhy"><b>Proto tento týden</b><p>${why} Cíl zátěže ${p.weeklyTarget.lo}–${p.weeklyTarget.hi}, ${qn ? `${qn}× kvalita` : "bez kvality"}, ${p.days.filter((x) => x.name).length} tréninků.</p></div><div class="ainote" data-ainote="trener"></div>
+    <div class="tstate">
       <div><span>Kondice (CTL)</span><b class="num">${num(f.ctl, 1)}</b><small class="${f.ramp != null && f.ramp < -1 ? "warn" : ""}">${f.ramp != null ? `${signed(f.ramp, 1)} za týden` : ""}</small></div>
       <div><span>Únava (ATL)</span><b class="num">${num(f.atl, 1)}</b><small>zátěž 7 dní ${thou(f.load7)}</small></div>
       <div><span>Forma (TSB)</span><b class="num">${signed(form, 1)}</b><small class="${form == null ? "" : form < -20 || form > 20 ? "warn" : "good"}">${esc(formZoneName(form))}</small></div>
-      <div><span>Připravenost</span><b class="tst-word ${tone}">${esc(({ green: "Dobrá", yellow: "Částečná", red: "Nízká" })[rec.state] || rec.stateLabel)}</b><small>${esc(rec.stateLabel)}</small></div></div>${(d.insights || []).length ? `<div class="insights">${d.insights.map((i) => verdict(i.tone, i.text)).join("")}</div>` : ""}
-    <div class="twhy"><b>Proto tento týden</b><p>${why} Cíl zátěže ${p.weeklyTarget.lo}–${p.weeklyTarget.hi}, ${qn ? `${qn}× kvalita` : "bez kvality"}, ${p.days.filter((x) => x.name).length} tréninků.</p></div>
-    <details class="gcmp"><summary>Pravidla trenéra</summary><p class="note">Týdenní zátěž z kondice a cíle (max. +10 % proti běžnému týdnu). Forma pod −20 → týden o 12 % lehčí, pod −30 o 25 %. Kvalita 1× (zima) / 2× (sezóna) týdně, nikdy dva dny po sobě ani po hokeji; když týden zaplní tvoje volby, dá se na kolový den. Ráno podle připravenosti: 🟡 kvalita → Z2 nebo zkrácení, 🔴 volno / Z1. Tvoje úpravy (přesun, délka, sport, vlastní jízda) mají přednost, zbytek týdne se dopočítá.</p></details>`);
-  // --- AI trenér ---
-  let hist = []; try { hist = JSON.parse(localStorage.getItem(COACH_KEY) || "[]"); } catch {}
+      <div><span>Zotavení</span><b class="tst-word ${tone}">${r.score != null ? `${num(r.score)} %` : esc(({ green: "Dobrá", yellow: "Částečná", red: "Nízká" })[rec.state] || rec.stateLabel)}</b><small>${esc(rec.stateLabel)}</small></div></div>${(d.insights || []).length ? `<div class="insights">${d.insights.map((i) => verdict(i.tone, i.text)).join("")}</div>` : ""}
+    <details class="gcmp"><summary>Pravidla trenéra</summary><p class="note">Týdenní zátěž z kondice a cíle (max. +30 % proti běžnému týdnu). Forma pod −20 → týden o 12 % lehčí, pod −30 o 25 %. Kvalita 1× (zima) / 2× (sezóna) týdně, nikdy dva dny po sobě ani po hokeji; když týden zaplní tvoje volby, dá se na kolový den. Ráno podle zotavení: 🟡 kvalita → Z2 nebo zkrácení, 🔴 volno / Z1. Tvoje úpravy (přesun, délka, sport, vlastní jízda) mají přednost, zbytek týdne se dopočítá.</p></details>`, 'data-tt="proc"');
+  // --- chat (na mobilu schovaný – stejné umí 🤖 v hlavičce) ---
   const chatCard = card("t-chat", "💬 Řekni trenérovi", "AI · úpravy plánu", `<div class="tmsgs">${hist.length ? hist.slice(-6).map((m) => `<div class="msg ${m.role}"><p>${esc(m.text)}</p>${m.applied && m.applied.length ? `<small class="sub">${m.applied.map(esc).join(" · ")}</small>` : ""}</div>`).join("") : '<div class="empty">Napiš, co se mění – trenér upraví plán (např. „ve středu nestihnu, přesuň kvalitu na čtvrtek“).</div>'}</div>
     <div class="sugg">${["Ve středu nestihnu, přesuň kvalitu na čtvrtek", "Tento týden mám jen 4 hodiny", "Jsem unavený", "V sobotu jedu 4 h s kamarádem"].map((s) => `<button class="btn sm" data-ask="${esc(s)}">${esc(s)}</button>`).join("")}</div>
-    <form class="chatform" id="askF"><textarea rows="1" placeholder="Napiš trenérovi…"></textarea><button class="btn pri" type="submit">➤</button></form>${hist.length ? '<button class="btn sm" id="askClr" style="margin-top:6px">Smazat rozhovor</button>' : ""}`);
+    <form class="chatform" id="askF"><textarea rows="1" placeholder="Napiš trenérovi…"></textarea><button class="btn pri" type="submit">➤</button></form>${hist.length ? '<button class="btn sm" id="askClr" style="margin-top:6px">Smazat rozhovor</button>' : ""}`, 'data-tt="chat"');
   // --- cíl, počasí, zátěž po týdnech, intenzita ---
   const cur2 = d.goals.find((g) => g.key === d.goal);
-  const goalCard = card("t-goal", "🎯 Cíl tréninku", "", `<div class="seg">${d.goals.map((g) => `<button class="${d.goal === g.key ? "on" : ""}" data-goal="${g.key}">${esc(g.label)}</button>`).join("")}</div><p class="gtext">${esc(cur2 ? cur2.text : "")}</p><p class="note" id="goalMsg"></p>`);
-  const weatherCard = card("c12 t-weather", "🌤️ Počasí na trénink · 7 dní", "Open-Meteo", weatherList(p.days.map((x) => ({ label: x.isToday ? "Dnes" : dayDm(x.date), w: x.weather })).filter((x) => x.w)), 'id="pocasi"');
-  const loadsCard = card("t-loads", "📈 Zátěž po týdnech", "TSS", weekLoadsHtml(d.weeks));
-  const intens = card("t-int", "Průvodce intenzitou", "FTP", `<details><summary>Watty pro jednotlivé jednotky (FTP ${d.intensity.ftp} W)</summary><table class="t"><tr><th>Jednotka</th><th class="r">% FTP</th><th class="r">Watty</th></tr>${d.intensity.targets.map((x) => `<tr><td>${esc(x.name)}</td><td class="r">${x.pct[0]}–${x.pct[1]} %</td><td class="r">${x.w[0]}–${x.w[1]} W</td></tr>`).join("")}</table></details>`);
+  const goalCard = card("t-goal", "🎯 Cíl tréninku", "", `<div class="seg">${d.goals.map((g) => `<button class="${d.goal === g.key ? "on" : ""}" data-goal="${g.key}">${esc(g.label)}</button>`).join("")}</div><p class="gtext">${esc(cur2 ? cur2.text : "")}</p><p class="note" id="goalMsg"></p><p class="note">Počet tréninků týdně a teplotní hranice pro jízdu venku změníš v <a href="#/nastaveni">Nastavení</a>.</p>`, 'data-tt="cil"');
+  const weatherCard = card("c12 t-weather", "🌤️ Počasí na trénink · 7 dní", "Open-Meteo", weatherList(p.days.map((x) => ({ label: x.isToday ? "Dnes" : dayDm(x.date), w: x.weather })).filter((x) => x.w)) + `<p style="margin-top:10px"><a class="btn sm" href="#/pocasi">Počasí po hodinách →</a></p>`, 'id="pocasi" data-tt="pocasi"');
+  const loadsCard = card("t-loads", "📈 Zátěž po týdnech", "TSS", weekLoadsHtml(d.weeks), 'data-tt="proc"');
+  const intens = card("t-int", "Průvodce intenzitou", "FTP", `<details><summary>Watty pro jednotlivé jednotky (FTP ${d.intensity.ftp} W)</summary><table class="t"><tr><th>Jednotka</th><th class="r">% FTP</th><th class="r">Watty</th></tr>${d.intensity.targets.map((x) => `<tr><td>${esc(x.name)}</td><td class="r">${x.pct[0]}–${x.pct[1]} %</td><td class="r">${x.w[0]}–${x.w[1]} W</td></tr>`).join("")}</table></details>`, 'data-tt="cil"');
+  const TABS = [["tyden", "Týden"], ["proc", "Proč"], ["pocasi", "Počasí"], ["cil", "Cíl"]];
   el.innerHTML = `<div class="head"><div><h1>Trenér</h1><div class="sub">cíl ${esc(d.goalLabel || "")} · zátěž týdne ${p.weeklyTarget.lo}–${p.weeklyTarget.hi}</div></div></div>
+  <div class="ioseg ttabs" role="tablist">${TABS.map(([k, l]) => `<button type="button" role="tab" data-ttab="${k}" class="${tTab === k ? "on" : ""}" aria-selected="${tTab === k}">${l}</button>`).join("")}</div>
   <div class="grid tgrid">
-    <div class="c7 col tcol">${todayCard}${planCard}</div>
-    <div class="c5 col tcol">${stateCard}${chatCard}${goalCard}${loadsCard}${intens}</div>
+    <div class="c7 col tcol">${todayCard}${weekCard}${planCard}</div>
+    <div class="c5 col tcol">${stateCard}${recentCard}${chatCard}${goalCard}${loadsCard}${intens}</div>
     ${weatherCard}
-  </div>`;
+  </div>${pendBar}`;
+  // záložky (jen na mobilu – na počítači je vidět vše)
+  const showTab = (k) => { tTab = k; try { localStorage.setItem("tTab", k); } catch {} el.querySelectorAll("[data-ttab]").forEach((b) => { b.classList.toggle("on", b.dataset.ttab === k); b.setAttribute("aria-selected", b.dataset.ttab === k); }); el.querySelectorAll("[data-tt]").forEach((c) => c.classList.toggle("tt-off", c.dataset.tt !== k)); };
+  showTab(tTab);
+  el.querySelectorAll("[data-ttab]").forEach((b) => b.addEventListener("click", () => { showTab(b.dataset.ttab); scrollTo(0, 0); fitCells(el); }));
+  el.querySelector(".tmore")?.addEventListener("toggle", (e) => { tMoreOpen = e.currentTarget.open; });
   bindHours(el);
   const keepScroll = async () => { const y = scrollY; cache.clear(); await route(); requestAnimationFrame(() => scrollTo(0, y)); };
   const post = async (path, body, msgEl) => { try { await api(path, { method: "POST", body: JSON.stringify(body) }); await keepScroll(); } catch (e) { if (msgEl) msgEl.textContent = e.message; else alert(e.message); } };
