@@ -749,6 +749,13 @@ api.get("/activity/:id", async (c) => {
 
 /** AI zhodnocení aktivity (2–3 věty, cache v KV). ?force=1 = napsat znovu. */
 api.get("/activity/:id/ai", async (c) => {
+  const id = c.req.param("id");
+  const force = c.req.query("force") === "1";
+  if (!force) {
+    const hit = await c.env.KV.get<{ text: string; model: string | null }>(`actai:v1:${id}`, "json").catch(() => null);
+    if (hit?.text) return c.json({ ...hit, cached: true });
+    if (await c.env.KV.get(`actai:fail:${id}`).catch(() => null)) return c.json({ text: null, model: null });
+  }
   const ctx = await loadCtx(c.env);
   let a = ctx.acts.find((x) => x.id === c.req.param("id"));
   if (!a) {
@@ -771,7 +778,8 @@ api.get("/activity/:id/ai", async (c) => {
     aerobni_drift_pct: a.drift ?? null,
     ftp: ctx.s.ftp,
     cil_treninku: ctx.s.goal,
-  }, c.req.query("force") === "1");
+  }, force);
+  if (!out) await c.env.KV.put(`actai:fail:${id}`, "1", { expirationTtl: 6 * 3600 }).catch(() => {});
   return c.json(out ?? { text: null, model: null });
 });
 

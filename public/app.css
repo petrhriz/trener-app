@@ -2078,3 +2078,7 @@ html[data-rings="glow"] .dn-rings .gring::before { opacity: .85; }
 /* Odtrénováno: jeden tok textu (název aktivity na stejném řádku a úrovni), šipka vpravo */
 .tdark .td-done { display: block !important; }
 .tdark .td-done .go { float: right; margin-left: 8px; }
+/* proužek dní: naplánované dny světle oranžově, kvalita sytější oranžová */
+.tsd.pl { background: color-mix(in srgb, var(--acc) 13%, var(--card2)); }
+.tsd.q:not(.done) { background: color-mix(in srgb, var(--acc) 34%, var(--card2)) !important; }
+.tsd.q:not(.done) b { color: var(--acc); }
