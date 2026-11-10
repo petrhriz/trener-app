@@ -1958,3 +1958,10 @@ html[data-rings="glow"] .dn-rings .gring::before { opacity: .85; }
 .dn-head .ainote.side.folded::before { display: none; }
 .ainote .an-show { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line) !important; background: var(--card2) !important; border-radius: 99px !important; padding: 4px 10px !important; font-size: 12.5px; color: var(--fg) !important; }
 .ainote .an-show span { color: var(--muted); font-weight: 650; }
+/* AI shrnutí na Přehledu: zase široké (zbytek řádku vedle stavu), rámeček s ocáskem na úrovni zelené tečky;
+   tečka a text stavu svisle na střed */
+.dn-head { align-items: flex-start; }
+.dn-head .dn-title { margin: 0 !important; min-height: 36px; display: flex; align-items: center; line-height: 1.15; }
+.dn-head .ainote.side { flex: 1 1 0 !important; max-width: none !important; margin-top: 0 !important; margin-left: 4px; }
+.dn-head .ainote.side::before { top: 13px; }
+.dn-head .ainote.side.folded { flex: 0 0 auto !important; margin-left: auto; align-self: center; }

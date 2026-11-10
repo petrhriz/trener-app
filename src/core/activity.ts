@@ -216,8 +216,8 @@ export function analyzeActivity(a: ActRow, plan: PlannedForAct | null, ftp: numb
   if (!indoor && speed != null && speed > 0.5 && FOOT_SPORTS.includes(a.sport)) basics.push(["⏱️ Průměrné tempo", `${paceOf(speed / 3.6)} /km`]);
   const teL = ((a as any).extra?.te_label as string | undefined) ?? null;
   if (teL && TE_NAME[teL]) basics.push(["🎯 Hlavní přínos", TE_NAME[teL]!]);
-  // jednotka zátěže: TSS z výkonu (wattmetr / NP), jinak HRSS z tepu (intervals.icu i vlastní výpočet)
-  const loadUnit = a.load == null ? "" : a.np || a.load_source === "np_ftp" ? " TSS" : " HRSS";
+  // jednotka zátěže: TSS jen u kola s wattmetrem, jinak HRSS z tepu (i běh s výkonem z hodinek)
+  const loadUnit = a.load == null ? "" : isBike && (a.np || a.load_source === "np_ftp") ? " TSS" : " HRSS";
   basics.push(["🔋 Zátěž", `${num(a.load)}${loadUnit}${planLoad ? ` (plán ${num(planLoad)})` : ""}`]);
   if (compliance != null) basics.push(["✅ Splnění plánu", `${compliance} %${plan?.compliance != null ? " (intervals.icu)" : ""}`]);
   if (a.avg_hr) basics.push(["❤️ Tep", `${num(a.avg_hr)} bpm${a.max_hr ? ` (max ${num(a.max_hr)} bpm)` : ""}`]);

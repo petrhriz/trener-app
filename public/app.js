@@ -637,9 +637,9 @@ function sleepBlock(s, compact = false) {
   const head = `<div class="shead"><div><div class="sv">${dur(s.durationS).replace(/ (h|min)/g, "<small> $1</small>")}</div><div class="sub">${s.start && s.end ? `${s.start}–${s.end}` : ""}${s.needMin ? ` · potřeba ${dur(s.needMin * 60)}` : ""}</div>${s.nextNeedMin ? `<div class="sub"><b>Potřeba na dnešní noc: ${dur(s.nextNeedMin * 60)}</b> (cíl + spánkový dluh)</div>` : ""}</div>${s.score != null ? `<div class="score ${s.scoreTone}">${s.score}<small>skóre${s.garminScore != null ? ` · Garmin ${s.garminScore}` : ""}</small></div>` : ""}</div>`;
   // 4 dlaždice: tep, VST, dech, stres
   const vit = [
-    ["❤️ Tep ⌀", s.hr != null ? `${num(s.hr)} bpm` : DASH, s.hrNorm ? `průměr ${s.hrNorm}` : "", "tep"],
-    ["🫀 VST ⌀", s.hrv != null ? `${num(s.hrv)} ms` : DASH, "přes noc", "vst"],
-    ["🫁 Dech ⌀", s.resp != null ? `${num(s.resp)} /min` : DASH, s.respLo ? `${num(s.respLo)}–${num(s.respHi)}` : "", "dech"],
+    ["❤️ Tep", s.hr != null ? `${num(s.hr)} bpm` : DASH, s.hrNorm ? `tvoje norma ${s.hrNorm}` : "", "tep"],
+    ["🫀 VST", s.hrv != null ? `${num(s.hrv)} ms` : DASH, "přes noc", "vst"],
+    ["🫁 Dech", s.resp != null ? `${num(s.resp)} /min` : DASH, s.respLo ? `rozsah ${num(s.respLo)}–${num(s.respHi)}` : "", "dech"],
     ["😮‍💨 Stres", s.stress != null ? num(s.stress) : DASH, "ve spánku", "stres"],
   ];
   const vitals = `<div class="svit">${vit.map(([k, v, x, h]) => `<a href="#/detail/${h}"><span>${k}</span><b>${v}</b>${x ? `<small>${x}</small>` : ""}</a>`).join("")}</div>`;
@@ -974,7 +974,7 @@ async function pagePrehled(el) {
   const bbN = bb.latest ?? bb.min, bbM = bb.max;
   const bbT = bbN == null ? "" : bbN >= 50 ? "good" : bbN >= 25 ? "warn" : "bad";
   const tiles = `<div class="mtiles five ptiles c12">
-    ${metricTile({ label: "🔋 Energie", value: bbN != null ? num(bbN) : DASH, unit: bbN != null ? "%" : "", state: bbN == null ? "" : bbN >= 50 ? "dost" : bbN >= 25 ? "středně" : "málo", tone: bbT, spark: bbN != null ? `<div class="ebat">${batteryIcon(bbN, { showNum: false })}</div>` : "", href: "#/detail/bb", foot: bbM != null && bbN != null ? `max ${num(bbM)} · vybito ${num(Math.max(0, bbM - bbN))}` : "" })}
+    ${metricTile({ label: "🔋 Energie", value: bbN != null ? num(bbN) : DASH, unit: bbN != null ? "%" : "", state: bbN == null ? "" : bbN >= 50 ? "dost" : bbN >= 25 ? "středně" : "málo", tone: bbT, spark: bbN != null ? `<div class="ebat">${batteryIcon(bbN, { showNum: false, max: bbM })}</div>` : "", href: "#/detail/bb", foot: bbM != null && bbN != null ? `max ${num(bbM)} · vybito ${num(Math.max(0, bbM - bbN))}` : "" })}
     ${metricTile({ label: "🫀 VST", value: num(hv.today), unit: "ms", state: hvS, tone: hvT, spark: sparkRolling(hv.series.map((x) => x.v), stateColor(hv.today, hv.norm), 76), href: "#/detail/vst", foot: hv.norm ? `norma ${num(hv.norm.mean - hv.norm.sd)}–${num(hv.norm.mean + hv.norm.sd)}` : "" })}
     ${metricTile({ label: "❤️ Klidový tep", value: num(rh.today), unit: "bpm", state: rhS, tone: rhT, spark: sparkRolling(rh.series.map((x) => x.v), stateColor(rh.today, rh.norm, true), 76), href: "#/detail/tep", foot: rh.norm ? `norma ${num(rh.norm.mean)} ± ${num(rh.norm.sd, 1)}` : "" })}
     ${metricTile({ label: "😮‍💨 Stres", value: num(st.avg), state: stS, tone: stT, spark: sparkRolling(st.series.map((x) => x.v), stateColor(st.avg, st.norm, true), 76), href: "#/detail/stres", foot: st.max != null ? `max ${num(st.max)}` : "" })}
@@ -1612,7 +1612,7 @@ function sliceStreams(s, from, to) {
 const subParts = (t) => { const p = String(t || "").split(" · ").filter(Boolean); return p.map((x, i) => `<span class="nw">${/^\d[\d ]* m$/.test(x) ? "↑ " : ""}${esc(x)}${i < p.length - 1 ? " ·" : ""}</span>`).join(" "); };
 function lapsHtml(a, s) {
   const tbl = a.laps.show
-    ? `<table class="t"><tr><th>Okruh</th><th class="r">Čas</th>${a.hasPower ? '<th class="r">Výkon</th>' : ""}<th class="r">Tep ⌀/max</th></tr>${a.laps.rows.map((r, i) => `<tr class="${r.iv ? "iv" : ""}${r.start_s != null && r.dur_s && a.hasStreams ? " lapclick" : ""}" ${r.start_s != null && r.dur_s && a.hasStreams ? `data-li="${i}" tabindex="0" role="button" aria-label="Průběh úseku ${esc(r.name)}"` : ""}><td><b>${esc(r.name)}</b><span class="s2">${subParts(r.sub)}</span></td><td class="r">${r.time}</td>${a.hasPower ? `<td class="r">${r.power}</td>` : ""}<td class="r">${r.hr}</td></tr>`).join("")}</table><p class="note">${esc(a.laps.note)}</p>`
+    ? `<table class="t"><tr><th>Okruh</th><th class="r">Čas</th>${a.hasPower ? '<th class="r">Výkon</th>' : ""}<th class="r">Tep / max</th></tr>${a.laps.rows.map((r, i) => `<tr class="${r.iv ? "iv" : ""}${r.start_s != null && r.dur_s && a.hasStreams ? " lapclick" : ""}" ${r.start_s != null && r.dur_s && a.hasStreams ? `data-li="${i}" tabindex="0" role="button" aria-label="Průběh úseku ${esc(r.name)}"` : ""}><td><b>${esc(r.name)}</b><span class="s2">${subParts(r.sub)}</span></td><td class="r">${r.time}</td>${a.hasPower ? `<td class="r">${r.power}</td>` : ""}<td class="r">${r.hr}</td></tr>`).join("")}</table><p class="note">${esc(a.laps.note)}</p>`
     : `<div class="empty">${esc(a.laps.note || "Tréninkové okruhy nejsou – vyber okruhy po km.")}</div>`;
   const sp = s && s.splits ? s.splits : {};
   const modes = [["plan", "Tréninkové"], ...["1", "5", "10"].filter((k) => sp[k] && sp[k].length > 1).map((k) => [k, `po ${k} km`])];
@@ -1942,7 +1942,7 @@ function bbColor(v) {
 function stressColor(v) { return bbColor(100 - clamp(v ?? 0, 0, 100) * 1.0); }
 // baterie: obrys jako v iOS (tenký, zaoblený pól), uvnitř šrafovaná prázdná část a plná výplň v barvě křivky
 // Body Battery podle aktuálních procent se slabou září; číslo přesně uprostřed celé baterie – na výplni tmavým odstínem
-function batteryIcon(v, { showNum = true } = {}) {
+function batteryIcon(v, { showNum = true, max = null } = {}) {
   const W = 150, H = 66, VW = W + 12, VH = H + 4, id = uid("bat");
   const x0 = 7, y0 = 7, iw = W - 11, ih = H - 11; // vnitřek
   const fw = v == null ? 0 : Math.max(12, (iw * clamp(v, 0, 100)) / 100);
@@ -1957,7 +1957,8 @@ function batteryIcon(v, { showNum = true } = {}) {
 ${fw ? `<rect x="${x0}" y="${y0 + 2}" width="${fw}" height="${ih - 4}" rx="12" style="fill:${c}" opacity=".22" filter="url(#${id}f)"/>` : ""}
 <rect x="1.5" y="1.5" width="${W - 1}" height="${H - 1}" rx="17" style="fill:var(--card);stroke:var(--muted);stroke-opacity:.45;stroke-width:2px"/>
 <rect x="${x0}" y="${y0}" width="${iw}" height="${ih}" rx="12" fill="url(#${id}p)"/>
-${fw ? `<rect x="${x0}" y="${y0}" width="${fw}" height="${ih}" rx="12" style="fill:${c}"/>` : ""}
+${max != null && v != null && max > v ? `<rect x="${x0}" y="${y0}" width="${Math.max(12, (iw * clamp(max, 0, 100)) / 100)}" height="${ih}" rx="12" style="fill:${c}" opacity=".2"/>` : ""}
+${fw ? `<rect x="${x0}" y="${y0}" width="${fw}" height="${ih}" rx="12" style="fill:${c}" opacity="${max != null ? 0.72 : 1}"/>` : ""}
 <path d="M${W + 4} ${H / 2 - 8} a4 4 0 0 1 4 4 v10 a4 4 0 0 1 -4 4 z" style="fill:var(--muted);fill-opacity:.45"/>
 ${showNum ? `${num("var(--fg)")}<g clip-path="url(#${id}c)">${num(dark)}</g>` : ""}</svg>`;
 }
@@ -2251,8 +2252,8 @@ async function pageDetail(el, which) {
   <nav class="chipnav">${chips}</nav>
   <div class="grid">
    ${hero}
-   ${card("c12", `${M.name} · ${detRange === 365 ? "rok (týdenní průměry)" : detRange === 90 ? "90 dní (průměry po 3 dnech)" : "30 dní"}`, "Garmin", main + (okV.length ? `<p class="note">za ${detRange === 365 ? "rok" : `${detRange} dní`} (po dnech): min ${M.fmt(Math.min(...okV))}${u} · max ${M.fmt(Math.max(...okV))}${u}</p>` : ""))}
    ${which === "stres" && day?.stress ? card("c12", `Stres během dne · ${day.date !== d.today ? dayDm(day.date) : "dnes"}`, "Garmin", dayStressHtml(day).replace(/^<div class="sl"[^>]*>[^<]*<\/div>/, "") + `<p class="note">Kolik času dne jsi strávil v klidu a v jednotlivých pásmech stresu (Garmin: klid 0–25, nízký 26–50, střední 51–75, vysoký 76–100).</p>`) : ""}
+   ${card("c12", `${M.name} · ${detRange === 365 ? "rok (týdenní průměry)" : detRange === 90 ? "90 dní (průměry po 3 dnech)" : "30 dní"}`, "Garmin", main + (okV.length ? `<p class="note">za ${detRange === 365 ? "rok" : `${detRange} dní`} (po dnech): min ${M.fmt(Math.min(...okV))}${u} · max ${M.fmt(Math.max(...okV))}${u}</p>` : ""))}
    ${which === "tep" ? card("c12 hrday", `Tep během dne · ${day && day.date !== d.today ? dayDm(day.date) : "dnes"}`, "Garmin · po 2 min", day ? hrDayHtml(day, day.date === d.today) : `<div class="empty">Průběh dne nemám.</div>`) : ""}
    ${extra}
    ${card("c12", "Co to znamená", "", `<p>${esc(M.about)}</p>`)}
@@ -3184,6 +3185,20 @@ let foldQ = false;
 new MutationObserver(() => { if (foldQ) return; foldQ = true; requestAnimationFrame(() => { foldQ = false; const m = document.getElementById("main"); if (m) foldNotes(m); }); }).observe(document.getElementById("main"), { childList: true, subtree: true });
 
 /** AI shrnutí na stránce (Přehled, Trenér, Zotavení) – načte se dodatečně, bez AI se blok skryje */
+/** Doplněk v buňce („max 190 bpm“): když se nevejde celý, zkusí se bez jednotky („max 190“), jinak se skryje. */
+const UNIT_RE = /\s*(bpm|W|m|°C|kr\/min|ot\/min|km\/h|ms|cm|kcal|min|h|%|\/km)$/;
+function fitCells(root) {
+  root.querySelectorAll(".abasics > div > i").forEach((i) => {
+    if (!i.dataset.full) i.dataset.full = i.textContent;
+    i.hidden = false; i.textContent = i.dataset.full;
+    if (i.scrollWidth <= i.clientWidth + 1) return;
+    const short = i.dataset.full.replace(UNIT_RE, "");
+    if (short !== i.dataset.full) { i.textContent = short; if (i.scrollWidth <= i.clientWidth + 1) return; }
+    i.hidden = true;
+  });
+}
+let fitT = null;
+addEventListener("resize", () => { clearTimeout(fitT); fitT = setTimeout(() => fitCells(document), 150); });
 function loadAiNotes(root) {
   root.querySelectorAll("[data-ainote]").forEach((box) => {
     const page = box.dataset.ainote, hk = `aiNoteHide:${page}`;
@@ -3238,6 +3253,7 @@ async function route() {
   addAiButton(el);
   main.replaceChildren(el);
   loadAiNotes(el);
+  requestAnimationFrame(() => fitCells(el));
   const back = scrollMem.get(location.hash);
   if (back && (page === "aktivity" || page === "kolo" || (page === "vybaveni" && arg) || page === "kalendar")) requestAnimationFrame(() => scrollTo(0, back));
   else scrollTo(0, 0);
