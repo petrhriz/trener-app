@@ -1912,3 +1912,18 @@ html[data-rings="glow"] .dn-rings .gring::before { opacity: .85; }
 /* AI shrnutí sbalené */
 .ainote.folded { background: transparent; padding: 2px 0; }
 .ainote.big.folded { border: 0; }
+/* ===== buňky údajů aktivity: zpět menší; drobný doplněk („vysoce aerobní“, „plán 35“) vpravo vedle hodnoty ===== */
+.abasics { grid-auto-rows: auto !important; }
+.abasics > div { min-height: 0 !important; justify-content: flex-start !important; display: flex !important; flex-flow: row wrap; align-items: baseline; column-gap: 6px; }
+.abasics > div > span { flex: 1 1 100%; }
+.abasics > div > b { flex: 0 1 auto; min-width: 0; }
+.abasics > div > i { flex: 0 1 auto; min-width: 0; margin-top: 0 !important; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.abasics.xtra > div > i { font-size: 11.5px; }
+/* Přehled – dlaždice: vyšší grafy, malá baterie u Energie, pruh zátěže s ryskou plánu */
+.mtiles.ptiles .mt-vis { height: 76px !important; min-height: 76px !important; flex: 0 0 auto !important; }
+@media (max-width: 760px) { .mtiles.ptiles .mt-vis { height: 70px !important; min-height: 70px !important; } }
+.ebat { display: flex; align-items: center; justify-content: flex-start; height: 100%; }
+.ebat svg.battery { width: auto; height: 46px; max-width: 100%; }
+.zprog { position: relative; height: 12px; overflow: visible; }
+.zprog i { background: var(--acc); }
+.zprog b { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--fg); opacity: .55; border-radius: 1px; }

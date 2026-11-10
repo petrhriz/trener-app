@@ -945,7 +945,7 @@ async function pagePrehled(el) {
       : `<div class="today-act"><span class="ico">🛋️</span><div><b>${paused ? "Plán stojí" : "Dnes volno"}</b>${tomorrowHtml(t)}</div></div>`;
   const dnes = true
     ? card(`c8 dnes ${tone}`, "", "", `<div class="dn-wrap">${r.score != null ? `<div class="dn-rings"><a class="dn-side" href="#/detail/bb">${gradRing(d.bb.latest ?? d.bb.min, "energy", { size: 84, stroke: 9, label: "Energie", home: true })}</a><a class="dn-ring" href="#/zotaveni">${recRing(r.score, 132, true)}</a><a class="dn-side" href="#/detail/spanek">${gradRing(d.sleep?.score ?? null, "sleep", { size: 84, stroke: 9, label: "Spánek", home: true })}</a></div>` : ""}<div class="dn-body">${paused ? `<div class="dn-top"><span class="badge">${(STATUS[d.status.kind]?.[0] || "") + " " + esc(d.status.label)}</span></div>` : ""}
-      <h2 class="dn-title"><span class="dn-dot ${paused ? "" : tone}" aria-hidden="true"></span>${esc(co.title)}</h2><p class="dn-text">${esc(co.text)}</p>${d.isToday ? `<div class="ainote" data-ainote="prehled"></div>` : ""}
+      <h2 class="dn-title"><span class="dn-dot ${paused ? "" : tone}" aria-hidden="true"></span>${esc(co.title)}</h2>${d.isToday ? "" : `<p class="dn-text">${esc(co.text)}</p>`}${d.isToday ? `<div class="ainote" data-ainote="prehled"></div>` : ""}
       <div class="dn-grid"><div>${co.needs.length ? `<div class="sl">Co tělo potřebuje</div><ul class="needs">${co.needs.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}</div><div><div class="sl">${d.isToday ? "Trénink" : "Odjeto"}</div>${todayLine}${d.isToday && t.name && !t.done?.length && !paused ? `<p class="note">Zítra: ${esc(t.tomorrow)}</p>` : ""}</div></div></div></div>`)
     : ""; // zpětný den: bez horní karty, aktivita je dole
 
@@ -964,11 +964,11 @@ async function pagePrehled(el) {
   const bbN = bb.latest ?? bb.min, bbM = bb.max;
   const bbT = bbN == null ? "" : bbN >= 50 ? "good" : bbN >= 25 ? "warn" : "bad";
   const tiles = `<div class="mtiles five ptiles c12">
-    ${metricTile({ label: "🔋 Energie", value: bbN != null ? num(bbN) : DASH, unit: bbN != null ? "%" : "", state: bbN == null ? "" : bbN >= 50 ? "dost" : bbN >= 25 ? "středně" : "málo", tone: bbT, spark: energyMini(bbN, bbM), href: "#/detail/bb", foot: bbM != null && bbN != null ? `max ${num(bbM)} · vybito ${num(Math.max(0, bbM - bbN))}` : "" })}
-    ${metricTile({ label: "🫀 VST", value: num(hv.today), unit: "ms", state: hvS, tone: hvT, spark: sparkRolling(hv.series.map((x) => x.v), stateColor(hv.today, hv.norm), 56), href: "#/detail/vst", foot: hv.norm ? `norma ${num(hv.norm.mean - hv.norm.sd)}–${num(hv.norm.mean + hv.norm.sd)}` : "" })}
-    ${metricTile({ label: "❤️ Klidový tep", value: num(rh.today), unit: "bpm", state: rhS, tone: rhT, spark: sparkRolling(rh.series.map((x) => x.v), stateColor(rh.today, rh.norm, true), 56), href: "#/detail/tep", foot: rh.norm ? `norma ${num(rh.norm.mean)} ± ${num(rh.norm.sd, 1)}` : "" })}
-    ${metricTile({ label: "😮‍💨 Stres", value: num(st.avg), state: stS, tone: stT, spark: sparkRolling(st.series.map((x) => x.v), stateColor(st.avg, st.norm, true), 56), href: "#/detail/stres", foot: st.max != null ? `max ${num(st.max)}` : "" })}
-    ${metricTile({ label: "📈 Forma", value: sn.form != null ? signed(sn.form, 0) : DASH, state: sn.form != null ? formZoneName(sn.form) : "", tone: sn.form == null ? "" : sn.form < -30 ? "bad" : sn.form < -20 || sn.form > 20 ? "warn" : "good", spark: formScale(sn.form), href: "#/kondice", foot: sn.ctl != null ? `kondice ${num(sn.ctl)} · únava ${num(sn.atl)}` : "" })}
+    ${metricTile({ label: "🔋 Energie", value: bbN != null ? num(bbN) : DASH, unit: bbN != null ? "%" : "", state: bbN == null ? "" : bbN >= 50 ? "dost" : bbN >= 25 ? "středně" : "málo", tone: bbT, spark: bbN != null ? `<div class="ebat">${batteryIcon(bbN, { showNum: false })}</div>` : "", href: "#/detail/bb", foot: bbM != null && bbN != null ? `max ${num(bbM)} · vybito ${num(Math.max(0, bbM - bbN))}` : "" })}
+    ${metricTile({ label: "🫀 VST", value: num(hv.today), unit: "ms", state: hvS, tone: hvT, spark: sparkRolling(hv.series.map((x) => x.v), stateColor(hv.today, hv.norm), 76), href: "#/detail/vst", foot: hv.norm ? `norma ${num(hv.norm.mean - hv.norm.sd)}–${num(hv.norm.mean + hv.norm.sd)}` : "" })}
+    ${metricTile({ label: "❤️ Klidový tep", value: num(rh.today), unit: "bpm", state: rhS, tone: rhT, spark: sparkRolling(rh.series.map((x) => x.v), stateColor(rh.today, rh.norm, true), 76), href: "#/detail/tep", foot: rh.norm ? `norma ${num(rh.norm.mean)} ± ${num(rh.norm.sd, 1)}` : "" })}
+    ${metricTile({ label: "😮‍💨 Stres", value: num(st.avg), state: stS, tone: stT, spark: sparkRolling(st.series.map((x) => x.v), stateColor(st.avg, st.norm, true), 76), href: "#/detail/stres", foot: st.max != null ? `max ${num(st.max)}` : "" })}
+    ${(() => { const z = d.scores?.strain; const pct = z && z.base ? Math.round((z.load / z.base) * 100) : null; return metricTile({ label: "🔥 Zátěž dne", value: z ? num(z.load) : DASH, state: pct != null ? `${pct} % ${z.basis === "plan" ? "plánu" : "běžného dne"}` : "", tone: pct == null ? "" : pct > 130 ? "warn" : pct >= 70 ? "good" : "", spark: z && z.base ? `<div class="prog zprog"><i style="width:${clamp(pct, 0, 100)}%"></i>${pct > 100 ? `<b style="left:${clamp(10000 / pct, 0, 100)}%"></b>` : ""}</div>` : "", href: "#/kondice", foot: z ? `${z.basis === "plan" ? "plán" : "běžně"} ${num(z.base)} · 7 dní ${thou(sn.load7)}` : "" }); })()}
     ${metricTile({ label: "👣 Kroky", value: thou(stp.today), state: stp.today != null ? `${num(Math.min(100, (stp.today / stp.goal) * 100))} %` : "", tone: (stp.today ?? 0) >= stp.goal ? "good" : "", spark: `<div class="prog"><i style="width:${clamp(((stp.today || 0) / stp.goal) * 100, 0, 100)}%"></i></div>`, href: "#/chuze", foot: `cíl ${thou(stp.goal)}${stp.floors != null ? ` · ${num(stp.floors)} pater` : ""}` })}
   </div>`;
 
@@ -1932,7 +1932,7 @@ function bbColor(v) {
 function stressColor(v) { return bbColor(100 - clamp(v ?? 0, 0, 100) * 1.0); }
 // baterie: obrys jako v iOS (tenký, zaoblený pól), uvnitř šrafovaná prázdná část a plná výplň v barvě křivky
 // Body Battery podle aktuálních procent se slabou září; číslo přesně uprostřed celé baterie – na výplni tmavým odstínem
-function batteryIcon(v) {
+function batteryIcon(v, { showNum = true } = {}) {
   const W = 150, H = 66, VW = W + 12, VH = H + 4, id = uid("bat");
   const x0 = 7, y0 = 7, iw = W - 11, ih = H - 11; // vnitřek
   const fw = v == null ? 0 : Math.max(12, (iw * clamp(v, 0, 100)) / 100);
@@ -1949,7 +1949,7 @@ ${fw ? `<rect x="${x0}" y="${y0 + 2}" width="${fw}" height="${ih - 4}" rx="12" s
 <rect x="${x0}" y="${y0}" width="${iw}" height="${ih}" rx="12" fill="url(#${id}p)"/>
 ${fw ? `<rect x="${x0}" y="${y0}" width="${fw}" height="${ih}" rx="12" style="fill:${c}"/>` : ""}
 <path d="M${W + 4} ${H / 2 - 8} a4 4 0 0 1 4 4 v10 a4 4 0 0 1 -4 4 z" style="fill:var(--muted);fill-opacity:.45"/>
-${num("var(--fg)")}<g clip-path="url(#${id}c)">${num(dark)}</g></svg>`;
+${showNum ? `${num("var(--fg)")}<g clip-path="url(#${id}c)">${num(dark)}</g>` : ""}</svg>`;
 }
 function energyHtml(d, isToday, sum = {}) {
   const bbp = (d.bb || []).map(([t, v]) => ({ m: minOfDay(d, t), v })).filter((q) => q.m >= -1 && q.m <= 1441);
