@@ -3205,6 +3205,9 @@ function loadAiNotes(root) {
     let hidden = false; try { hidden = localStorage.getItem(hk) === "1"; } catch {}
     let last = null; // poslední úspěšný text – při chybě „napsat znovu“ zůstane
     const draw = (r, msg) => {
+      // Přehled: sbalený štítek vpravo vedle stavu, rozbalené shrnutí přes celou šířku pod ním
+      const head = page === "prehled" ? box.closest(".card")?.querySelector(".dn-head") : null;
+      if (head) { if (hidden) { if (box.parentElement !== head) head.appendChild(box); } else if (box.parentElement === head) head.after(box); }
       if (hidden) { box.className = box.className.replace(" busy", "") + (box.classList.contains("folded") ? "" : " folded"); box.innerHTML = `<button type="button" class="linkbtn an-show" title="Zobrazit AI shrnutí" aria-label="Zobrazit AI shrnutí">🤖 <span>AI shrnutí</span></button>`; box.querySelector("button").onclick = () => { hidden = false; try { localStorage.removeItem(hk); } catch {} box.classList.remove("folded"); if (last) draw(last); else load(false); }; return; }
       if (!r) { box.innerHTML = `<span class="an-t">🤖 ${msg || "píšu shrnutí…"}</span>`; return; }
       box.innerHTML = `<span class="an-t">🤖 ${esc(r.text)}</span><small class="an-m">${r.model ? esc(String(r.model).replace(/^[a-z]+:/, "").split("/").pop()) + " · " : ""}<button type="button" class="linkbtn" data-re>napsat znovu</button> · <button type="button" class="linkbtn" data-hide>skrýt</button>${msg ? ` · ${esc(msg)}` : ""}</small>`;

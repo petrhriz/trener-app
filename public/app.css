@@ -1965,3 +1965,6 @@ html[data-rings="glow"] .dn-rings .gring::before { opacity: .85; }
 .dn-head .ainote.side { flex: 1 1 0 !important; max-width: none !important; margin-top: 0 !important; margin-left: 4px; }
 .dn-head .ainote.side::before { top: 13px; }
 .dn-head .ainote.side.folded { flex: 0 0 auto !important; margin-left: auto; align-self: center; }
+/* Přehled: sbalené AI shrnutí = štítek vpravo na řádku se stavem */
+.dn-head { align-items: center !important; }
+.dn-head > .ainote.folded { margin: 0 0 0 auto !important; padding: 0 !important; background: none !important; border: 0 !important; flex: 0 0 auto; }
