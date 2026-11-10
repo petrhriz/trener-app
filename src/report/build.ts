@@ -291,7 +291,7 @@ export async function readiness(ctx: Ctx): Promise<Readiness> {
   let decision: string;
   let why: string;
   if (done.length) {
-    decision = "Odjeto";
+    decision = "Odtrénováno";
     why = `${done.map((d) => `${d.name} (zátěž ${num(d.load)})`).join(", ")}.`;
   } else if (!cal || cal.kind === "rest") {
     decision = "Volno";

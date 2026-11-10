@@ -286,8 +286,8 @@ export function generatePlan(inp: PlanInput): PlanResult {
   for (const c of inp.constraints) if (c.kind === "sport" && c.note) sportBy.set(c.date, noteOf(c) as PlanSport | "rest");
   const typeBy = new Map<string, "z2" | "quality">();
   for (const c of inp.constraints) { const n = noteOf(c); if (c.kind === "typ" && (n === "z2" || n === "quality")) typeBy.set(c.date, n); }
-  // nejvýš dní tréninku za sebou: zlepšení / závod 3, jinak 2 (mimo sezónu a při poklesu víc volna)
-  const maxRun = inp.goal === "zvyseni" || inp.goal === "zavod" ? 3 : 2;
+  // nejvýš 3 dny tréninku za sebou (při 3–4 trénincích týdně a hobby objemu; dřív u poklesu 2 → týden nešel naplnit)
+  const maxRun = 3;
   const qualityOn = (d: string) => (actsBy.get(d) ?? []).some((a) => a.counts);
   const todayDone = rodeOn(T);
   const warnings: string[] = [];
@@ -705,7 +705,8 @@ export function generatePlan(inp: PlanInput): PlanResult {
     const need = up ? remaining : Math.max(0, weeklyTarget.lo - doneLoad - fixedLoad - hockeyLoad - qLoad) * share;
     const est = (s: Slot) => estimateLoad(s.kind as Kind, null, s.minutes, inp.acts, T).load;
     let short = need - newZ2.reduce((t, s) => t + est(s), 0);
-    while (newZ2.length && short > need * 0.08 && rides < inp.ridesPerWeek + (up ? 2 : 1)) {
+    // i když týden nemá žádnou novou Z2 (jízdy už jsou v kalendáři), chybějící zátěž doplnit jízdou navíc
+    while (need > 0 && short > Math.max(15, need * 0.08) && rides < inp.ridesPerWeek + (up ? 2 : 1)) {
       const cand = empty().filter((s) => !recentIllness(s.date) && streakIf(s.date) <= maxRun && s.userType !== "quality");
       if (!cand.length) break;
       cand.sort((a, b) => (dow(b.date) >= 6 ? 2 : 0) + (inp.weather.get(b.date)?.bad ? -2 : 0) - ((dow(a.date) >= 6 ? 2 : 0) + (inp.weather.get(a.date)?.bad ? -2 : 0)) || a.date.localeCompare(b.date));

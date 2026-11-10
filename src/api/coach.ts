@@ -203,7 +203,7 @@ coachApi.post("/coach/ai-week", async (c) => {
   const rules: WeekRules = {
     target: base.weeklyTarget,
     qualityLimit: qualityLimit(days[0]!.date),
-    maxRun: goalUp ? 3 : 2,
+    maxRun: 3,
     hardBefore: ctx.acts.some((a) => a.date === addDays(days[0]!.date, -1) && a.is_quality),
   };
   const careful = /(nemoc|nemocn|nachlaz|chřip|chrip|unaven|opatrn|lehce|lehčí|lehci|odpočin|odpocin|bolí|boli)/i.test(String(text ?? ""));

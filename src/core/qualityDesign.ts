@@ -74,7 +74,7 @@ function planFormat(pl: NonNullable<PastQuality["plan"]>): Format {
 /** Jaká zaměření kvality připadají v úvahu: v zimě (mimo sezónu) podle cíle bez ostrých intervalů. */
 export function qualityCandidates(date: string, goal: DesignInput["goal"] = "zvyseni"): Exclude<QualityType, "tempo">[] {
   if (!isOffSeason(date)) return ["vo2", "prah", "sweetspot", "vo2short"];
-  return goal === "pokles" ? ["sweetspot"] : goal === "udrzeni" ? ["sweetspot", "prah"] : ["prah", "sweetspot", "vo2"];
+  return goal === "pokles" ? ["sweetspot", "prah"] : goal === "udrzeni" ? ["sweetspot", "prah"] : ["prah", "sweetspot", "vo2"];
 }
 
 /** Krok 2: na co kvalitu zaměřit. */

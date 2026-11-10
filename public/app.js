@@ -949,14 +949,14 @@ async function pagePrehled(el) {
   const todayLine = !d.isToday
     ? (pastActs.length ? pastActs.map((x) => `<a class="today-act" href="#/aktivita/${x.id}"><span class="ico">${SPORT_ICON[x.sport] || "🏅"}</span><div><b>${esc(x.name || SPORT_NAME[x.sport] || "aktivita")}</b><div class="sub">${dur(x.moving_s || 0)}${x.km ? ` · ${num(x.km, 1)} km` : ""}${x.load != null ? ` · zátěž ${num(x.load)}` : ""}</div></div><span class="go">→</span></a>`).join("") : `<div class="today-act"><span class="ico">🛋️</span><div><b>Volno</b></div></div>`)
     : t.done && t.done.length
-    ? t.done.map((x) => `<a class="today-act" href="#/aktivita/${x.id}"><span class="ico">✅</span><div><b>Dnes odjeto</b><div class="sub">${esc(x.name)}${x.load != null ? ` · zátěž ${num(x.load)}` : ""}</div></div><span class="go">→</span></a>`).join("")
+    ? t.done.map((x) => `<a class="today-act" href="#/aktivita/${x.id}"><span class="ico">✅</span><div><b>Dnes odtrénováno</b><div class="sub">${esc(x.name)}${x.load != null ? ` · zátěž ${num(x.load)}` : ""}</div></div><span class="go">→</span></a>`).join("")
     : t.name && !paused
       ? `<a class="today-act" href="#/trener"><span class="ico">${({ run: "🏃", xc_ski: XC_SVG, walk: "🚶" })[t.sport] || "🚴"}</span><div><b>${esc(t.name)}</b><div class="sub">${dur((t.durationMin || 0) * 60)}${t.targetText ? " · " + esc(t.targetText) : ""}</div></div><span class="go">→</span></a>`
       : `<div class="today-act"><span class="ico">🛋️</span><div><b>${paused ? "Plán stojí" : "Dnes volno"}</b>${tomorrowHtml(t)}</div></div>`;
   const dnes = true
     ? card(`c8 dnes ${tone}`, "", "", `<div class="dn-wrap">${r.score != null ? `<div class="dn-rings"><a class="dn-side" href="#/detail/bb">${gradRing(d.bb.latest ?? d.bb.min, "energy", { size: 84, stroke: 9, label: "Energie", home: true })}</a><a class="dn-ring" href="#/zotaveni">${recRing(r.score, 132, true)}</a><a class="dn-side" href="#/detail/spanek">${gradRing(d.sleep?.score ?? null, "sleep", { size: 84, stroke: 9, label: "Spánek", home: true })}</a></div>` : ""}<div class="dn-body">${paused ? `<div class="dn-top"><span class="badge">${(STATUS[d.status.kind]?.[0] || "") + " " + esc(d.status.label)}</span></div>` : ""}
       <div class="dn-head"><h2 class="dn-title"><span class="dn-dot ${paused ? "" : tone}" aria-hidden="true"></span>${esc(co.title)}</h2></div>${d.isToday ? `<div class="ainote" data-ainote="prehled"></div>` : ""}${d.isToday ? "" : `<p class="dn-text">${esc(co.text)}</p>`}
-      <div class="dn-grid"><div>${co.needs.length ? `<div class="sl">Co tělo potřebuje</div><ul class="needs">${co.needs.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}</div><div><div class="sl">${d.isToday ? "Trénink" : "Odjeto"}</div>${todayLine}${d.isToday && t.name && !t.done?.length && !paused ? `<p class="note">Zítra: ${esc(t.tomorrow)}</p>` : ""}</div></div></div></div>`)
+      <div class="dn-grid"><div>${co.needs.length ? `<div class="sl">Co tělo potřebuje</div><ul class="needs">${co.needs.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}</div><div><div class="sl">${d.isToday ? "Trénink" : "Odtrénováno"}</div>${todayLine}${d.isToday && t.name && !t.done?.length && !paused ? `<p class="note">Zítra: ${esc(t.tomorrow)}</p>` : ""}</div></div></div></div>`)
     : ""; // zpětný den: bez horní karty, aktivita je dole
 
   // 2) Spánek (Garmin): skóre, délka, fáze, potřeba
@@ -1117,10 +1117,10 @@ async function pageTrener(el) {
   const tmLine = ti ? `${ti.name ? esc(ti.name) : esc(ti.tag || "volno")}${ti.minutes ? ` · ${dur(ti.minutes * 60)}` : ""}${ti.rainProb != null && ti.rainProb > 40 ? ` · 🌧️ déšť ${num(ti.rainProb)} %` : ti.tmax != null ? ` · ${num(ti.tmax)}°` : ""}` : esc(String(r.tomorrow || "").replace(/^[^:]*:\s*/, ""));
   const doneActs = (t.done || []).filter((x) => x.id);
   const todayCard = `<section class="card tdark c12" data-tt="tyden"><span class="td-d">Dnes · ${dayDm(r.date)} · <span class="${tone}">${rec.emoji} ${esc(rec.stateLabel)}</span></span>
-    ${doneActs.length && !paused ? doneActs.map((x) => `<a class="td-h td-done" href="#/aktivita/${x.id}">✅ Odjeto: ${esc(x.name)} <span class="go">→</span></a>`).join("") : `<b class="td-h">${esc(paused ? `${d.status.label} – plán stojí` : skipped ? "Dnes volno (tvoje volba)" : t.decision)}${!paused && t.day && t.day.name && t.decision !== "Odjeto" ? ` · ${dur((t.day.durationMin || 0) * 60)}` : ""}</b>`}
+    ${doneActs.length && !paused ? doneActs.map((x) => `<a class="td-h td-done" href="#/aktivita/${x.id}">✅ Odtrénováno: ${esc(x.name)} <span class="go">→</span></a>`).join("") : `<b class="td-h">${esc(paused ? `${d.status.label} – plán stojí` : skipped ? "Dnes volno (tvoje volba)" : t.decision)}${!paused && t.day && t.day.name && t.decision !== "Odtrénováno" ? ` · ${dur((t.day.durationMin || 0) * 60)}` : ""}</b>`}
     <p class="td-p">${paused ? "Stav změníš na Přehledu." : skipped ? "Omylem? Vrať to tlačítkem." : doneActs.length ? doneActs.map((x) => `${x.load != null ? `zátěž <b>${num(x.load)}</b> <small class="u">${x.unit || ""}</small>` : ""}${x.compliance != null ? ` · splněno <b class="${x.compliance >= 80 && x.compliance <= 125 ? "good" : "warn"}">${x.compliance} %</b>` : ""}`).join("<br>") : esc(t.decisionWhy)}</p>
     <p class="td-tm"><b>Zítra:</b> ${tmLine}</p>
-    <div class="btns">${paused ? "" : skipped ? `<button class="btn pri" data-undo="${r.date}" data-kind="${skipped.kind}">↩️ Vrátit – dnes pojedu</button>` : t.decision === "Odjeto" || t.decision === "Volno" ? "" : `<button class="btn" data-skip="${r.date}">🚫 Dnes nepojedu</button>`}</div></section>`;
+    <div class="btns">${paused ? "" : skipped ? `<button class="btn pri" data-undo="${r.date}" data-kind="${skipped.kind}">↩️ Vrátit – dnes pojedu</button>` : t.decision === "Odtrénováno" || t.decision === "Volno" ? "" : `<button class="btn" data-skip="${r.date}">🚫 Dnes nepojedu</button>`}</div></section>`;
   // --- týden: 7 dní jako ikony (odjeto zeleně, dnes orámované) + pruh hotovo / plán / cíl ---
   const wk = d.weeks.weeks;
   const cur = wk.find((x) => x.current), next = wk.find((x) => x.future);
@@ -1210,7 +1210,7 @@ async function pageTrener(el) {
   const loadsCard = card("t-loads", "📈 Zátěž po týdnech", "TSS / HRSS", weekLoadsHtml(d.weeks), 'data-tt="proc"');
   const intens = card("t-int", "Průvodce intenzitou", "FTP", `<details><summary>Watty pro jednotlivé jednotky (FTP ${d.intensity.ftp} W)</summary><table class="t"><tr><th>Jednotka</th><th class="r">% FTP</th><th class="r">Watty</th></tr>${d.intensity.targets.map((x) => `<tr><td>${esc(x.name)}</td><td class="r">${x.pct[0]}–${x.pct[1]} %</td><td class="r">${x.w[0]}–${x.w[1]} W</td></tr>`).join("")}</table></details>`, 'data-tt="cil"');
   const TABS = [["tyden", "Týden"], ["proc", "Stav"], ["pocasi", "Počasí"], ["cil", "Cíl"]];
-  el.innerHTML = `<div class="head"><div><h1>Trenér</h1><div class="sub">cíl ${esc(d.goalLabel || "")} · zátěž týdne ${p.weeklyTarget.lo}–${p.weeklyTarget.hi}</div></div></div>
+  el.innerHTML = `<div class="head"><div><h1>Trenér</h1><div class="sub">cíl ${esc(d.goalLabel || "")}</div></div></div>
   <div class="ioseg ttabs" role="tablist">${TABS.map(([k, l]) => `<button type="button" role="tab" data-ttab="${k}" class="${tTab === k ? "on" : ""}" aria-selected="${tTab === k}">${l}</button>`).join("")}</div>
   <div class="grid tgrid">
     <div class="c7 col tcol">${todayCard}${weekCard}${planCard}</div>
@@ -2458,7 +2458,7 @@ async function pageKondice(el) {
    ${card("c12", "📅 Přehled zátěže · 4 týdny", "intervals.icu", loadOverviewHtml(d.loadDays))}
    ${card("c12", "⚡ Křivka výkonu", "intervals.icu", `<div id="pcurve" class="loading sm">Načítám křivku…</div><p class="note">Nejlepší průměrný výkon pro každou délku úsilí (1 s – 4 h). Najeď myší pro W a W/kg.</p>`)}
    ${ftpCard(d)}
-   ${card("c6", "✅ Splnění plánu", "plán vs. odjeto", `<div id="anComp" class="loading sm">Načítám…</div>`)}
+   ${card("c6", "✅ Splnění plánu", "plán vs. odtrénováno", `<div id="anComp" class="loading sm">Načítám…</div>`)}
    ${card("c6", "🎚️ Rozložení intenzity · 80/20", "tep v zónách", `<div id="anInt" class="loading sm">Načítám…</div>`)}
    ${card("c6", "🎯 Kondice k cíli", "CTL", `<div id="anCtl" class="loading sm">Načítám…</div>`)}
    ${card("c6", "💨 Efficiency Factor", "NP / tep", `<div id="anEf" class="loading sm">Načítám…</div>`)}

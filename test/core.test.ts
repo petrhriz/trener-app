@@ -332,11 +332,13 @@ describe("plán na 7 dní (6.1)", () => {
     expect(sun.kind).toBe("quality");
     expect(sun.note.toLowerCase()).toContain("přesunuto z st 4.11.");
   });
-  it("hokej: den po něm bez intervalů", () => {
+  it("hokej (hobby) není tvrdý den: den zůstane hokej a nic dalšího se kvůli němu nemění na volno", () => {
     const p = generatePlan(planInput({ constraints: [{ date: "2026-11-09", kind: "hokej", note: null }] }));
-    const after = p.days.find((d) => d.date === "2026-11-10")!;
-    expect(after.kind).not.toBe("quality");
     expect(p.days.find((d) => d.date === "2026-11-09")!.kind).toBe("hockey");
+    // ve 2 týdnech plánu je nejvýš 3 dní tréninku za sebou
+    let run = 0, max = 0;
+    for (const d of p.days) { run = d.kind === "rest" || d.kind === "blocked" ? 0 : run + 1; max = Math.max(max, run); }
+    expect(max).toBeLessThanOrEqual(3);
   });
   it("nemůžu: jednotka z kalendáře se navrhne smazat / přesunout", () => {
     const p = generatePlan(planInput({ calendar: [cal(5, "2026-11-10", "z2", "Z2 vytrvalost")], constraints: [{ date: "2026-11-10", kind: "nemuzu", note: null }] }));

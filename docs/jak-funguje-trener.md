@@ -69,9 +69,9 @@ kondice = klouzavý průměr zátěže za 42 dní, únava za 7 dní, forma = kon
 
 Soubor `src/core/plan.ts` (`generatePlan`).
 
-1. **Počet tréninků plán volí sám.** Základ jsou 3 (u Řízeného poklesu 2). Když se cíl zátěže nevejde ani do
-   nejdelších Z2, přidá další jízdu, raději o víkendu a v hezkém počasí. (Nastavení „tréninky týdně“ už není.)
-2. **Nejvýš dní tréninku za sebou:** Zlepšit / Závod 3, jinak 2. Když vznikne delší řada (třeba po přesunu kvůli
+1. **Počet tréninků plán volí sám.** Základ jsou 3 (u Řízeného poklesu 2). Když týden nedosáhne cíle zátěže
+   (ani když jsou jízdy už v kalendáři), přidá další jízdu, raději o víkendu a v hezkém počasí. (Nastavení „tréninky týdně“ už není.)
+2. **Nejvýš 3 dny tréninku za sebou** (pro všechny cíle). Když vznikne delší řada (třeba po přesunu kvůli
    počasí nebo z AI návrhu), plán z nejkratší Z2 v řadě udělá volno. Tvoje volby a vlastní jízdy nechá být.
 3. **Kvalita (intervaly):** březen–září až 2× týdně, jinak 1×. Nikdy dvě kvality po sobě.
    **Hokej se nepočítá jako tvrdý den** (hobby, hodina v klidu) – kvalita den po hokeji je v pořádku.
@@ -84,7 +84,7 @@ Soubor `src/core/plan.ts` (`generatePlan`).
 
 ### Kvalitní jednotka
 Soubor `src/core/qualityDesign.ts`. Žádná pevná knihovna:
-- **zaměření** podle dat a cíle. V zimě (říjen–únor) bez ostrých intervalů: Řízený pokles jen sweet spot,
+- **zaměření** podle dat a cíle. V zimě (říjen–únor) bez ostrých intervalů: Řízený pokles sweet spot nebo zmírněný práh (střídají se),
   Udržet sweet spot nebo práh, VO2max jen při Zlepšit / Závod. V sezóně VO2, práh, sweet spot i krátké VO2;
   ne stejné zaměření jako minule;
 - **dávka** podle toho, jak jsi zvládl poslední stejnou jednotku;

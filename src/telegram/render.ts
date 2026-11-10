@@ -95,11 +95,11 @@ export function readinessMessage(r: Readiness, base?: string): string {
   const rec = r.recovery;
   const L: string[] = [];
   L.push(`${rec.emoji} <b>${e(rec.stateLabel)}</b>`);
-  L.push(`Dnes: <b>${e(r.today.decision === "Odjeto" ? "odjeto" : r.today.day?.name ?? r.today.decision)}</b>`);
+  L.push(`Dnes: <b>${e(r.today.decision === "Odtrénováno" ? "odtrénováno" : r.today.day?.name ?? r.today.decision)}</b>`);
   L.push(`<i>${e(r.today.decisionWhy)}</i>`);
   if (r.missingData.length) L.push(`⚠️ Nemám ${r.missingData.join(", ")} – Garmin se asi ještě nesynchronizoval.`);
   const d = r.today.day;
-  if (d && d.name && r.today.decision !== "Odjeto" && r.today.decision !== "Volno") L.push("", ...unitLines(d));
+  if (d && d.name && r.today.decision !== "Odtrénováno" && r.today.decision !== "Volno") L.push("", ...unitLines(d));
 
   L.push("", "<b>Zotavení</b>");
   L.push(rec.hrv.today != null ? `VST ${num(rec.hrv.today)} ms · ${e(rec.hrv.rating ?? "–")} (norma ${e(rec.hrv.rangeText)})` : rec.hrv.status === "insufficient" ? `VST: málo dat (${rec.hrv.norm.n})` : "VST: nemám");
