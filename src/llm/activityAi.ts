@@ -1,6 +1,6 @@
 // AI zhodnocení aktivity: 2–3 věty místo opisu čísel (čísla jsou v buňkách nad tím).
 // Kontext = hotová čísla z analýzy (src/core/activity.ts). Číslo, které v kontextu není → odpověď se zahodí
-// a zůstane text z kódu (goal). Výsledek se ukládá do KV (aktivita se už nemění), takže AI běží 1× na aktivitu.
+// a zůstane text z kódu (goal). Výsledek se ukládá do KV natrvalo (aktivita se už nemění), takže AI běží 1× na aktivitu.
 import type { Env } from "../env";
 import type { ActivityAnalysis } from "../core/activity";
 import { llmAvailable, numbersOk, runChat, lastModel } from "./llm";
@@ -43,6 +43,6 @@ export async function activityComment(env: Env, rep: ActivityAnalysis, extra: Re
   const text = out.replace(/^\s*(zhodnocení|hodnocení)\s*:\s*/i, "").trim();
   if (!text || !numbersOk(text, ctx)) return null;
   const res: ActAi = { text, model: lastModel };
-  await env.KV.put(kvKey(rep.id), JSON.stringify(res), { expirationTtl: 60 * 86400 }).catch(() => {});
+  await env.KV.put(kvKey(rep.id), JSON.stringify(res)).catch(() => {}); // natrvalo – nové jen přes „napsat znovu“
   return res;
 }
