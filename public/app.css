@@ -1992,7 +1992,7 @@ html[data-rings="glow"] .dn-rings .gring::before { opacity: .85; }
 /* proužek 7 dní */
 .tstrip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; margin-bottom: 12px; }
 .tsd { display: flex; flex-direction: column; align-items: center; gap: 1px; border: 0; border-radius: 12px; padding: 6px 0 5px; background: var(--card2); color: var(--muted); font: inherit; font-size: 10.5px; cursor: default; }
-.tsd[data-open] { cursor: pointer; }
+.tsd[data-peek] { cursor: pointer; }
 .tsd i { font-style: normal; font-size: 17px; height: 22px; line-height: 22px; color: var(--fg); }
 .tsd i svg { width: 18px; height: 18px; vertical-align: middle; }
 .tsd b { font-size: 11.5px; color: var(--fg); }
@@ -2028,3 +2028,15 @@ html[data-rings="glow"] .dn-rings .gring::before { opacity: .85; }
 /* posledních 7 tréninků jako karta */
 .trecent2 > summary { cursor: pointer; font-size: 14px; }
 .trecent2 .tr-list { margin-top: 8px; }
+/* Trenér: náhled kroků po klepnutí na den v proužku (bez panelu úprav) */
+.tday .tpeek { display: none; padding: 2px 0 10px 0; }
+.tday.peek .tpeek { display: block; }
+.tday.peek { background: color-mix(in srgb, var(--acc) 7%, transparent); border-radius: 12px; }
+.tpeek .steps { margin: 4px 0 0; padding-left: 20px; font-size: 13px; display: flex; flex-direction: column; gap: 3px; }
+.tpeek .note { margin: 6px 0 0; }
+/* AI shrnutí uvnitř „Proto tento týden“; prázdný blok se neukazuje */
+.ainote:empty { display: none; }
+.twhy .ainote.inwhy { background: none; border: 0; border-top: 1px solid var(--line); border-radius: 0; padding: 8px 0 0; margin-top: 8px; font-size: 13.5px; }
+.tproj { margin: 6px 0 0; font-size: 13.5px; color: var(--muted); }
+.tproj b { color: var(--fg); }
+.t-goal .tproj { margin: 8px 0 4px; }

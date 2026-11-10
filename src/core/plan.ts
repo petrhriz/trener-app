@@ -277,12 +277,18 @@ export function generatePlan(inp: PlanInput): PlanResult {
   const rodeOn = (d: string) => (actsBy.get(d) ?? []).some((a) => ENDURANCE_SPORTS.includes(a.sport) && (a.moving_s ?? 0) >= 20 * 60);
   // volba uživatele pro den: sport (ride | run | xc_ski | walk) nebo „rest“ = volno
   const sportBy = new Map<string, PlanSport | "rest">();
-  for (const c of inp.constraints) if (c.kind === "sport" && c.note) sportBy.set(c.date, c.note as PlanSport | "rest");
+  // volby z AI návrhu týdne mají v poznámce předponu „ai:“ → jen doporučení (počasí a pravidla platí, nejsou „tvoje úprava“)
+  const isAi = (c: Constraint) => typeof c.note === "string" && c.note.startsWith("ai:");
+  const noteOf = (c: Constraint) => (typeof c.note === "string" ? c.note.replace(/^ai:/, "") : c.note);
+  const softDay = new Set<string>();
+  const hardDay = new Set<string>();
+  for (const c of inp.constraints) if (["sport", "typ", "delka", "jizda"].includes(c.kind)) (isAi(c) ? softDay : hardDay).add(c.date);
+  for (const c of inp.constraints) if (c.kind === "sport" && c.note) sportBy.set(c.date, noteOf(c) as PlanSport | "rest");
   const typeBy = new Map<string, "z2" | "quality">();
-  for (const c of inp.constraints) if (c.kind === "typ" && (c.note === "z2" || c.note === "quality")) typeBy.set(c.date, c.note);
+  for (const c of inp.constraints) { const n = noteOf(c); if (c.kind === "typ" && (n === "z2" || n === "quality")) typeBy.set(c.date, n); }
   // nejvýš dní tréninku za sebou: zlepšení / závod 3, jinak 2 (mimo sezónu a při poklesu víc volna)
   const maxRun = inp.goal === "zvyseni" || inp.goal === "zavod" ? 3 : 2;
-  const qualityOn = (d: string) => (actsBy.get(d) ?? []).some((a) => a.counts || a.sport === "hockey");
+  const qualityOn = (d: string) => (actsBy.get(d) ?? []).some((a) => a.counts);
   const todayDone = rodeOn(T);
   const warnings: string[] = [];
 
@@ -327,8 +333,10 @@ export function generatePlan(inp: PlanInput): PlanResult {
       changed: null,
       why: [],
       sport: pick && pick !== "rest" ? pick : ((cal?.sport as PlanSport) || "ride"),
-      userPick: !!pick && pick !== "rest",
+      userPick: !!pick && pick !== "rest" && !(softDay.has(d) && !hardDay.has(d)),
     };
+    const soft = softDay.has(d) && !hardDay.has(d);
+    (s as Slot & { soft?: boolean }).soft = soft;
     if (cons.some((c) => c.kind === "hokej")) {
       s.kind = "hockey";
       s.note.push("Hokej (tvoje poznámka).");
@@ -379,21 +387,21 @@ export function generatePlan(inp: PlanInput): PlanResult {
         s.why.push("volno (tvoje volba)");
       }
       s.kind = "rest";
-      s.userRest = true;
+      s.userRest = !soft;
       s.minutes = 0;
       s.fixedName = undefined;
       s.workout = undefined;
-      s.note.push("Volno (tvoje volba).");
+      s.note.push(soft ? "Volno (AI návrh)." : "Volno (tvoje volba).");
     } else if (free && pick && s.kind === "rest" && !s.own) {
       s.kind = "z2";
       s.minutes = 60;
       s.changed = "nová";
-      s.why.push(`${SPORT_LABEL[pick]} (tvoje volba)`);
+      s.why.push(`${SPORT_LABEL[pick]} (${soft ? "AI návrh" : "tvoje volba"})`);
     }
     // druh jednotky zvolený uživatelem: kvalita přesunutá na jiný den / „místo toho Z2“
     const ut = typeBy.get(d);
     if (free && ut && pick !== "rest" && !s.own) {
-      s.userType = ut;
+      if (!soft) s.userType = ut;
       if (ut === "z2" && s.kind === "quality") {
         s.kind = "z2";
         s.qualityType = null;
@@ -401,7 +409,7 @@ export function generatePlan(inp: PlanInput): PlanResult {
         s.workout = undefined;
         s.minutes = s.minutes || 60;
         s.changed = cal ? "upravit" : "nová";
-        s.why.push("místo kvality Z2 (tvoje volba)");
+        s.why.push(soft ? "místo kvality Z2 (AI návrh)" : "místo kvality Z2 (tvoje volba)");
       } else if (ut === "quality" && s.kind !== "quality") {
         s.changed = s.kind === "rest" ? "nová" : cal ? "upravit" : "nová";
         s.kind = "quality";
@@ -409,18 +417,18 @@ export function generatePlan(inp: PlanInput): PlanResult {
         s.fixedName = undefined;
         s.workout = undefined;
         s.minutes = 75;
-        s.why.push("kvalita přesunutá sem (tvoje volba)");
+        s.why.push(soft ? "kvalita (AI návrh)" : "kvalita přesunutá sem (tvoje volba)");
       }
     }
     // délka zadaná uživatelem (kratší / delší trénink)
     const dl = cons.find((c) => c.kind === "delka");
-    if (dl && Number(dl.note) >= 20 && !s.own && ["z2", "long", "quality", "recovery"].includes(s.kind as string)) {
-      s.userMin = Math.round(Number(dl.note));
+    if (dl && Number(noteOf(dl)) >= 20 && !s.own && ["z2", "long", "quality", "recovery"].includes(s.kind as string)) {
+      s.userMin = Math.round(Number(noteOf(dl)));
       s.minutes = s.userMin;
       s.fixedName = undefined;
       s.workout = undefined;
       s.changed = s.changed ?? (cal ? "upravit" : "nová");
-      s.why.push(`délka ${minHm(s.userMin)} (tvoje volba)`);
+      s.why.push(`délka ${minHm(s.userMin)} (${soft ? "AI návrh" : "tvoje volba"})`);
     }
     // běh bez pravidelného běhání: žádné intervaly (riziko zranění), jen Z2
     if (s.sport === "run" && s.kind === "quality" && !inp.runExperienced && s.userType !== "quality") {
@@ -462,12 +470,12 @@ export function generatePlan(inp: PlanInput): PlanResult {
   const prevDayHard = (d: string): boolean => {
     const p = addDays(d, -1);
     const sl = slots.find((x) => x.date === p);
-    if (sl) return sl.kind === "quality" || sl.kind === "hockey" || (sl.kind === "xc_ski" && false);
+    if (sl) return sl.kind === "quality";
     return qualityOn(p);
   };
   const nextDayHard = (d: string): boolean => {
     const sl = slots.find((x) => x.date === addDays(d, 1));
-    return !!sl && (sl.kind === "quality" || sl.kind === "hockey");
+    return !!sl && sl.kind === "quality";
   };
 
   const isTrain = (d: string): boolean => {
@@ -509,12 +517,12 @@ export function generatePlan(inp: PlanInput): PlanResult {
     const limit = qualityLimit(mon);
 
     // 1) kontrola kalendářních kvalit: limit, ne dvě po sobě, ne den po hokeji
-    let qCount = doneQuality + wSlots.filter((s) => s.kind === "hockey").length;
+    let qCount = doneQuality;
     for (const s of wSlots) {
       if (s.kind !== "quality") continue;
       if (s.userType === "quality") {
         qCount++;
-        if (prevDayHard(s.date)) s.note.push("Pozor: den po kvalitě nebo hokeji – tvoje volba, jeď podle pocitu.");
+        if (prevDayHard(s.date)) s.note.push("Pozor: den po kvalitě – tvoje volba, jeď podle pocitu.");
         continue;
       }
       if (qCount >= limit) {
@@ -528,7 +536,7 @@ export function generatePlan(inp: PlanInput): PlanResult {
         s.kind = "z2";
         s.qualityType = null;
         s.changed = s.changed ?? "upravit";
-        s.why.push("den po kvalitě nebo hokeji bez intervalů");
+        s.why.push("den po kvalitě bez intervalů");
         continue;
       }
       qCount++;
@@ -720,9 +728,7 @@ export function generatePlan(inp: PlanInput): PlanResult {
       }
     }
     const sessions = doneRides + wSlots.filter((s) => ["z2", "quality", "long", "recovery", "hockey", "xc_ski"].includes(s.kind as string)).length;
-    if (sessions > inp.ridesPerWeek + 1) warnings.push(`Týden od ${dayDm(mon)} má ${sessions} tréninků, nastaveno ${inp.ridesPerWeek} – zvaž volno (ikona 🛋️ u dne).`);
-    const longRun = wSlots.find((s) => isTrain(s.date) && streakIf(s.date) > maxRun);
-    if (longRun) warnings.push(`Kolem ${dayDm(longRun.date)} je ${streakIf(longRun.date)} dní tréninku za sebou – doporučuji max. ${maxRun}, pak volno.`);
+    if (sessions > inp.ridesPerWeek + 2) warnings.push(`Týden od ${dayDm(mon)} má ${sessions} tréninků – zvaž volno.`);
     qualityWeeks.push({ from: mon, to: sun, count: qCount, limit });
   }
 
@@ -751,9 +757,12 @@ export function generatePlan(inp: PlanInput): PlanResult {
     if (w && w.bad && !s.indoor) {
       // přesun Z2 na volný den téhož týdne s dobrým počasím
       const mon = mondayOf(s.date);
+      const srcKind = s.kind;
+      s.kind = "rest"; // jako by se z dne odjelo → počítat řadu dní bez něj
       const target = slots.find(
-        (x) => x.kind === "rest" && !x.cal && !x.userRest && x.date !== T && mondayOf(x.date) === mon && (() => { const ww = inp.weather.get(x.date); return ww && !ww.bad; })() && !prevDayHard(x.date) === true,
+        (x) => x.kind === "rest" && x !== s && !x.cal && !x.userRest && x.date !== T && mondayOf(x.date) === mon && (() => { const ww = inp.weather.get(x.date); return ww && !ww.bad; })() && !prevDayHard(x.date) && streakIf(x.date) <= maxRun,
       );
+      s.kind = srcKind;
       if (target && s.date !== T) {
         const origId = s.cal?.id ?? (s as any).moveId;
         Object.assign(target, { kind: s.kind, minutes: s.minutes, indoor: false, qualityType: null, fixedName: s.fixedName, workout: s.workout, movedFrom: s.movedFrom ?? s.date, changed: origId ? "přesunout" : "nová" });
@@ -769,7 +778,7 @@ export function generatePlan(inp: PlanInput): PlanResult {
         continue;
       }
       s.indoor = true;
-      s.minutes = Math.max(45, Math.round((s.minutes * 2) / 3 / 5) * 5);
+      s.minutes = Math.max(45, Math.round((s.minutes * 2) / 3 / 15) * 15);
       if (s.kind === "long") s.kind = "z2";
       s.changed = s.changed ?? (s.cal ? "upravit" : "nová");
       s.why.push(`${weatherWhy(w)} → trenažér 2/3 délky`);
@@ -796,6 +805,41 @@ export function generatePlan(inp: PlanInput): PlanResult {
       todaySlot.why.push("🟡 částečně zotavený: zkráceno o třetinu");
     }
     if (todaySlot.changed === "upravit") todaySlot.fixedName = undefined;
+  }
+
+  // řada dní tréninku za sebou: když je delší, než cíl dovoluje, udělat volno z nejkratší Z2, která není
+  // tvoje volba (AI doporučení, doplněná jízda, kalendář); tvoje volby, vlastní jízdu a dnešek nechat
+  for (let guard = 0; guard < 6; guard++) {
+    const bad = slots.find((sl) => isTrain(sl.date) && streakIf(sl.date) > maxRun);
+    if (!bad) break;
+    let a0 = bad.date, b0 = bad.date;
+    while (isTrain(addDays(a0, -1))) a0 = addDays(a0, -1);
+    while (isTrain(addDays(b0, 1))) b0 = addDays(b0, 1);
+    const cand = slots
+      .filter((x) => x.date >= a0 && x.date <= b0 && x.date !== T && ["z2", "recovery", "long"].includes(x.kind as string) && !x.userPick && !x.own && !x.userType && (!x.userMin || (x as Slot & { soft?: boolean }).soft))
+      .sort((x, y) => (x.minutes || 0) - (y.minutes || 0));
+    const c0 = cand[0];
+    if (!c0) break;
+    c0.kind = "rest";
+    c0.minutes = 0;
+    c0.changed = c0.cal ? "smazat" : null;
+    c0.fixedName = undefined;
+    c0.workout = undefined;
+    c0.why = [`volno – víc než ${maxRun} dny tréninku za sebou`];
+  }
+  // řada dní tréninku za sebou – kontrola po všech úpravách (jedno varování na řadu)
+  {
+    let lastEnd = "";
+    for (const sl of slots) {
+      if (sl.date <= lastEnd || !isTrain(sl.date)) continue;
+      const n = streakIf(sl.date);
+      if (n > maxRun) {
+        warnings.push(`Kolem ${dayDm(sl.date)} je ${n} dní tréninku za sebou – doporučuji max. ${maxRun}, pak volno.`);
+        let e = sl.date;
+        while (isTrain(addDays(e, 1))) e = addDays(e, 1);
+        lastEnd = e;
+      }
+    }
   }
 
   // ---- stavba workoutů, názvy, zátěž ----
@@ -985,7 +1029,7 @@ export function generatePlan(inp: PlanInput): PlanResult {
       sport: s.sport,
       userRest: !!s.userRest,
       own: s.own ?? null,
-      mine: !!(s.userPick || s.userType || s.userMin || s.own || s.userRest),
+      mine: hardDay.has(s.date) || !!s.own,
     };
   });
 

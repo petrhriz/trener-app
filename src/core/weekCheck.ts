@@ -19,7 +19,8 @@ export interface Violation {
 }
 
 const isTrain = (d: PlanDay) => ["z2", "long", "quality", "recovery", "hockey", "xc_ski"].includes(d.kind as string);
-const isHard = (d: PlanDay) => d.kind === "quality" || d.kind === "hockey";
+// hokej je hobby (hodina v klidu) – tvrdý den je jen kvalita
+const isHard = (d: PlanDay) => d.kind === "quality";
 
 export function checkWeek(days: PlanDay[], r: WeekRules): Violation[] {
   const out: Violation[] = [];

@@ -166,7 +166,7 @@ const WEEK_SYSTEM = `Jsi cyklistický trenér. Navrhni plán na zadané dny. Odp
 {"summary":"1–2 české věty, proč je týden takový (tykej)","days":[{"date":"YYYY-MM-DD","type":"rest|z2|long|quality|recovery","sport":"ride|run|xc_ski|walk","min":90}]}
 Pravidla: uveď každý NEZAMČENÝ den právě jednou; zamčené dny vynech. Součet zátěže drž v cílovém pásmu
 (orientačně Z2 ≈ 45–55 zátěže za hodinu, kvalita ≈ 70 za 75 min, dlouhá Z2 o víkendu). Kvalita jen tolikrát, kolik je povoleno,
-nikdy dva tvrdé dny po sobě (kvalita, hokej) a ne den po tvrdém dni. Nepřekroč max. dní tréninku za sebou.
+nikdy dvě kvality po sobě (hokej je jen hobby, nevadí). Nepřekroč max. dní tréninku za sebou.
 Při špatném počasí dej kvalitu na trenažér (sport ride) nebo jiný den. Pokyn uživatele má přednost.`;
 
 function aiToCons(ai: AiDay[], days: Day[], locked: (d: Day) => boolean): Con[] {
@@ -188,7 +188,9 @@ function aiToCons(ai: AiDay[], days: Day[], locked: (d: Day) => boolean): Con[] 
 /** existující omezení + návrh (u dnů z návrhu nahradí moje volby sportu / druhu / délky) */
 function mergeCons(existing: Con[], add: Con[]): Con[] {
   const touched = new Set(add.map((c) => c.date));
-  return [...existing.filter((c) => !(touched.has(c.date) && ["sport", "typ", "delka"].includes(c.kind))), ...add];
+  // návrh AI se ukládá s předponou „ai:“ → plán ho bere jako doporučení, ne jako tvoji volbu
+  const tag = (c: Con): Con => ({ ...c, note: c.note && !String(c.note).startsWith("ai:") ? `ai:${c.note}` : c.note });
+  return [...existing.filter((c) => !(touched.has(c.date) && ["sport", "typ", "delka"].includes(c.kind))), ...add.map(tag)];
 }
 
 coachApi.post("/coach/ai-week", async (c) => {
@@ -202,7 +204,7 @@ coachApi.post("/coach/ai-week", async (c) => {
     target: base.weeklyTarget,
     qualityLimit: qualityLimit(days[0]!.date),
     maxRun: goalUp ? 3 : 2,
-    hardBefore: ctx.acts.some((a) => a.date === addDays(days[0]!.date, -1) && (a.is_quality || a.sport === "hockey")),
+    hardBefore: ctx.acts.some((a) => a.date === addDays(days[0]!.date, -1) && a.is_quality),
   };
   const careful = /(nemoc|nemocn|nachlaz|chřip|chrip|unaven|opatrn|lehce|lehčí|lehci|odpočin|odpocin|bolí|boli)/i.test(String(text ?? ""));
   if (careful) {
@@ -250,7 +252,7 @@ POKYN UŽIVATELE: ${String(text ?? "").slice(0, 400) || "žádný"}`;
     let qSeen = 0;
     pd().forEach((d, i) => {
       if (d.kind !== "quality") return;
-      const prevHard = i === 0 ? rules.hardBefore : pd()[i - 1]!.kind === "quality" || pd()[i - 1]!.kind === "hockey";
+      const prevHard = i === 0 ? rules.hardBefore : pd()[i - 1]!.kind === "quality";
       if (++qSeen > rules.qualityLimit || prevHard) { setCon(d.date, "typ", "z2"); fixed.push(`${dayDm(d.date)} kvalita → Z2`); }
     });
     for (const v of viol.filter((x) => x.code === "streak" && x.date)) {
@@ -275,8 +277,8 @@ POKYN UŽIVATELE: ${String(text ?? "").slice(0, 400) || "žádný"}`;
   if (dry) return c.json({ ok: true, dry: true, ai: lastAi, cons, reply: summary, attempts: tries, fixed, remaining: viol.map((v) => v.msg), load: Math.round(planned.days.reduce((t, d) => t + d.load, 0)), target: rules.target, days: planned.days.map((d) => `${d.date.slice(5)} ${d.kind} ${d.sport} ${d.durationMin ?? ""} L${d.load}`) });
   // zapsat úpravy (dny z návrhu: nejdřív smazat moje volby, pak nové)
   for (const date of [...new Set(cons.map((x) => x.date))]) {
-    await run(c.env.DB, `DELETE FROM constraints WHERE date = ? AND kind IN ('typ', 'delka')`, date);
-    for (const x of cons.filter((y) => y.date === date)) await addConstraint(c.env, date, x.kind, x.note);
+    await run(c.env.DB, `DELETE FROM constraints WHERE date = ? AND kind IN ('sport', 'typ', 'delka')`, date);
+    for (const x of cons.filter((y) => y.date === date)) await run(c.env.DB, "INSERT INTO constraints (date, kind, note, created_at) VALUES (?, ?, ?, ?)", date, x.kind, x.note == null ? null : String(x.note).startsWith("ai:") ? x.note : `ai:${x.note}`, new Date().toISOString());
   }
   const after = await proposalAfter(c.env);
   const load = planned.days.reduce((t, d) => t + d.load, 0);

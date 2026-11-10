@@ -220,7 +220,8 @@ export async function planFor(ctx: Ctx, rec?: RecoveryResult): Promise<PlanResul
     ftp,
     hr: ctx.s.hr_zones,
     goal: ctx.s.goal,
-    ridesPerWeek: ctx.s.rides_per_week,
+    // počet tréninků je automatický: základ podle cíle, další jízdy plán přidá, když se zátěž týdne nevejde
+    ridesPerWeek: ctx.s.goal === "pokles" ? 2 : 3,
     startYesterday: y ? { ctl: y.ctl, atl: y.atl } : { ctl: 0, atl: 0 },
     startToday: t ? { ctl: t.ctl, atl: t.atl } : null,
     acts,
