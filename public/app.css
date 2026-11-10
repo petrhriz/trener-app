@@ -1858,3 +1858,5 @@ html[data-theme="dark"][data-rings="glow"] .dn-rings .gring::before {
   background: radial-gradient(closest-side, transparent 0%, transparent 30%, color-mix(in srgb, var(--gc2) 24%, transparent) 46%, color-mix(in srgb, var(--gc2) 30%, transparent) 54%, color-mix(in srgb, var(--gc2) 11%, transparent) 70%, transparent 88%) !important; }
 /* „%“ jako v Bevelu: stejná barva jako číslo, zhruba 0,6 jeho velikosti, těsně za ním → „71%“ působí opticky uprostřed */
 .gr-p { font-size: 18px !important; font-weight: 700 !important; fill: var(--fg) !important; fill-opacity: 1 !important; }
+/* Záře v3.1: o kousek slabší */
+html[data-rings="glow"] .dn-rings .gring::before { opacity: .85; }
