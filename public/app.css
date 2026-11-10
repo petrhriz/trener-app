@@ -1894,3 +1894,21 @@ html[data-rings="glow"] .dn-rings .gring::before { opacity: .85; }
 .sh-theme { grid-column: 1 / -1; display: flex; gap: 4px; padding: 4px; margin-top: 4px; border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent); padding-top: 8px; }
 .sh-theme button { flex: 1; border: 0; background: transparent; color: var(--fg); font: inherit; font-size: 13px; font-weight: 650; padding: 8px 6px; border-radius: 10px; cursor: pointer; }
 .sh-theme button.on { background: color-mix(in srgb, var(--acc) 14%, transparent); color: var(--acc); }
+/* Přehled: 6 stejných dlaždic (Energie, VST, tep, stres, forma, kroky) */
+.mtiles.ptiles { grid-template-columns: repeat(6, minmax(0, 1fr)) !important; }
+@media (max-width: 1400px) { .mtiles.ptiles { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; } }
+@media (max-width: 760px) { .mtiles.ptiles { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; } }
+.mtiles.ptiles > * { grid-column: auto !important; }
+.emini { position: relative; height: 12px; border-radius: 99px; background: var(--card2); overflow: hidden; width: 100%; }
+.emini i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 99px; }
+.emini .em-max { opacity: .28; }
+.mtile .fscale { width: 100%; }
+/* spánek na Přehledu: hodnocení se stejnou mezerou nad i pod */
+.sleepmini .sm-r { gap: 4px; }
+.sleepmini .sm-r .chipt { margin-top: 10px; }
+.sleepmini .sm-st { margin-top: 18px; }
+/* buňky aktivity: obsah svisle na střed – buňky bez drobného řádku nepůsobí prázdně */
+.abasics > div { justify-content: center !important; }
+/* AI shrnutí sbalené */
+.ainote.folded { background: transparent; padding: 2px 0; }
+.ainote.big.folded { border: 0; }

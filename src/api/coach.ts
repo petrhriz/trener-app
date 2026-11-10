@@ -10,7 +10,7 @@ import { addDays } from "../lib/time";
 import { ownRideNote, readOwnRide } from "../core/ownRide";
 import { all, run } from "../lib/db";
 import { dayDm } from "../lib/format";
-import { runLlm } from "../llm/llm";
+import { getLastModel, runLlm } from "../llm/llm";
 import { addConstraint, saveProposal } from "../plan/proposals";
 import { planFor, recoveryFor } from "../report/build";
 import { loadCtx } from "../report/context";
@@ -280,5 +280,5 @@ POKYN UŽIVATELE: ${String(text ?? "").slice(0, 400) || "žádný"}`;
   }
   const after = await proposalAfter(c.env);
   const load = planned.days.reduce((t, d) => t + d.load, 0);
-  return c.json({ ok: true, reply: summary || "Týden navržen.", load: Math.round(load), target: rules.target, attempts: tries, fixed, remaining: viol.map((v) => v.msg), ...after });
+  return c.json({ ok: true, reply: summary || "Týden navržen.", load: Math.round(load), target: rules.target, attempts: tries, model: getLastModel(), fixed, remaining: viol.map((v) => v.msg), ...after });
 });

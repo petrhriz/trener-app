@@ -157,7 +157,16 @@ export async function aiContext(env: Env, ctx: Awaited<ReturnType<typeof loadCtx
     klidovy_tep: r.recovery.rhr.today,
     spanek: tw ? { delka_h: tw.sleep_s ? Math.round((tw.sleep_s / 3600) * 10) / 10 : null, skore: tw.sleep_score, hluboky_min: tw.deep_s ? Math.round(tw.deep_s / 60) : null, rem_min: tw.rem_s ? Math.round(tw.rem_s / 60) : null, potreba_dnes_min: tw.next_sleep_need_min } : null,
     body_battery: { rano: tw?.bb_max ?? null, ted: tw?.bb_latest ?? null },
-    stres_dne: tw?.stress_avg ?? null,
+    // stres: průměr dne z Garminu (0–100) + tvoje norma 30 dní a slovní hodnocení – AI nesmí sama soudit „vysoký“
+    stres_dne: (() => {
+      const v = tw?.stress_avg ?? null;
+      const xs = ctx.well.filter((w) => w.date < ctx.T && w.date >= addDays(ctx.T, -30) && w.stress_avg != null).map((w) => w.stress_avg!);
+      const m = xs.length ? xs.reduce((t, x) => t + x, 0) / xs.length : null;
+      const sd = xs.length > 2 && m != null ? Math.sqrt(xs.reduce((t, x) => t + (x - m) ** 2, 0) / xs.length) : null;
+      const word = v == null ? null : v < 26 ? "klid" : v < 51 ? "nízký" : v < 76 ? "střední" : "vysoký";
+      const vsNorm = v == null || m == null || sd == null ? null : Math.abs(v - m) <= Math.max(sd, 3) ? "v normě" : v > m ? "nad normou" : "pod normou";
+      return { prumer_dne: v, stupnice_garmin: "0–25 klid, 26–50 nízký, 51–75 střední, 76–100 vysoký", hodnoceni: word, norma_30_dni: m != null ? Math.round(m) : null, proti_norme: vsNorm };
+    })(),
     kroky: tw?.steps ?? null,
     kondice: { ctl: r.fitness.ctl, atl: r.fitness.atl, forma: r.fitness.form, zatez_7_dni: r.fitness.load7 },
     dnesni_rozhodnuti: `${r.today.decision}: ${r.today.decisionWhy}`,

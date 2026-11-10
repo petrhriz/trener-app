@@ -858,6 +858,12 @@ function sleepRing(sp, size = 112) {
     ${sp?.garminScore != null ? `<text x="60" y="82" text-anchor="middle" class="rr-l">Garmin ${Math.round(sp.garminScore)}</text>` : ""}</svg>`;
 }
 /** Baterie energie: plná výplň = teď, světlá = maximum dne (co se od něj vybilo), číslo uprostřed. */
+/** malá energie do dlaždice: pruh v barvě úrovně, světlá část = maximum dne */
+function energyMini(now, max) {
+  if (now == null) return "";
+  const c = bbColor(now);
+  return `<div class="emini"><i class="em-max" style="width:${clamp(max ?? now, 0, 100)}%;background:${c}"></i><i class="em-now" style="width:${clamp(now, 0, 100)}%;background:${c}"></i></div>`;
+}
 function batteryBar(now, max) {
   // styl B2: tmavý obrys, prázdná část s čárkami, světlá výplň = maximum dne, plná = teď, číslo uprostřed
   const n = now == null ? null : clamp(Math.round(now), 0, 100), m = max == null ? n : clamp(Math.round(max), n ?? 0, 100);
@@ -957,11 +963,12 @@ async function pagePrehled(el) {
   // energie (náhrada Body Battery): plná výplň = teď, světlá = maximum dne
   const bbN = bb.latest ?? bb.min, bbM = bb.max;
   const bbT = bbN == null ? "" : bbN >= 50 ? "good" : bbN >= 25 ? "warn" : "bad";
-  const tiles = `<div class="mtiles five c12">
-    <a class="mtile etile ${bbT}" href="#/detail/bb"><div class="mt-h"><span>🔋 Energie</span></div>${batteryBar(bbN, bbM)}<div class="mt-f">${bbM != null && bbN != null ? `max dne ${num(bbM)} · vybito ${num(Math.max(0, bbM - bbN))}` : ""}</div></a>
+  const tiles = `<div class="mtiles five ptiles c12">
+    ${metricTile({ label: "🔋 Energie", value: bbN != null ? num(bbN) : DASH, unit: bbN != null ? "%" : "", state: bbN == null ? "" : bbN >= 50 ? "dost" : bbN >= 25 ? "středně" : "málo", tone: bbT, spark: energyMini(bbN, bbM), href: "#/detail/bb", foot: bbM != null && bbN != null ? `max ${num(bbM)} · vybito ${num(Math.max(0, bbM - bbN))}` : "" })}
     ${metricTile({ label: "🫀 VST", value: num(hv.today), unit: "ms", state: hvS, tone: hvT, spark: sparkRolling(hv.series.map((x) => x.v), stateColor(hv.today, hv.norm), 56), href: "#/detail/vst", foot: hv.norm ? `norma ${num(hv.norm.mean - hv.norm.sd)}–${num(hv.norm.mean + hv.norm.sd)}` : "" })}
     ${metricTile({ label: "❤️ Klidový tep", value: num(rh.today), unit: "bpm", state: rhS, tone: rhT, spark: sparkRolling(rh.series.map((x) => x.v), stateColor(rh.today, rh.norm, true), 56), href: "#/detail/tep", foot: rh.norm ? `norma ${num(rh.norm.mean)} ± ${num(rh.norm.sd, 1)}` : "" })}
     ${metricTile({ label: "😮‍💨 Stres", value: num(st.avg), state: stS, tone: stT, spark: sparkRolling(st.series.map((x) => x.v), stateColor(st.avg, st.norm, true), 56), href: "#/detail/stres", foot: st.max != null ? `max ${num(st.max)}` : "" })}
+    ${metricTile({ label: "📈 Forma", value: sn.form != null ? signed(sn.form, 0) : DASH, state: sn.form != null ? formZoneName(sn.form) : "", tone: sn.form == null ? "" : sn.form < -30 ? "bad" : sn.form < -20 || sn.form > 20 ? "warn" : "good", spark: formScale(sn.form), href: "#/kondice", foot: sn.ctl != null ? `kondice ${num(sn.ctl)} · únava ${num(sn.atl)}` : "" })}
     ${metricTile({ label: "👣 Kroky", value: thou(stp.today), state: stp.today != null ? `${num(Math.min(100, (stp.today / stp.goal) * 100))} %` : "", tone: (stp.today ?? 0) >= stp.goal ? "good" : "", spark: `<div class="prog"><i style="width:${clamp(((stp.today || 0) / stp.goal) * 100, 0, 100)}%"></i></div>`, href: "#/chuze", foot: `cíl ${thou(stp.goal)}${stp.floors != null ? ` · ${num(stp.floors)} pater` : ""}` })}
   </div>`;
 
@@ -1235,7 +1242,7 @@ async function pageTrener(el) {
     try {
       const res = await api("coach/ai-week", { method: "POST", body: JSON.stringify({ text: t }) });
       hist.push({ role: "user", text: `🤖 AI návrh týdne${t ? `: ${t}` : ""}` });
-      hist.push({ role: "assistant", text: res.ok ? `${res.reply} (zátěž ${res.load}, cíl ${res.target.lo}–${res.target.hi})` : res.reply, applied: [...(res.fixed || []).map((x) => `opraveno: ${x}`), ...(res.remaining || []).map((x) => `⚠️ ${x}`)] });
+      hist.push({ role: "assistant", text: res.ok ? `${res.reply} (zátěž ${res.load}, cíl ${res.target.lo}–${res.target.hi}${res.model ? ` · navrhl ${String(res.model).replace(/^[a-z]+:/, "").split("/").pop()}` : ""}${res.attempts > 1 ? `, ${res.attempts}. pokus` : ""})` : res.reply, applied: [...(res.fixed || []).map((x) => `opraveno: ${x}`), ...(res.remaining || []).map((x) => `⚠️ ${x}`)] });
       try { localStorage.setItem(COACH_KEY, JSON.stringify(hist.slice(-20))); } catch {}
     } catch (err) { alert(err.message); }
     keepScroll();
@@ -3166,17 +3173,26 @@ new MutationObserver(() => { if (foldQ) return; foldQ = true; requestAnimationFr
 /** AI shrnutí na stránce (Přehled, Trenér, Zotavení) – načte se dodatečně, bez AI se blok skryje */
 function loadAiNotes(root) {
   root.querySelectorAll("[data-ainote]").forEach((box) => {
-    const page = box.dataset.ainote;
-    const load = (force) => {
-      box.classList.add("busy"); box.innerHTML = `<span class="an-t">🤖 píšu shrnutí…</span>`;
-      api(`ai-note?page=${page}${force ? "&force=1" : ""}`).then((r) => {
-        box.classList.remove("busy");
-        if (!r || !r.text) { box.remove(); return; }
-        box.innerHTML = `<span class="an-t">🤖 ${esc(r.text)}</span><small class="an-m">${r.model ? esc(String(r.model).replace(/^[a-z]+:/, "").split("/").pop()) + " · " : ""}<button type="button" class="linkbtn">napsat znovu</button></small>`;
-        box.querySelector("button").addEventListener("click", () => load(true));
-      }).catch(() => box.remove());
+    const page = box.dataset.ainote, hk = `aiNoteHide:${page}`;
+    let hidden = false; try { hidden = localStorage.getItem(hk) === "1"; } catch {}
+    let last = null; // poslední úspěšný text – při chybě „napsat znovu“ zůstane
+    const draw = (r, msg) => {
+      if (hidden) { box.className = box.className.replace(" busy", "") + (box.classList.contains("folded") ? "" : " folded"); box.innerHTML = `<button type="button" class="linkbtn an-show">🤖 Zobrazit AI shrnutí</button>`; box.querySelector("button").onclick = () => { hidden = false; try { localStorage.removeItem(hk); } catch {} box.classList.remove("folded"); if (last) draw(last); else load(false); }; return; }
+      if (!r) { box.innerHTML = `<span class="an-t">🤖 ${msg || "píšu shrnutí…"}</span>`; return; }
+      box.innerHTML = `<span class="an-t">🤖 ${esc(r.text)}</span><small class="an-m">${r.model ? esc(String(r.model).replace(/^[a-z]+:/, "").split("/").pop()) + " · " : ""}<button type="button" class="linkbtn" data-re>napsat znovu</button> · <button type="button" class="linkbtn" data-hide>skrýt</button>${msg ? ` · ${esc(msg)}` : ""}</small>`;
+      box.querySelector("[data-re]").onclick = () => load(true);
+      box.querySelector("[data-hide]").onclick = () => { hidden = true; try { localStorage.setItem(hk, "1"); } catch {} draw(last); };
     };
-    load(false);
+    const load = (force) => {
+      if (last) draw(last, "píšu znovu…"); else draw(null);
+      api(`ai-note?page=${page}${force ? "&force=1" : ""}`).then((r) => {
+        if (r && r.text) { last = r; draw(r); }
+        else if (last) draw(last, "AI teď neodpověděla, zkus to později");
+        else box.remove();
+      }).catch(() => { if (last) draw(last, "AI teď neodpověděla"); else box.remove(); });
+    };
+    if (hidden) draw(null); // sbalené: nic nenačítat, dokud si to neotevřeš
+    else load(false);
   });
 }
 async function route() {
