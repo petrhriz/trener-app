@@ -27,6 +27,9 @@ import { compliance, ctlPlan, efficiency, intensityVerdict, intensityWeeks, mono
 import { recomputeLoads } from "../sync/metrics";
 import { recomputeSleep } from "../sync/sleep";
 import { geocode } from "../sync/weather";
+import { syncTick } from "../sync/sync";
+import { listModels, modelChain } from "../llm/providers";
+import { runChat } from "../llm/llm";
 import { verifyAccess } from "./access";
 import { accountsApi } from "./accounts";
 import { coachApi } from "./coach";
@@ -63,6 +66,28 @@ api.route("/", coachApi);
 api.route("/gear", gearApi);
 api.route("/", round6);
 
+/** AI: dostupné modely (Gemma z Google AI Studia, Nemotron z NVIDIE, Workers AI) a pořadí, ve kterém se zkouší. */
+api.get("/llm-models", async (c) => {
+  const [google, nvidia, chain] = await Promise.all([listModels(c.env, "google").catch(() => []), listModels(c.env, "nvidia").catch(() => []), modelChain(c.env)]);
+  return c.json({ google, nvidia, workers: c.env.AI ? [c.env.LLM_MODEL || "@cf/mistralai/mistral-small-3.1-24b-instruct"] : [], chain: chain.map((x) => `${x.p}:${x.model}`), keys: { google: !!c.env.GEMINI_API_KEY, nvidia: !!c.env.NVIDIA_API_KEY } });
+});
+/** AI: krátký test (který model odpověděl a za jak dlouho). */
+api.post("/llm-test", async (c) => {
+  const t0 = Date.now();
+  const out = await runChat(c.env, [{ role: "system", content: "Jsi trenér cyklistiky. Odpovídej česky, jednou větou." }, { role: "user", content: "Co je Z2 trénink?" }], 120);
+  const m = (await import("../llm/llm")).lastModel;
+  return c.json({ ok: !!out, answer: out, model: m, ms: Date.now() - t0 });
+});
+
+/** Ruční synchronizace z dashboardu (tlačítko ⟳): stáhne nové aktivity, spánek, HRV a přepočte metriky. Max. 1× za 20 s. */
+api.post("/sync-now", async (c) => {
+  const last = (await getState<number>(c.env.DB, "manual_sync_at")) ?? 0;
+  if (Date.now() - last < 20_000) return c.json({ ok: true, skipped: true, steps: [], errors: [], newActivities: [] });
+  await setState(c.env.DB, "manual_sync_at", Date.now());
+  const rep = await syncTick(c.env, { manual: true });
+  return c.json({ ok: rep.errors.length === 0, ...rep });
+});
+
 /** Přehled: zdraví dnes (Body Battery, spánek, HRV, tep, stres, kroky, zátěž), dnešní trénink, poslední aktivita, počasí 7 dní. */
 api.get("/overview", async (c) => {
   const ctx0 = await loadCtx(c.env);
@@ -79,7 +104,10 @@ api.get("/overview", async (c) => {
   const hist = ctx.well.filter((w) => w.date >= addDays(D, -60) && w.date < D);
   const nm = (k: "hrv" | "rhr" | "stress_avg" | "steps" | "bb_max" | "sleep_resp") => {
     const x = norm(hist.map((w) => w[k]));
-    return x.n ? { mean: Math.round(x.mean * 10) / 10, sd: Math.round(x.sd * 10) / 10 } : null;
+    if (!x.n) return null;
+    // dech: Garmin posílá celé dechy (11, 12) → tolerance zaokrouhlení ±0,5 a SD aspoň 0,6
+    if (k === "sleep_resp") return { mean: Math.round(x.mean * 10) / 10, sd: Math.round(Math.max(x.sd, 0.6) * 10) / 10, q: 1 };
+    return { mean: Math.round(x.mean * 10) / 10, sd: Math.round(x.sd * 10) / 10 };
   };
   const sleep = sleepReport(tw as any, ctx.well.filter((w) => w.date <= D) as any);
   const lastAct = [...ctx.acts].reverse().find((a) => a.date <= D && (a.sport !== "other" || (a.moving_s ?? 0) > 600)) ?? null;
@@ -301,8 +329,29 @@ api.get("/coach", async (c) => {
   const pz = powerZones(ftp, ctx.s.power_zones_pct);
   const open = await openProposal(c.env);
   const insights = await analyticsOf(c.env, ctx).then(insightsOf).catch(() => []);
+  // posledních 7 tréninkových dnů (14 dní zpět): plán vs. skutečnost
+  const recent: any[] = [];
+  for (let k = 1; k <= 14 && recent.length < 7; k++) {
+    const D = addDays(T, -k);
+    const plan = ctx.calendar.find((x) => x.date === D && x.kind !== "rest" && x.status !== "skipped" && x.name) ?? null;
+    const acts = ctx.acts.filter((a) => a.date === D && ((a.load ?? 0) >= 5 || (a.moving_s ?? 0) >= 900));
+    const skipped = ctx.calendar.find((x) => x.date === D && x.status === "skipped") ?? null;
+    if (!plan && !acts.length && !skipped) continue;
+    const load = Math.round(acts.reduce((t, a) => t + (a.load ?? 0), 0));
+    const comp = acts.map((a) => (a as any).icu_compliance).find((v) => v != null) ?? null;
+    const ratio = plan?.target_load ? load / plan.target_load : null;
+    const status = !plan ? (acts.length ? "extra" : "skipped")
+      : !acts.length ? "missed"
+      : (comp != null ? comp >= 80 : ratio == null || (ratio >= 0.8 && ratio <= 1.25)) ? "done" : "partial";
+    recent.push({
+      date: D, status, compliance: comp != null ? Math.round(comp) : null, load,
+      plan: plan ? { name: plan.name, min: plan.duration_min, load: plan.target_load, kind: plan.kind } : skipped ? { name: skipped.name, min: skipped.duration_min, load: skipped.target_load, kind: skipped.kind } : null,
+      acts: acts.map((a) => ({ id: a.id, name: a.name, sport: a.sport, moving_s: a.moving_s, load: Math.round(a.load ?? 0) })),
+    });
+  }
   return c.json({
     insights,
+    recent,
     readiness: r,
     floor: [
       { label: "Dlouhá jízda o víkendu (≥ 1:30)", done: longRide, planned: longPlanned },
@@ -678,7 +727,7 @@ api.get("/activity/:id", async (c) => {
   }
   return c.json({
     ...rep, company, id: a.id, sport: a.sport, hasStreams: (a.moving_s ?? 0) > 60, strain: a.icu_strain, calories: a.calories, drift: a.drift, icuDecoupling: raw?.icu_decoupling ?? null, z2Power,
-    extra, aerobicTe: (a as any).aerobic_te ?? null, avgCad: a.avg_cad, minTemp: a.min_temp, maxTemp: a.max_temp, elevGain: a.elev_gain, distance: a.distance_m, moving: a.moving_s,
+    extra, aerobicTe: (a as any).aerobic_te ?? null, avgPower: a.avg_power ?? null, np: a.np ?? null, avgCad: a.avg_cad, minTemp: a.min_temp, maxTemp: a.max_temp, elevGain: a.elev_gain, distance: a.distance_m, moving: a.moving_s,
     gear: { id: gearId, manual: links.has(a.id), list: gear.filter((g) => !g.to_date || g.to_date >= a.date).map((g) => ({ id: g.id, name: g.name, kind: g.kind })) },
   });
 });
@@ -692,13 +741,16 @@ api.post("/activity/:id/company", async (c) => {
   return c.json({ ok: true, company: v || null });
 });
 
-/** Měsíce: 24 měsíců po sportech (počet, čas, km, převýšení, zátěž) – souhrn měsíce a graf 12 měsíců v Aktivitách. */
+/** Měsíce: celá historie po sportech (počet, čas, km, převýšení, zátěž) – souhrn měsíce a graf 12 měsíců v Aktivitách. */
 api.get("/months", async (c) => {
   const ctx = await loadCtx(c.env);
   const y = +ctx.T.slice(0, 4), m = +ctx.T.slice(5, 7);
   const back = (k: number) => { const t = y * 12 + (m - 1) - k; return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, "0")}`; };
+  // celá historie (výběr měsíce a roku v souhrnu), aspoň 24 měsíců kvůli grafu a srovnání s loňskem
+  const firstD = (await first<{ d: string | null }>(c.env.DB, "SELECT MIN(date) AS d FROM activities"))?.d ?? ctx.T;
+  const span = Math.max(23, (y - +firstD.slice(0, 4)) * 12 + (m - +firstD.slice(5, 7)));
   const months: string[] = [];
-  for (let k = 23; k >= 0; k--) months.push(back(k));
+  for (let k = Math.min(span, 240); k >= 0; k--) months.push(back(k));
   const rows = await all<{ m: string; sport: string; n: number; s: number; km: number; up: number; load: number }>(c.env.DB,
     "SELECT substr(date, 1, 7) AS m, sport, COUNT(*) AS n, SUM(COALESCE(moving_s, 0)) AS s, SUM(COALESCE(distance_m, 0)) / 1000.0 AS km, SUM(COALESCE(elev_gain, 0)) AS up, SUM(COALESCE(load, 0)) AS load FROM activities WHERE date >= ? GROUP BY m, sport",
     `${months[0]}-01`);
@@ -737,15 +789,18 @@ api.get("/recovery", async (c) => {
   const hist = ctx.well.filter((w) => w.date >= addDays(T, -60) && w.date < T);
   const n = (k: "hrv" | "rhr" | "sleep_s" | "sleep_score" | "sleep_resp" | "stress_avg" | "bb_max") => {
     const x = norm(hist.map((w) => w[k]));
-    return x.n ? { n: x.n, mean: Math.round(x.mean * 10) / 10, sd: Math.round(x.sd * 10) / 10 } : null;
+    if (!x.n) return null;
+    if (k === "sleep_resp") return { n: x.n, mean: Math.round(x.mean * 10) / 10, sd: Math.round(Math.max(x.sd, 0.6) * 10) / 10, q: 1 };
+    return { n: x.n, mean: Math.round(x.mean * 10) / 10, sd: Math.round(x.sd * 10) / 10 };
   };
   const r = await readiness(ctx);
   return c.json({
     date: T,
     today: T0,
     minDate: await firstDay(c.env, T0),
+    sleepGoal: ctx.s.sleep_goal_min ?? 480,
     rows: ctx.well.filter((w) => w.date <= T).map((w) => ({
-      date: w.date, hrv: w.hrv, rhr: w.rhr, sleep_s: w.sleep_s, sleep_score: w.sleep_score, sleep_score_g: w.sleep_score_g ?? null, bb_max: w.bb_max, bb_min: w.bb_min,
+      date: w.date, hrv: w.hrv, rhr: w.rhr, sleep_s: w.sleep_s, sleep_need: (w as any).sleep_need_min ?? null, sleep_score: w.sleep_score, sleep_score_g: w.sleep_score_g ?? null, bb_max: w.bb_max, bb_min: w.bb_min,
       bb_charged: w.bb_charged, bb_drained: w.bb_drained, stress: w.stress_avg, stress_max: w.stress_max,
       deep: w.deep_s, rem: w.rem_s, light: w.light_s, awake: w.awake_s, sleep_hr: w.sleep_hr, sleep_stress: w.sleep_stress, resp: w.sleep_resp,
       stress_dist: (() => { try { return w.stress_dist ? JSON.parse(w.stress_dist) : null; } catch { return null; } })(),
@@ -858,12 +913,26 @@ api.get("/vo2", async (c) => {
     c.env.DB,
     "SELECT w.date, w.vo2max, (SELECT GROUP_CONCAT(a.sport) FROM activities a WHERE a.date = w.date AND COALESCE(a.moving_s, 0) >= 600) AS sports FROM wellness w WHERE w.vo2max IS NOT NULL ORDER BY w.date",
   );
-  const out = rows.map((r) => {
+  // přednost má VO2max z FIT souboru aktivity (zvlášť kolo / běh, src/datasource/fitScan.ts)
+  const fit = await all<{ date: string; sport: string; v: number }>(
+    c.env.DB,
+    "SELECT date, sport, vo2_fit AS v FROM activities WHERE vo2_fit IS NOT NULL ORDER BY date, start_local",
+  ).catch(() => [] as { date: string; sport: string; v: number }[]);
+  const byKey = new Map<string, { date: string; v: number; sport: string; src: string }>();
+  for (const f of fit) {
+    const sport = f.sport === "run" ? "run" : "ride";
+    byKey.set(`${f.date}|${sport}`, { date: f.date, v: Math.round(f.v), sport, src: "fit" });
+  }
+  const fitDays = new Set(fit.map((f) => f.date));
+  for (const r of rows) {
+    if (fitDays.has(r.date)) continue;
     const sp = (r.sports ?? "").split(",");
     const bike = sp.some((x) => BIKE_SPORTS.includes(x as any));
     const run = sp.includes("run");
-    return { date: r.date, v: r.vo2max, sport: run && !bike ? "run" : bike && !run ? "ride" : run && bike ? "both" : null };
-  });
+    const sport = run && !bike ? "run" : bike && !run ? "ride" : run && bike ? "both" : null;
+    if (sport) byKey.set(`${r.date}|${sport}`, { date: r.date, v: r.vo2max, sport, src: "icu" });
+  }
+  const out = [...byKey.values()].sort((a, b) => a.date.localeCompare(b.date));
   const lastOf = (k: string) => [...out].reverse().find((x) => x.sport === k) ?? null;
   return c.json({ rows: out, run: lastOf("run"), ride: lastOf("ride") });
 });
@@ -915,7 +984,7 @@ api.get("/settings", async (c) => c.json(await getSettings(c.env.DB)));
 /** API klíče: stav (bez hodnot), uložení šifrovaně, test připojení. */
 api.get("/secrets", (c) => c.json(secretInfo(c.env)));
 /** Veřejný klíč Mapy.com pro dlaždice v prohlížeči (bez klíče jen OpenStreetMap / CyclOSM / OpenTopoMap). */
-api.get("/mapkey", (c) => c.json({ mapy: c.env.MAPY_API_KEY ?? null, tomtom: c.env.TOMTOM_API_KEY ?? null }));
+api.get("/mapkey", (c) => c.json({ mapy: c.env.MAPY_API_KEY ?? null }));
 api.post("/secrets", async (c) => {
   const { key, value } = (await c.req.json()) as { key: string; value: string | null };
   if (!(secretsFor(c.env) as readonly string[]).includes(key)) return c.json({ error: "bad key" }, 400);
@@ -951,6 +1020,7 @@ api.post("/settings", async (c) => {
     if (k === "goal") return ["udrzeni", "zvyseni", "pokles", "zavod"].includes(v as string) ? null : "neznámý cíl";
     if (k === "goal_date") return v == null || (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) ? null : "datum cíle";
     if (k === "goal_ctl" || k === "ftp" || k === "year_km_goal") return v == null || (typeof v === "number" && isFinite(v) && v > 0) ? null : "kladné číslo";
+    if (k === "llm_model") return typeof v === "string" && /^(auto|(google|nvidia|workers):[w@./:-]{1,120})$/.test(v) ? null : "neznámý AI model";
     if (k === "ride_temps") { const t = v as any; return t && [t.cold, t.hot, t.ideal].every((x) => typeof x === "number" && isFinite(x)) ? null : "teploty musí být čísla"; }
     return null;
   };
@@ -990,7 +1060,8 @@ api.get("/status", async (c) => {
   for (const k of keys) st[k] = await getState(c.env.DB, k);
   const counts = await first<any>(c.env.DB, "SELECT (SELECT COUNT(*) FROM activities) acts, (SELECT MIN(date) FROM activities) a_from, (SELECT COUNT(*) FROM wellness) days, (SELECT COUNT(*) FROM wellness WHERE sleep_s IS NOT NULL) nights, (SELECT COUNT(*) FROM planned_workouts WHERE status='planned') planned");
   const logs = await all<any>(c.env.DB, "SELECT at, level, msg FROM events_log ORDER BY id DESC LIMIT 60");
-  return c.json({ state: st, counts, logs, source: c.env.DATA_SOURCE, llm: !!c.env.AI, model: c.env.LLM_MODEL });
+  const m0 = (await modelChain(c.env).catch(() => []))[0];
+  return c.json({ state: st, counts, logs, source: c.env.DATA_SOURCE, llm: !!(c.env.AI || c.env.GEMINI_API_KEY || c.env.NVIDIA_API_KEY), model: m0 ? `${m0.p}:${m0.model}` : c.env.LLM_MODEL });
 });
 
 api.post("/plan/propose", async (c) => {

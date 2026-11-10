@@ -9,3 +9,5 @@ dist/
 coverage/
 exports/
 screenshoty/
+.claude/settings.local.json
+dist-test/

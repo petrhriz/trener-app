@@ -283,7 +283,8 @@ export function analyzeActivity(a: ActRow, plan: PlannedForAct | null, ftp: numb
 /** sporty, kde se ukazuje tempo (min/km) místo rychlosti */
 export const FOOT_SPORTS: string[] = ["run", "walk", "hike", "xc_ski"];
 /** hlavní přínos podle tréninkového efektu Garminu */
-const TE_NAME: Record<string, string> = { RECOVERY: "Regenerace", AEROBIC_BASE: "Aerobní základ", TEMPO: "Tempo", LACTATE_THRESHOLD: "Práh", VO2MAX: "VO2 max", ANAEROBIC_CAPACITY: "Anaerobní kapacita", SPEED: "Sprint" };
+/** názvy jako v Garmin Connect česky (LACTATE_THRESHOLD = „Limitní“), v závorce skupina zátěže */
+export const TE_NAME: Record<string, string> = { RECOVERY: "Regenerace (nízko aerobní)", AEROBIC_BASE: "Základ (nízko aerobní)", TEMPO: "Tempo (vysoce aerobní)", LACTATE_THRESHOLD: "Limitní (vysoce aerobní)", VO2MAX: "VO2 Max (vysoce aerobní)", ANAEROBIC_CAPACITY: "Anaerobní (anaerobní)", SPEED: "Sprint (anaerobní)" };
 /** tempo min/km z rychlosti v m/s */
 const paceOf = (ms: number) => { const t = Math.round(1000 / ms); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
 

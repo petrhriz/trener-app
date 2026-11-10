@@ -4,6 +4,7 @@ import type { Env } from "../env";
 import { carbsFor } from "../core/nutrition";
 import { logEvent } from "../lib/db";
 import { getSettings } from "../lib/settings";
+import { anyLlm, chat, type ChatMsg } from "./providers";
 
 const STYLE = `Jsi osobní trenér cyklistiky. Piš česky, krátce, celými větami, bez vaty a spekulací. Tykej.
 Variabilitu srdeční frekvence (v kontextu „hrv“) nazývej česky VST, ne HRV.
@@ -34,7 +35,7 @@ export function numbersOk(answer: string, context: unknown): boolean {
 }
 
 export async function llmAvailable(env: Env): Promise<boolean> {
-  if (!env.AI) return false;
+  if (!anyLlm(env)) return false;
   return (await getSettings(env.DB)).llm_enabled;
 }
 
@@ -60,25 +61,21 @@ export async function aiUsedToday(env: Env): Promise<number> {
   return r ? Math.round(Number(r.value) || 0) : 0;
 }
 
+/** Poslední použitý model (pro Nastavení / odpověď chatu). */
+export let lastModel: string | null = null;
+
+/** Jedno volání modelu (řetěz Gemma → Nemotron → Workers AI, src/llm/providers.ts). null = nic neodpovědělo. */
+export async function runChat(env: Env, messages: ChatMsg[], maxTokens = 350, temperature = 0.2): Promise<string | null> {
+  const { out, errors } = await chat(env, messages, { maxTokens, temperature });
+  if (errors.length) await logEvent(env.DB, "warn", `llm: ${errors.join(" | ").slice(0, 240)}`).catch(() => {});
+  if (!out) return null;
+  lastModel = out.model;
+  if (out.model.startsWith("workers:")) await trackAi(env, messages.reduce((t, m) => t + m.content.length, 0), { usage: out.usage, response: out.text });
+  return out.text || null;
+}
+
 export async function runLlm(env: Env, system: string, user: string, maxTokens = 350): Promise<string | null> {
-  if (!env.AI) return null;
-  const model = env.LLM_MODEL || "@cf/mistralai/mistral-small-3.1-24b-instruct";
-  try {
-    const r = (await env.AI.run(model as any, {
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-      max_tokens: maxTokens,
-      temperature: 0.2,
-    } as any)) as { response?: string; usage?: { prompt_tokens?: number; completion_tokens?: number } };
-    await trackAi(env, system.length + user.length, r);
-    const t = (r?.response ?? "").trim();
-    return t || null;
-  } catch (e) {
-    await logEvent(env.DB, "warn", `llm: ${(e as Error).message.slice(0, 120)}`);
-    return null;
-  }
+  return runChat(env, [{ role: "system", content: system }, { role: "user", content: user }], maxTokens, 0.2);
 }
 
 /** Odpověď na volnou otázku nad předpočítaným kontextem. Vrací null → volající použije šablonu. */
@@ -111,18 +108,8 @@ export async function answerChat(
   context: Record<string, unknown>,
 ): Promise<{ answer: string; checked: boolean; model: string } | null> {
   if (!(await llmAvailable(env))) return null;
-  const model = env.LLM_MODEL || "@cf/mistralai/mistral-small-3.1-24b-instruct";
   const system = `${CHAT_STYLE}\n\nKONTEXT (JSON, data uživatele):\n${JSON.stringify(context)}`;
-  const run1 = async (extra = "") => {
-    try {
-      const r = (await env.AI!.run(model as any, { messages: [{ role: "system", content: system + extra }, ...messages], max_tokens: 700, temperature: 0.3 } as any)) as { response?: string; usage?: { prompt_tokens?: number; completion_tokens?: number } };
-      await trackAi(env, system.length + extra.length + messages.reduce((t, m) => t + m.content.length, 0), r);
-      return (r?.response ?? "").trim() || null;
-    } catch (e) {
-      await logEvent(env.DB, "warn", `chat: ${(e as Error).message.slice(0, 120)}`);
-      return null;
-    }
-  };
+  const run1 = (extra = "") => runChat(env, [{ role: "system", content: system + extra }, ...messages], 700, 0.3);
   const allText = { context, q: messages.map((m) => m.content).join(" ") };
   let ans = await run1();
   if (!ans) return null;
@@ -134,13 +121,13 @@ export async function answerChat(
       checked = numbersOk(again, allText);
     }
   }
-  return { answer: ans, checked, model };
+  return { answer: ans, checked, model: lastModel ?? "?" };
 }
 
 /** Přepis jedné věty závěru do přirozenější češtiny (volitelné, llm_polish). Čísla musí sedět. */
 export async function polish(env: Env, sentence: string, context: unknown): Promise<string> {
   const s = await getSettings(env.DB);
-  if (!s.llm_polish || !env.AI || !s.llm_enabled) return sentence;
+  if (!s.llm_polish || !anyLlm(env) || !s.llm_enabled) return sentence;
   const out = await runLlm(env, STYLE, `Přepiš tuto větu přirozeněji, stejný význam, stejná čísla, max. 1 věta:\n${sentence}`, 120);
   return out && numbersOk(out, { sentence, context }) && out.length < 300 ? out : sentence;
 }

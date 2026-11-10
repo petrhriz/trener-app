@@ -138,7 +138,8 @@ interface BfWell {
 /**
  * Jedno spuštění synchronizace. `force` = ignorovat rozvrh (ruční sync / backfill skript).
  */
-export async function syncTick(env: Env, opts: { force?: boolean; backfillPages?: number } = {}): Promise<SyncReport> {
+/** `manual` = tlačítko na dashboardu: čerstvé aktivity, spánek, HRV, energie a metriky hned, bez dávek historie. */
+export async function syncTick(env: Env, opts: { force?: boolean; manual?: boolean; backfillPages?: number } = {}): Promise<SyncReport> {
   const rep: SyncReport = { steps: [], errors: [], newActivities: [] };
   const now = localNow(new Date(), env.TZ_NAME);
   const T = now.date;
@@ -197,10 +198,12 @@ export async function syncTick(env: Env, opts: { force?: boolean; backfillPages?
   // podle času posledního běhu (ne minut na hodinách) – další uživatelé se v cronu střídají v různých minutách
   const lastQ = (await getState<number>(env.DB, "tick_quarter")) ?? 0;
   const lastH = (await getState<number>(env.DB, "tick_hour")) ?? 0;
-  const quarter = opts.force || Date.now() - lastQ >= 14.5 * 60_000;
-  const hourly = opts.force || Date.now() - lastH >= 59 * 60_000;
-  if (quarter) await setState(env.DB, "tick_quarter", Date.now());
-  if (hourly) await setState(env.DB, "tick_hour", Date.now());
+  const quarter = opts.force || opts.manual || Date.now() - lastQ >= 14.5 * 60_000;
+  const hourly = opts.force || opts.manual || Date.now() - lastH >= 59 * 60_000;
+  if (quarter && !opts.manual) await setState(env.DB, "tick_quarter", Date.now());
+  if (hourly && !opts.manual) await setState(env.DB, "tick_hour", Date.now());
+  /** dávky historie (backfill) jen v cronu, ruční sync musí doběhnout rychle */
+  const batch = !opts.manual;
 
   // 2) wellness posledních 3 dnů: ráno každých 15 min, jinak jednou za hodinu
   const morning = now.minutes >= 300 && now.minutes <= 12 * 60;
@@ -319,6 +322,23 @@ export async function syncTick(env: Env, opts: { force?: boolean; backfillPages?
     rep.steps.push(`doplnění (${rows.length})`);
   });
 
+  // 3c) VO2max z FIT souboru (kolo i běh zvlášť): 1 aktivita za běh, 150 dní zpět, max. 3 pokusy
+  await guard("vo2 z FIT", async () => {
+    if (!(ds instanceof GarminClient)) return;
+    const a = await first<{ id: string; vo2_try: number }>(
+      env.DB,
+      `SELECT id, vo2_try FROM activities WHERE vo2_fit IS NULL AND vo2_try < 3 AND sport IN ('ride','mtb','indoor','run') AND COALESCE(moving_s, 0) >= 600 AND date >= ? ORDER BY date DESC LIMIT 1`,
+      addDays(T, -150),
+    );
+    if (!a) return;
+    let v: number | null = null;
+    let failed = false;
+    try { v = await ds.activityVo2(a.id); } catch { failed = true; }
+    // bez hodnoty v souboru → vo2_try 3 (už nezkoušet), chyba stažení → další pokus
+    await execAll(env.DB, [`UPDATE activities SET vo2_fit = ${lit(v)}, vo2_try = ${failed ? a.vo2_try + 1 : 3} WHERE id = ${lit(a.id)}`]);
+    rep.steps.push(`vo2 z FIT (${v ?? "–"})`);
+  });
+
   // 3b) kondice / únava z intervals.icu: každou hodinu poslední 4 dny, jinak backfill historie po 180 dnech
   await guard("icu kondice", async () => {
     if (!icu.configured) return;
@@ -329,7 +349,7 @@ export async function syncTick(env: Env, opts: { force?: boolean; backfillPages?
       rep.steps.push("icu kondice");
     }
     const st = (await getState<{ cursor: string; done: boolean }>(env.DB, "icu_fit_bf")) ?? { cursor: T, done: false };
-    if (st.done || !quarter) return;
+    if (st.done || !quarter || !batch) return;
     const from = addDays(st.cursor, -179);
     const w = await icu.wellnessRaw(from, st.cursor);
     const rows = icuFitnessRows(w);
@@ -345,7 +365,7 @@ export async function syncTick(env: Env, opts: { force?: boolean; backfillPages?
   // 4) backfill aktivit (celá historie), několik stránek po 20
   await guard("backfill aktivit", async () => {
     const st = (await getState<BfAct>(env.DB, "bf_act")) ?? { start: 0, done: false, count: 0 };
-    if (st.done || !quarter) return;
+    if (st.done || !quarter || !batch) return;
     const pages = opts.backfillPages ?? 4;
     let minDate: string | null = null;
     for (let i = 0; i < pages; i++) {
@@ -366,10 +386,28 @@ export async function syncTick(env: Env, opts: { force?: boolean; backfillPages?
     rep.steps.push(`backfill aktivit (${st.count}${st.done ? ", hotovo" : ""})`);
   });
 
+  // 4b) jednorázové znovustažení starších aktivit (nová pole: běžecká dynamika, dopad na Body Battery) – vlastní kurzor,
+  //     bf_act ani metriky neblokuje; jen Garmin
+  await guard("doplnění polí aktivit", async () => {
+    if (!(ds instanceof GarminClient) || !quarter || !batch) return;
+    const V = 2;
+    const st = (await getState<{ v: number; start: number; done: boolean }>(env.DB, "act_refetch")) ?? { v: 0, start: 10, done: true };
+    if (st.v !== V) Object.assign(st, { v: V, start: 10, done: false });
+    if (st.done) return;
+    for (let i = 0; i < 2; i++) {
+      const acts = await ds.activitiesPage(st.start, 20);
+      if (acts.length) await upsertActivities(env, acts, s);
+      st.start += acts.length;
+      if (acts.length < 20) { st.done = true; break; }
+    }
+    await setState(env.DB, "act_refetch", st);
+    rep.steps.push(`doplnění polí aktivit (${st.start}${st.done ? ", hotovo" : ""})`);
+  });
+
   // 5) backfill wellness po 28 dnech dozadu
   await guard("backfill wellness", async () => {
     const st = (await getState<BfWell>(env.DB, "bf_well")) ?? { cursor: addDays(T, -3), done: false, empty: 0 };
-    if (st.done || !quarter) return;
+    if (st.done || !quarter || !batch) return;
     const from = addDays(st.cursor, -27);
     const ws = await ds.wellnessRange(from, st.cursor);
     const useful = ws.filter((w) => w.hrv != null || w.rhr != null || w.sleep_s != null || w.steps != null);

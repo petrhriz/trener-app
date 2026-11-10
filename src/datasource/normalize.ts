@@ -87,6 +87,12 @@ function extraGarmin(a: J) {
     ana_te: n(a.anaerobicTrainingEffect),
     te_label: typeof a.trainingEffectLabel === "string" && a.trainingEffectLabel !== "UNKNOWN" ? a.trainingEffectLabel : null,
     run_cad: run ? pos(a.averageRunningCadenceInStepsPerMinute) : null,
+    stride_m: run && pos(a.avgStrideLength) != null ? Math.round(pos(a.avgStrideLength)!) / 100 : null,
+    gct_ms: run && pos(a.avgGroundContactTime) != null ? Math.round(pos(a.avgGroundContactTime)!) : null,
+    vosc_cm: run && pos(a.avgVerticalOscillation) != null ? Math.round(pos(a.avgVerticalOscillation)! * 10) / 10 : null,
+    vratio: run && pos(a.avgVerticalRatio) != null ? Math.round(pos(a.avgVerticalRatio)! * 10) / 10 : null,
+    bb_diff: n(a.differenceBodyBattery),
+    te_msg: typeof a.aerobicTrainingEffectMessage === "string" ? a.aerobicTrainingEffectMessage : null,
   };
   return Object.values(e).some((v) => v != null) ? e : null;
 }

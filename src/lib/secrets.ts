@@ -2,7 +2,7 @@
 // Přednost má hodnota z dashboardu, záloha jsou secrets Workeru (.dev.vars → wrangler secret).
 import type { Env } from "../env";
 
-export const EDITABLE_SECRETS = ["GARMIN_API_KEY", "INTERVALS_API_KEY", "INTERVALS_ATHLETE_ID", "MAPY_API_KEY", "TOMTOM_API_KEY"] as const;
+export const EDITABLE_SECRETS = ["GARMIN_API_KEY", "INTERVALS_API_KEY", "INTERVALS_ATHLETE_ID", "MAPY_API_KEY", "GEMINI_API_KEY", "NVIDIA_API_KEY"] as const;
 export type EditableSecret = (typeof EDITABLE_SECRETS)[number];
 
 const b64 = (u: Uint8Array) => btoa(String.fromCharCode(...u));

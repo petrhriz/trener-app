@@ -20,6 +20,8 @@ export interface Settings {
   weekly_time: string;
   llm_enabled: boolean;
   llm_polish: boolean;
+  /** AI model: "auto" (Gemma → Nemotron → Workers AI podle zadaných klíčů) nebo "google:<id>" / "nvidia:<id>" / "workers:<id>" */
+  llm_model: string;
   icu_sync: boolean;
   garmin_key_created: string | null;
   rides_per_week: number;
@@ -56,6 +58,7 @@ export const DEFAULTS: Settings = {
   weekly_time: "19:30",
   llm_enabled: true,
   llm_polish: false,
+  llm_model: "auto",
   icu_sync: true,
   garmin_key_created: null,
   rides_per_week: 3,

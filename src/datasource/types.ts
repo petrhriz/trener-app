@@ -65,6 +65,15 @@ export interface ActExtra {
   te_label?: string | null;
   device?: string | null;
   run_cad?: number | null;
+  /** běh: délka kroku (m), kontakt se zemí (ms), vertikální oscilace (cm) a poměr (%) */
+  stride_m?: number | null;
+  gct_ms?: number | null;
+  vosc_cm?: number | null;
+  vratio?: number | null;
+  /** čistý dopad aktivity na Body Battery (Garmin, např. −10) */
+  bb_diff?: number | null;
+  /** Garmin: text přínosu (IMPROVING_LACTATE_THRESHOLD_12 …) */
+  te_msg?: string | null;
 }
 
 export interface NWellness {

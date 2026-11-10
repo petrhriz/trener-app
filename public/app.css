@@ -969,7 +969,7 @@ html:root[data-skin="k"] .stat, html:root[data-skin="k"] .mtile { border-radius:
 .dg-lab { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 6px; gap: 8px; }
 @media (max-width: 760px) { .dh-ico { width: 46px; height: 46px; font-size: 25px; border-radius: 13px; } .dh-v { gap: 10px; } .dhero .nrange small { display: none; } }
 /* 🤖 na PC: stejná výška jako přepínače vedle */
-@media (min-width: 761px) { .head > .aibtn { margin-left: 0; align-self: flex-end; width: 40px; height: 40px; font-size: 20px; border-radius: 12px; } }
+@media (min-width: 761px) { .head > .hbtns { margin-left: 0; align-self: flex-end; } }
 @media (min-width: 761px) { .head > :first-child { margin-right: auto; } }
 /* hlavička detailu: vyvážené velikosti ikony, čísla a jednotky */
 .dh-row { align-items: center; }
@@ -1673,10 +1673,115 @@ img.wxi { width: 1.6em; height: 1.6em; vertical-align: middle; margin: -0.3em 0;
 /* iPhone: Safari barví horní lištu podle pozadí elementu přes celou obrazovku → ztmavení jen stínem panelu,
    samotná vrstva přes obrazovku je průhledná (jinak po otevření „Více“ nebo okna zůstal nahoře šedý pruh) */
 .sheet { background: transparent !important; }
-.sheet.on .sheet-in { box-shadow: 0 0 0 200vmax rgba(0, 0, 0, .35), 0 10px 30px rgba(0, 0, 0, .18); }
+.sheet.on .sheet-in { box-shadow: 0 10px 30px rgba(0, 0, 0, .22); }
 .modal { background: transparent !important; }
-.modal > .modal-in { box-shadow: 0 0 0 200vmax rgba(0, 0, 0, .42), 0 20px 60px rgba(0, 0, 0, .3) !important; }
+.modal > .modal-in { box-shadow: 0 20px 60px rgba(0, 0, 0, .3) !important; }
 /* 🤖 zarovnaný s nadpisem i na stránkách s odkazem „← Zpět“ nad nadpisem */
-.head:has(> div > .back) > .aibtn { margin-top: 24px; }
+@media (min-width: 761px) { .head:has(> div > .back) > .hbtns { margin-top: 24px; } }
 .wxbar { display: flex; gap: 8px; flex-wrap: wrap; margin: -4px 0 12px; }
 .wxbar .seg { flex-wrap: nowrap; }
+/* ztmavení pod panelem Více a pod okny: samostatná vrstva, která NESAHÁ pod stavový řádek
+   (iPhone si barvu horní lišty bere z obsahu nahoře a šedou pak držel i po zavření) */
+.sheet::before, .modal::before { content: ""; position: fixed; left: 0; right: 0; bottom: 0; top: calc(env(safe-area-inset-top) + 64px); background: rgba(0, 0, 0, .35); -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 72px); mask-image: linear-gradient(to bottom, transparent 0, #000 72px); pointer-events: none; z-index: -1; }
+.sheet::before { opacity: 0; transition: opacity .15s; }
+.sheet.on::before { opacity: 1; }
+.modal { isolation: isolate; }
+/* mobil: 🤖 vždy vpravo nahoře na úrovni nadpisu (absolutně), nadpis mu nechá místo */
+@media (max-width: 760px) {
+  .head { position: relative; }
+  .head > .hbtns { position: absolute; right: 0; top: 0; margin: 0 !important; }
+  .head:has(> div > .back) > .hbtns { top: 24px; }
+  .head > div:first-child > h1, .head > div:first-child > .sub:first-of-type { padding-right: 96px; }
+  .head > div:has(.actsel) { flex: 1 1 100%; }
+}
+.wxbar { align-items: center; }
+.wxbar .wxloc button { min-width: 44px; font-size: 16px; padding: 4px 10px; }
+@media (max-width: 760px) { .wxbar .wxseg { flex: 1 1 100%; } .wxbar .wxseg button { flex: 1; } }
+/* ======================= kolo 26 ======================= */
+/* Více / okna: ztmaví se celá stránka rovnoměrně i nahoře (filtr na obsahu, ne vrstva přes stavový řádek → iPhone nedrží šedou) */
+.sheet::before { display: none !important; }
+.modal::before { display: none !important; }
+.shell { transition: filter .15s; }
+body:has(.sheet.on) .shell, body:has(> .modal) .shell { filter: brightness(.6) saturate(.9); }
+/* panel Více jako navigační lišta: liquid glass, průhledný */
+@media (max-width: 760px) {
+  .sheet-in {
+    background: color-mix(in srgb, var(--bg2) 42%, transparent) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid color-mix(in srgb, #ffffff 55%, transparent); border-top-color: color-mix(in srgb, #ffffff 80%, transparent);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .18), inset 0 1px 0 rgba(255, 255, 255, .5) !important;
+  }
+  .sheet-in a.on { background: color-mix(in srgb, var(--acc) 14%, transparent); }
+}
+@media (max-width: 760px) and (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .sheet-in { border-color: rgba(255, 255, 255, .12); box-shadow: 0 10px 30px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .08) !important; } }
+@media (max-width: 760px) { :root[data-theme="dark"] .sheet-in { border-color: rgba(255, 255, 255, .12); box-shadow: 0 10px 30px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .08) !important; } }
+/* hlavička: ⟳ synchronizace + 🤖 vedle sebe */
+.hbtns { display: flex; gap: 8px; margin-left: auto; align-self: flex-start; flex: none; }
+.hbtns .aibtn { margin: 0 !important; position: static !important; }
+@media (min-width: 761px) { .head > .hbtns { margin-left: 0; align-self: flex-end; } .hbtns .aibtn { width: 40px; height: 40px; font-size: 20px; border-radius: 12px; } }
+.syncbtn { color: var(--acc); }
+.syncbtn svg { width: 21px; height: 21px; }
+.syncbtn.busy svg { animation: spin360 .9s linear infinite; }
+.syncbtn.ok { color: var(--ok); border-color: var(--ok); }
+@keyframes spin360 { to { transform: rotate(360deg); } }
+/* ===== mapa: ovládání jako zbytek aplikace – zaoblené, skleněné, poloprůhledné ===== */
+.map .leaflet-bar, .map .mapglass { border: 1px solid color-mix(in srgb, #ffffff 55%, transparent) !important; border-radius: 14px !important; overflow: hidden; background: color-mix(in srgb, var(--card) 62%, transparent) !important; -webkit-backdrop-filter: blur(14px) saturate(170%); backdrop-filter: blur(14px) saturate(170%); box-shadow: 0 4px 14px rgba(0, 0, 0, .16) !important; }
+.map .leaflet-bar a, .map .leaflet-bar.mapfit { width: 34px !important; height: 34px !important; line-height: 34px !important; background: transparent !important; color: var(--fg) !important; border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent) !important; font-size: 18px; }
+.map .leaflet-bar a:last-child { border-bottom: 0 !important; }
+.map .leaflet-bar a:hover, .map .leaflet-bar.mapfit:hover { background: color-mix(in srgb, var(--acc) 12%, transparent) !important; }
+.map .leaflet-bar.mapfit.on { background: color-mix(in srgb, var(--acc) 18%, transparent) !important; color: var(--acc) !important; }
+.map .leaflet-control-zoom-in, .map .leaflet-control-zoom-out { font-weight: 600 !important; text-indent: 0 !important; }
+.map .leaflet-touch .leaflet-bar, .map.leaflet-touch .leaflet-bar { border-width: 1px !important; }
+.map .leaflet-top.leaflet-left .leaflet-control { margin: 10px 0 0 10px; }
+.map .leaflet-top.leaflet-right .leaflet-control { margin: 10px 10px 0 0; }
+/* přepínač podkladu */
+.maplay { display: flex; flex-direction: column; align-items: stretch; }
+.maplay button { border: 0; background: transparent; color: var(--fg); font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 7px 11px; white-space: nowrap; text-align: left; }
+.maplay .ml-btn { height: 34px; }
+.maplay .ml-btn span { font-size: 12.5px; }
+.maplay .ml-menu { display: none; border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent); padding: 4px; }
+.maplay.open .ml-menu { display: block; }
+.maplay .ml-menu button { width: 100%; border-radius: 10px; }
+.maplay .ml-menu button.on { background: color-mix(in srgb, var(--acc) 14%, transparent); color: var(--acc); }
+.maplay .ml-menu button:hover { background: color-mix(in srgb, var(--acc) 8%, transparent); }
+@media (max-width: 760px) { .maplay .ml-btn span { display: none; } .maplay.open .ml-btn span { display: inline; } }
+/* atribuce: malý skleněný štítek místo bílého obdélníku */
+.map .leaflet-control-attribution { background: color-mix(in srgb, var(--card) 55%, transparent) !important; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); color: var(--muted) !important; border-radius: 10px 0 0 0; font-size: 10px; padding: 1px 7px; line-height: 1.5; }
+.map .leaflet-control-attribution a { color: var(--muted) !important; }
+.map .leaflet-bottom.leaflet-left .leaflet-control { margin: 0 0 8px 8px; opacity: .85; }
+.map .leaflet-bottom.leaflet-left img { height: 22px !important; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .map .leaflet-bar, :root:not([data-theme="light"]) .map .mapglass { border-color: rgba(255, 255, 255, .14) !important; } }
+:root[data-theme="dark"] .map .leaflet-bar, :root[data-theme="dark"] .map .mapglass { border-color: rgba(255, 255, 255, .14) !important; }
+/* přepínače jako na iPhonu: popisek nad, ohraničená „kolejnička“, vybraná položka jako bílý jezdec */
+.wxbar { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; margin: -2px 0 14px; }
+.iosg { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.iosl { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); padding-left: 4px; }
+.ioseg { display: inline-flex; background: color-mix(in srgb, var(--fg) 8%, transparent); border: 1px solid color-mix(in srgb, var(--line) 80%, transparent); border-radius: 12px; padding: 3px; gap: 2px; }
+.ioseg button { flex: 1 1 0; border: 0; background: transparent; color: var(--fg); font: inherit; font-size: 13px; font-weight: 650; padding: 6px 12px; border-radius: 9px; cursor: pointer; white-space: nowrap; transition: background .15s, box-shadow .15s; }
+.ioseg button.on { background: var(--card); box-shadow: 0 1px 3px rgba(0, 0, 0, .14), 0 0 0 .5px rgba(0, 0, 0, .05); color: var(--fg); }
+.ioseg button:not(.on):hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+.iosh { flex: 1 1 100%; margin: 0; font-size: 12px; color: var(--muted); padding-left: 4px; }
+@media (max-width: 760px) { .iosg { flex: 1 1 100%; } .ioseg { display: flex; } .ioseg button { padding: 7px 6px; } }
+/* souhrn měsíce: klik na název → výběr měsíce a roku (na iPhonu rolovací kolečko) */
+.mpick { position: relative; cursor: pointer; display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 10px; }
+.mpick:hover { background: color-mix(in srgb, var(--acc) 8%, transparent); }
+.mpick .caret { color: var(--acc); font-size: .8em; }
+.mpick select { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; font-size: 16px; }
+/* Trenér: posledních 7 tréninků */
+.trecent { margin-top: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--card2); }
+.trecent > summary { cursor: pointer; padding: 10px 14px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; list-style: none; }
+.trecent > summary::-webkit-details-marker { display: none; }
+.trecent > summary::before { content: "›"; color: var(--acc); font-weight: 800; transition: transform .15s; display: inline-block; }
+.trecent[open] > summary::before { transform: rotate(90deg); }
+.tr-list { padding: 0 10px 4px; }
+.tr-row { display: grid; grid-template-columns: 68px 1fr auto; gap: 10px; align-items: center; padding: 8px 4px; border-top: 1px solid var(--line); font-size: 13px; }
+.tr-d { color: var(--muted); }
+.tr-d b { color: var(--fg); }
+.tr-m { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tr-p { color: var(--muted); font-size: 12px; }
+.tr-a { color: var(--fg); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr-s { font-weight: 700; text-align: right; white-space: nowrap; display: flex; flex-direction: column; align-items: flex-end; }
+.tr-s small { color: var(--muted); font-weight: 600; }
+.tr-s.good { color: var(--ok); } .tr-s.warn { color: var(--warn); } .tr-s.bad { color: var(--bad); }
+.trecent .note { padding: 0 14px 10px; margin: 4px 0 0; }
+@media (max-width: 760px) { .tr-row { grid-template-columns: 52px 1fr auto; gap: 8px; } }

@@ -24,8 +24,10 @@ export interface Env {
   INTERVALS_ATHLETE_ID?: string;
   /** veřejný klíč Mapy.com (jde do prohlížeče, omezit na doménu v portálu Mapy.com) */
   MAPY_API_KEY?: string;
-  /** TomTom Maps (volitelně) – jemný mapový podklad */
-  TOMTOM_API_KEY?: string;
+  /** Google AI Studio (aistudio.google.com → Get API key) – modely Gemma zdarma */
+  GEMINI_API_KEY?: string;
+  /** NVIDIA build.nvidia.com → API key – modely Nemotron zdarma */
+  NVIDIA_API_KEY?: string;
 }
 
 /** Bezpečný přehled secrets: jen nastaveno / chybí, nikdy hodnota. */

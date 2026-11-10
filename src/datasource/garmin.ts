@@ -10,6 +10,7 @@ import {
   normWeight,
 } from "./normalize";
 import type { DataSource, NActivity, NWellness, WellnessPart } from "./types";
+import { fitVo2max, unzipFirst } from "./fitScan";
 
 const BASE = "https://personal.connectapi.garmin.com";
 const TOKEN_URL = `${BASE}/personalapitoken-service/personal-api/personal-api-key/token`;
@@ -224,6 +225,28 @@ export class GarminClient implements DataSource {
       polyLat: (d?.geoPolylineDTO?.polyline ?? []).map((p: any) => (typeof p?.lat === "number" ? p.lat : null)),
       polyLon: (d?.geoPolylineDTO?.polyline ?? []).map((p: any) => (typeof p?.lon === "number" ? p.lon : null)),
     };
+  }
+
+  /** VO2max z originálního FIT souboru aktivity (Personal API ho jinak nevrací). null = v souboru není. */
+  async activityVo2(id: string): Promise<number | null> {
+    let token = await this.getToken();
+    for (let i = 0; i < 2; i++) {
+      const url = `${BASE}/download-service/files/activity/${id}`;
+      // jen s Accept */* (jinak 406)
+      const res = await fetchRetry(url, { headers: { Authorization: `Bearer ${token}`, Accept: "*/*" } });
+      if (res.status === 401 && i === 0) {
+        await res.body?.cancel();
+        token = await this.getToken(true);
+        continue;
+      }
+      if (!res.ok) {
+        await res.body?.cancel();
+        throw new HttpError(res.status, url, "");
+      }
+      const fit = await unzipFirst(new Uint8Array(await res.arrayBuffer()));
+      return fit ? fitVo2max(fit) : null;
+    }
+    return null;
   }
 
   /** ~300 bodů průběhu jízdy (pro aerobní drift). */

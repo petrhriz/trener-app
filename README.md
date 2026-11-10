@@ -2,8 +2,9 @@
 
 Běží zdarma na Cloudflare Workers. Data bere z **Garmin Personal API** (lapy jízd a VO2max z intervals.icu),
 počasí z **Open-Meteo**, mluví přes **Telegram bota** a **webový dashboard**. Rozhodnutí (zotavení, forma, plán,
-workouty, výživa) dělá kód podle pravidel v [`docs/coach-rules/`](docs/coach-rules/). LLM (Workers AI) jen
-odpovídá na volné otázky nad předpočítanými čísly – bez něj vše funguje, každá zpráva má šablonu.
+workouty, výživa) dělá kód podle pravidel v [`docs/coach-rules/`](docs/coach-rules/). AI model (Gemma z Google
+AI Studia, Nemotron od NVIDIE, záloha Workers AI) jen odpovídá na volné otázky nad předpočítanými čísly – bez něj
+vše funguje, každá zpráva má šablonu.
 
 - Bot: **@trener1234bot** (odpovídá jen na tvoje chat_id)
 - Dashboard: https://trener-app.trener-app.workers.dev (přihlášení odkazem z Telegramu: `/dashboard`)
@@ -101,7 +102,25 @@ vytvořit klíč → vlož do `.dev.vars` jako `GARMIN_API_KEY=` → `npm run se
 
 Dashboard → Nastavení (ranní okno, večer, neděle), nebo `/nastaveni` v Telegramu ukáže aktuální hodnoty.
 
+## Úpravy bez Claude Code (GitHub)
+
+Projekt je připravený tak, aby ho šlo upravovat odkudkoli a jakýmkoli AI asistentem:
+
+- **[`AGENTS.md`](AGENTS.md)** – návod pro AI asistenty (Copilot, Cursor, Gemini CLI, Codex, Aider…) i lidi:
+  struktura, pravidla, limity free plánu, jak testovat. Většina nástrojů ho načte sama.
+- **GitHub v prohlížeči**: tečka `.` na stránce repozitáře otevře editor (github.dev), nebo *Code → Codespaces*
+  pro plné prostředí s Node.js (`npm install && npm test`).
+- **Zdarma s AI**: GitHub Copilot Free (v github.dev / VS Code), Gemini CLI (`npx @google/gemini-cli` v Codespace,
+  zdarma s Google účtem) nebo Aider s klíčem z Google AI Studia.
+- **Kontrola**: každý push spustí *Actions → CI* (typy, testy, syntaxe dashboardu) – bez klíčů.
+- **Nasazení z GitHubu**: *Actions → Deploy → Run workflow*. Jednou nastav v *Settings → Secrets and variables →
+  Actions* secrets `CLOUDFLARE_API_TOKEN` (dash.cloudflare.com → My Profile → API Tokens → šablona „Edit Cloudflare
+  Workers“, přidej oprávnění D1 Edit) a `CLOUDFLARE_ACCOUNT_ID`. Proměnná `AUTO_DEPLOY=true` = nasazení po každém
+  pushi do `main`.
+- Klíče (Garmin, Telegram, intervals.icu) v repozitáři **nejsou** – jsou jen na Cloudflare a v lokálním `.dev.vars`.
+
 ## Dokumentace
 
 [`docs/architecture.md`](docs/architecture.md) · [`docs/limits.md`](docs/limits.md) ·
-[`docs/garmin-endpoints.md`](docs/garmin-endpoints.md) · [`docs/rules-mapping.md`](docs/rules-mapping.md)
+[`docs/garmin-endpoints.md`](docs/garmin-endpoints.md) · [`docs/rules-mapping.md`](docs/rules-mapping.md) ·
+[`docs/data-zdroje.md`](docs/data-zdroje.md) (co se přebírá hotové a co se počítá)
