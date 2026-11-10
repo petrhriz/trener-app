@@ -1943,3 +1943,18 @@ html[data-rings="glow"] .dn-rings .gring::before { opacity: .85; }
 .sbal i { position: absolute; left: 15%; right: 15%; border-radius: 3px; }
 .sbal i.up { bottom: 50%; background: var(--slight); }
 .sbal i.dn { top: 50%; background: var(--srem); opacity: .85; }
+/* buňky aktivity: popisek přes celou šířku, pod ním hodnota a doplněk na jednom řádku; vše zarovnané vlevo,
+   doplněk se nezalomí (při nedostatku místa „…“), buňka nikdy nezvětší výšku */
+.abasics > div { display: grid !important; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); column-gap: 6px; align-items: baseline; align-content: start; }
+.abasics > div > span { grid-column: 1 / -1; }
+.abasics > div > b { grid-column: 1; min-width: 0; max-width: 100%; }
+.abasics > div > i { grid-column: 2; }
+.abasics > div > b:last-child { grid-column: 1 / -1; }
+/* Přehled: AI shrnutí jako bublina zarovnaná vpravo (s ocáskem ke stavu); sbalené = malý štítek 🤖 AI shrnutí vpravo */
+.dn-head { justify-content: space-between; }
+.dn-head .ainote.side { position: relative; flex: 0 1 auto; max-width: 64%; margin-left: auto; background: var(--card2); border: 1px solid var(--line); border-radius: 14px 14px 14px 4px; padding: 8px 11px; box-shadow: 0 2px 8px rgba(0, 0, 0, .05); }
+.dn-head .ainote.side::before { content: ""; position: absolute; left: -6px; top: 12px; width: 10px; height: 10px; background: var(--card2); border-left: 1px solid var(--line); border-bottom: 1px solid var(--line); transform: rotate(45deg); }
+.dn-head .ainote.side.folded { flex: 0 0 auto; max-width: none; margin-top: 6px; padding: 0; background: none; border: 0; box-shadow: none; text-align: right; }
+.dn-head .ainote.side.folded::before { display: none; }
+.ainote .an-show { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line) !important; background: var(--card2) !important; border-radius: 99px !important; padding: 4px 10px !important; font-size: 12.5px; color: var(--fg) !important; }
+.ainote .an-show span { color: var(--muted); font-weight: 650; }

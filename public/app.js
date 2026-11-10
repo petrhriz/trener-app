@@ -1573,16 +1573,16 @@ function extraHtml(a) {
     // průměrná rychlost je nahoře → tady jen maximální
     x.max_speed && !foot ? ["🚀 Max. rychlost", u(num(x.max_speed, 1), "km/h"), ""] : null,
     run && a.avgPower ? ["⚡ Výkon", u(num(a.avgPower), "W"), a.np ? `NP ${num(a.np)} W` : ""] : null,
-    a.avgCad ? [run ? "👟 Kadence" : "🔄 Kadence", u(num(x.run_cad || a.avgCad), run ? "kr/min" : "ot/min"), x.max_cad ? `max ${num(x.max_cad)}` : ""] : null,
+    a.avgCad ? [run ? "👟 Kadence" : "🔄 Kadence", u(num(x.run_cad || a.avgCad), run ? "kr/min" : "ot/min"), x.max_cad ? `max ${num(x.max_cad)} ${run ? "kr/min" : "ot/min"}` : ""] : null,
     x.strokes ? [run || foot ? "👟 Kroků" : "🔄 Otáček", thou(x.strokes), "celkem"] : a.avgCad && a.moving && !run ? ["🔄 Otáček", thou((a.avgCad * a.moving) / 60), "celkem (odhad)"] : null,
     x.stride_m ? ["📏 Délka kroku", u(num(x.stride_m, 2), "m"), ""] : null,
     x.gct_ms ? ["🦶 Kontakt se zemí", u(num(x.gct_ms), "ms"), ""] : null,
     x.vosc_cm ? ["↕️ Vertikální oscilace", u(num(x.vosc_cm, 1), "cm"), x.vratio ? `poměr ${num(x.vratio, 1)} %` : ""] : null,
-    x.avg_resp ? ["🫁 Dech", u(num(x.avg_resp), "/min"), `${num(x.min_resp)}–${num(x.max_resp)}`] : null,
+    x.avg_resp ? ["🫁 Dech", u(num(x.avg_resp), "/min"), `rozsah ${num(x.min_resp)}–${num(x.max_resp)}`] : null,
     a.calories && !a.usedTop?.has("calories") ? ["🔥 Kalorie", u(thou(a.calories), "kcal"), ""] : null,
-    x.min_elev != null || x.max_elev != null ? ["⛰️ Nejvýš", u(num(x.max_elev), "m"), `nejníž ${num(x.min_elev)}`] : null,
+    x.min_elev != null || x.max_elev != null ? ["⛰️ Nejvýš", u(num(x.max_elev), "m"), `nejníž ${num(x.min_elev)} m`] : null,
     x.bb_diff != null ? ["🔋 Body Battery", u(signed(x.bb_diff), ""), "dopad aktivity"] : null,
-    a.minTemp != null || a.maxTemp != null ? ["🌡️ Teplota", `<em id="tAvg" class="tavg">…</em><small> °C</small>`, `${num(a.minTemp)}–${num(a.maxTemp)}`] : null,
+    a.minTemp != null || a.maxTemp != null ? ["🌡️ Teplota", `<em id="tAvg" class="tavg">…</em><small> °C</small>`, `${num(a.minTemp)}–${num(a.maxTemp)} °C`] : null,
     a.aerobicTe != null && !a.usedTop?.has("aerobic") ? ["💚 Aerobní efekt", num(a.aerobicTe, 1), teWord(a.aerobicTe)] : null,
     x.ana_te != null ? ["💥 Anaerobní efekt", num(x.ana_te, 1), teWord(x.ana_te)] : null,
   ].filter(Boolean);
@@ -2179,8 +2179,10 @@ function dheroHtml(M, v, last, today, st, tone, nLo, nHi, okV, u) {
  */
 function sleepBankCard(all, goalMin, range) {
   const bank = all.map((r, i) => {
-    const w = all.slice(Math.max(0, i - 6), i + 1).filter((x) => x.sleep_s);
-    return w.length >= 4 ? w.reduce((t, x) => t + (x.sleep_s / 60 - goalMin), 0) / 60 : null;
+    // jako Sleep Bank v Bevelu: 7 nocí, novější víc (váha 0,74^stáří: dnes 1, včera 0,74 … nejstarší 0,16)
+    const w = all.slice(Math.max(0, i - 6), i + 1);
+    if (w.filter((x) => x.sleep_s).length < 4) return null;
+    return w.reduce((t, x, k) => t + (x.sleep_s ? (x.sleep_s / 60 - goalMin) * Math.pow(0.74, w.length - 1 - k) : 0), 0) / 60;
   });
   const night = all.map((r) => (r.sleep_s ? (r.sleep_s / 60 - goalMin) / 60 : null));
   const k = all.length - Math.min(range, all.length);
@@ -2192,14 +2194,14 @@ function sleepBankCard(all, goalMin, range) {
   return card("c12", "😴 Spánková bilance · 7 nocí", "výpočet", `<div class="stats tight">${stat("Bilance teď", hm(now), " h", word, tone)}${stat("Poslední noc", hm(nv[nv.length - 1]), " h", `proti cíli ${hmm(goalMin * 60)} h`, "")}</div>`
     + lineChart({ x: xs, xfmt: dm, height: 180, fmt: (v) => hm(v) + " h", yfmt: (v) => (v > 0 ? "+" : "") + num(v) + " h", avgLine: { v: 0, label: "vyrovnáno", color: "var(--muted)" }, include: [-2, 2], minSpan: 3,
         series: [{ name: "bilance 7 nocí", values: b, color: "var(--srem)", width: 2.4, area: true }, { name: "noc proti cíli", values: nv, color: "var(--slight)", width: 0.01, dots: true }] })
-    + `<p class="note">Bilance = součet rozdílů „spánek − cíl ${hmm(goalMin * 60)} h“ za posledních 7 nocí (tečky = jednotlivé noci). Pod nulou máš spánkový dluh – ten zvyšuje potřebu spánku na další noci. Cíl spánku změníš v Nastavení.</p>`);
+    + `<p class="note">Bilance = rozdíly „spánek − cíl ${hmm(goalMin * 60)} h“ za posledních 7 nocí, novější noci víc (dnešní 100 %, včerejší 74 %, … nejstarší 16 %) – stejně jako Sleep Bank v Bevelu (tečky = jednotlivé noci). Pod nulou máš spánkový dluh – ten zvyšuje potřebu spánku na další noci. Cíl spánku změníš v Nastavení.</p>`);
 }
 let detRange = 30;
 async function pageDetail(el, which) {
   const M = METRICS[which] || METRICS.vst;
   if (![30, 90, 365].includes(detRange)) detRange = 30;
   const q = [viewDate ? `date=${viewDate}` : "", detRange === 365 ? "hist=400" : ""].filter(Boolean).join("&");
-  const [d, day] = await Promise.all([api("recovery" + (q ? `?${q}` : "")), which === "bb" || which === "tep" ? api("day" + (viewDate ? `?date=${viewDate}` : "")).catch(() => null) : null]);
+  const [d, day] = await Promise.all([api("recovery" + (q ? `?${q}` : "")), which === "bb" || which === "tep" || which === "stres" ? api("day" + (viewDate ? `?date=${viewDate}` : "")).catch(() => null) : null]);
   const all = d.rows;
   const nrm = M.normOf(d.norms);
   const u = M.hours ? " h" : M.unit ? " " + M.unit : "";
@@ -2250,6 +2252,7 @@ async function pageDetail(el, which) {
   <div class="grid">
    ${hero}
    ${card("c12", `${M.name} · ${detRange === 365 ? "rok (týdenní průměry)" : detRange === 90 ? "90 dní (průměry po 3 dnech)" : "30 dní"}`, "Garmin", main + (okV.length ? `<p class="note">za ${detRange === 365 ? "rok" : `${detRange} dní`} (po dnech): min ${M.fmt(Math.min(...okV))}${u} · max ${M.fmt(Math.max(...okV))}${u}</p>` : ""))}
+   ${which === "stres" && day?.stress ? card("c12", `Stres během dne · ${day.date !== d.today ? dayDm(day.date) : "dnes"}`, "Garmin", dayStressHtml(day).replace(/^<div class="sl"[^>]*>[^<]*<\/div>/, "") + `<p class="note">Kolik času dne jsi strávil v klidu a v jednotlivých pásmech stresu (Garmin: klid 0–25, nízký 26–50, střední 51–75, vysoký 76–100).</p>`) : ""}
    ${which === "tep" ? card("c12 hrday", `Tep během dne · ${day && day.date !== d.today ? dayDm(day.date) : "dnes"}`, "Garmin · po 2 min", day ? hrDayHtml(day, day.date === d.today) : `<div class="empty">Průběh dne nemám.</div>`) : ""}
    ${extra}
    ${card("c12", "Co to znamená", "", `<p>${esc(M.about)}</p>`)}
@@ -3187,7 +3190,7 @@ function loadAiNotes(root) {
     let hidden = false; try { hidden = localStorage.getItem(hk) === "1"; } catch {}
     let last = null; // poslední úspěšný text – při chybě „napsat znovu“ zůstane
     const draw = (r, msg) => {
-      if (hidden) { box.className = box.className.replace(" busy", "") + (box.classList.contains("folded") ? "" : " folded"); box.innerHTML = `<button type="button" class="linkbtn an-show">🤖 Zobrazit AI shrnutí</button>`; box.querySelector("button").onclick = () => { hidden = false; try { localStorage.removeItem(hk); } catch {} box.classList.remove("folded"); if (last) draw(last); else load(false); }; return; }
+      if (hidden) { box.className = box.className.replace(" busy", "") + (box.classList.contains("folded") ? "" : " folded"); box.innerHTML = `<button type="button" class="linkbtn an-show" title="Zobrazit AI shrnutí" aria-label="Zobrazit AI shrnutí">🤖 <span>AI shrnutí</span></button>`; box.querySelector("button").onclick = () => { hidden = false; try { localStorage.removeItem(hk); } catch {} box.classList.remove("folded"); if (last) draw(last); else load(false); }; return; }
       if (!r) { box.innerHTML = `<span class="an-t">🤖 ${msg || "píšu shrnutí…"}</span>`; return; }
       box.innerHTML = `<span class="an-t">🤖 ${esc(r.text)}</span><small class="an-m">${r.model ? esc(String(r.model).replace(/^[a-z]+:/, "").split("/").pop()) + " · " : ""}<button type="button" class="linkbtn" data-re>napsat znovu</button> · <button type="button" class="linkbtn" data-hide>skrýt</button>${msg ? ` · ${esc(msg)}` : ""}</small>`;
       box.querySelector("[data-re]").onclick = () => load(true);

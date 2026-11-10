@@ -18,7 +18,7 @@ import { DEFAULTS, getSettings, setSetting, statusOn, type Settings } from "../l
 import { STATUS_LABEL, coaching, strainScore, typicalWake, type StatusKind } from "../core/readinessScore";
 import { weeklyLoadTarget } from "../core/fitness";
 import { round6 } from "./round6";
-import { addDays, dow, localNow, mondayOf, tzOffsetMin } from "../lib/time";
+import { addDays, dow, localNow, mondayOf, tzOffsetMin, daysBetween } from "../lib/time";
 import { addConstraint, applyChanges, claimProposal, finishProposal, getProposal, openProposal, removeConstraint, saveProposal } from "../plan/proposals";
 import { activityReport, eftpOf, ftpCheckOf, fitnessTable, recoveryFor, plannedFor, planFor, readiness, weatherMap, weekLoads, weekly } from "../report/build";
 import { weekTargetAdjusted, z2MaxMinutes } from "../core/plan";
@@ -119,11 +119,12 @@ api.get("/overview", async (c) => {
   const load7 = Math.round(ctx.acts.filter((a) => a.date > addDays(D, -7) && a.date <= D).reduce((s, a) => s + (a.load ?? 0), 0));
   // VST: průměr každé noci za 14 dní (jen přehled, detail po 5 min není potřeba)
   const hrv14 = ctx.well.filter((w) => w.date > addDays(D, -14) && w.date <= D).map((w) => ({ date: w.date, v: w.hrv ?? null }));
-  // spánková bilance: součet (spánek − cíl) za 7 nocí do dne D, v minutách; + jednotlivé noci pro graf
+  // spánková bilance jako Sleep Bank v Bevelu: Σ 0,74^k × (spánek − cíl) za 7 nocí (dnešní noc váha 1, nejstarší 0,16);
+  // váhy dopočtené z grafu Bevelu (9 dní, odchylka do 1 min)
   const goalMin = ctx.s.sleep_goal_min ?? 480;
   const nights7 = ctx.well.filter((w) => w.date > addDays(D, -7) && w.date <= D).map((w) => ({ date: w.date, d: w.sleep_s ? Math.round(w.sleep_s / 60 - goalMin) : null }));
   const nOk = nights7.filter((x) => x.d != null);
-  const sleepBal = nOk.length >= 4 ? { min: nOk.reduce((t, x) => t + x.d!, 0), nights: nights7, goalMin } : null;
+  const sleepBal = nOk.length >= 4 ? { min: Math.round(nights7.reduce((t, x) => t + (x.d == null ? 0 : x.d * Math.pow(0.74, daysBetween(x.date, D))), 0)), nights: nights7, goalMin } : null;
   const fit = r.fitness;
   const day = r.today.day;
   const wm = weatherMap(ctx, T, 7);

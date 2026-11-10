@@ -216,11 +216,13 @@ export function analyzeActivity(a: ActRow, plan: PlannedForAct | null, ftp: numb
   if (!indoor && speed != null && speed > 0.5 && FOOT_SPORTS.includes(a.sport)) basics.push(["⏱️ Průměrné tempo", `${paceOf(speed / 3.6)} /km`]);
   const teL = ((a as any).extra?.te_label as string | undefined) ?? null;
   if (teL && TE_NAME[teL]) basics.push(["🎯 Hlavní přínos", TE_NAME[teL]!]);
-  basics.push(["🔋 Zátěž", `${num(a.load)}${planLoad ? ` (plán ${num(planLoad)})` : ""}`]);
+  // jednotka zátěže: TSS z výkonu (wattmetr / NP), jinak HRSS z tepu (intervals.icu i vlastní výpočet)
+  const loadUnit = a.load == null ? "" : a.np || a.load_source === "np_ftp" ? " TSS" : " HRSS";
+  basics.push(["🔋 Zátěž", `${num(a.load)}${loadUnit}${planLoad ? ` (plán ${num(planLoad)})` : ""}`]);
   if (compliance != null) basics.push(["✅ Splnění plánu", `${compliance} %${plan?.compliance != null ? " (intervals.icu)" : ""}`]);
-  if (a.avg_hr) basics.push(["❤️ Tep", `${num(a.avg_hr)} bpm${a.max_hr ? ` (max ${num(a.max_hr)})` : ""}`]);
+  if (a.avg_hr) basics.push(["❤️ Tep", `${num(a.avg_hr)} bpm${a.max_hr ? ` (max ${num(a.max_hr)} bpm)` : ""}`]);
   if (hasPower) {
-    basics.push(["⚡ Výkon", `${num(a.avg_power)} W (NP ${num(a.np)})`]);
+    basics.push(["⚡ Výkon", `${num(a.avg_power)} W (NP ${num(a.np)} W)`]);
     basics.push(["⚡ VI", `${num(vi, 2)}${intensity != null ? ` (intenzita ${num(intensity)} %)` : ""}`]);
     basics.push(["Aerobní drift", steady && a.drift != null ? `${num(a.drift, 1)} %` : "–"]);
   }
@@ -229,7 +231,6 @@ export function analyzeActivity(a: ActRow, plan: PlannedForAct | null, ftp: numb
     const viT = vi <= 1.1 ? "rovnoměrná jízda" : vi <= 1.25 ? "normální na kopcích nebo s intervaly" : "hodně nárazová jízda";
     basicsNote = `VI ${num(vi, 2)}: ${viT}. ${driftText(a.drift, steady, hilly, moving, a.max_temp)}`;
   } else if (isBike && !hasPower) basicsNote = "Bez wattmetru: hodnotím tep a zóny tepu, zátěž je odhad z tepu.";
-  else if (!isBike) basicsNote = "Zátěž z tepu, orientační.";
   if (a.load_source === "hr_zones" || a.load_source === "hr_avg") basicsNote += isBike && hasPower ? "" : "";
 
   // ---- 🔥 Okruhy ----
