@@ -1838,3 +1838,12 @@ html[data-rings="tint"] .dn-rings .gr-track { stroke: color-mix(in srgb, var(--g
 html[data-rings="tint"] .card.dnes { --st: var(--ok); background: linear-gradient(180deg, color-mix(in srgb, var(--st) 12%, var(--card)) 0%, var(--card) 62%) !important; border-color: color-mix(in srgb, var(--st) 28%, var(--line)) !important; }
 html[data-rings="tint"] .card.dnes.warn { --st: var(--warn); }
 html[data-rings="tint"] .card.dnes.bad { --st: var(--bad); }
+/* Záře v2: skutečná svatozář kolem kroužku (jako v návrhu D) – nejsilnější u okraje kroužku, ven slábne; uvnitř jen nádech */
+html[data-rings="glow"] .dn-rings .gring::before { width: calc(var(--rs) * 1.75) !important; height: calc(var(--rs) * 1.75) !important; filter: blur(4px);
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--gc) 12%, transparent) 0%, color-mix(in srgb, var(--gc) 16%, transparent) 42%, color-mix(in srgb, var(--gc) 34%, transparent) 56%, color-mix(in srgb, var(--gc) 14%, transparent) 72%, transparent 100%) !important; }
+html[data-rings="glow"] .card.dnes { overflow: visible; }
+html[data-rings="glow"] .dn-rings { position: relative; }
+@media (prefers-color-scheme: dark) { html:not([data-theme="light"])[data-rings="glow"] .dn-rings .gring::before {
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--gc) 8%, transparent) 0%, color-mix(in srgb, var(--gc) 10%, transparent) 42%, color-mix(in srgb, var(--gc) 24%, transparent) 56%, color-mix(in srgb, var(--gc) 9%, transparent) 72%, transparent 100%) !important; } }
+html[data-theme="dark"][data-rings="glow"] .dn-rings .gring::before {
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--gc) 8%, transparent) 0%, color-mix(in srgb, var(--gc) 10%, transparent) 42%, color-mix(in srgb, var(--gc) 24%, transparent) 56%, color-mix(in srgb, var(--gc) 9%, transparent) 72%, transparent 100%) !important; }

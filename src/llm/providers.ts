@@ -32,7 +32,7 @@ const base = (env: Env, p: "google" | "nvidia") => (p === "google" ? GOOGLE_URL 
 export async function listModels(env: Env, p: "google" | "nvidia"): Promise<string[]> {
   const key = keyOf(env, p);
   if (!key) return [];
-  const kvKey = `llm_models:v3:${p}${p === "nvidia" && isOpenRouter(env) ? "-or" : ""}`;
+  const kvKey = `llm_models:v4:${p}${p === "nvidia" && isOpenRouter(env) ? "-or" : ""}`;
   const cached = await env.KV.get<string[]>(kvKey, "json").catch(() => null);
   if (cached?.length) return cached;
   const res = await fetch(`${base(env, p)}/models`, { headers: { Authorization: `Bearer ${key}` } });
@@ -44,8 +44,8 @@ export async function listModels(env: Env, p: "google" | "nvidia"): Promise<stri
   const ids = (j?.data ?? []).map((m) => String(m.id).replace(/^models\//, ""));
   // Google: Gemma a Gemini Flash (oba na free tieru); bez obrázků, řeči, embeddingů a náhledů
   const useful = p === "google" ? ids.filter((x) => (/gemma/i.test(x) || /^gemini-[\d.]+-flash(-lite)?$/i.test(x)) && !/image|tts|audio|live|embed|preview|exp/i.test(x)) : ids.filter((x) => /nemotron/i.test(x) && !/embed|rerank|reward|safety|guard|parse|vl\b|nano-vl|ocr/i.test(x));
-  // OpenRouter: jen bezplatné modely (…:free), placené klíč bez kreditu odmítne
-  const list = p === "nvidia" && isOpenRouter(env) && useful.some((x) => /:free$/.test(x)) ? useful.filter((x) => /:free$/.test(x)) : useful;
+  // OpenRouter: všechny Nemotrony, bezplatné (…:free) první; placené fungují jen s kreditem na klíči
+  const list = p === "nvidia" && isOpenRouter(env) ? [...useful].sort((a, b) => Number(/:free$/.test(b)) - Number(/:free$/.test(a))) : useful;
   if (list.length) await env.KV.put(kvKey, JSON.stringify(list), { expirationTtl: 86400 }).catch(() => {});
   return list;
 }

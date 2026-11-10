@@ -2734,7 +2734,8 @@ async function pageNastaveni(el) {
     const box = el.querySelector("#aiModels"); if (!box) return;
     box.classList.remove("loading", "sm");
     const opt = (v, l) => `<option value="${esc(v)}" ${s.llm_model === v ? "selected" : ""}>${esc(l)}</option>`;
-    const grp = (p, name, ids) => ids.length ? `<optgroup label="${name}">${ids.map((id) => opt(`${p}:${id}`, id)).join("")}</optgroup>` : "";
+    // OpenRouter: u modelu poznámka zdarma / placený (placený jen s kreditem na klíči)
+    const grp = (p, name, ids) => ids.length ? `<optgroup label="${name}">${ids.map((id) => opt(`${p}:${id}`, m.openrouter && p === "nvidia" ? (id.endsWith(":free") ? `${id.replace(":free", "")} · zdarma` : `${id} · placený (potřebuje kredit)`) : id)).join("")}</optgroup>` : "";
     box.innerHTML = `<div class="form-grid"><label>Model<select id="llmSel">${opt("auto", "Automaticky (nejlepší dostupný)")}${grp("google", "Google AI Studio · Gemma", m.google)}${grp("nvidia", m.openrouter ? "OpenRouter · Nemotron" : "NVIDIA · Nemotron", m.nvidia)}${grp("workers", "Cloudflare Workers AI", m.workers)}</select><small class="sub">Teď se zkouší v pořadí: ${m.chain.map(esc).join(" → ") || "nic – zadej klíč níž"}</small></label></div>
       <div class="btns"><button class="btn pri" id="llmSave">Uložit model</button><button class="btn" id="llmTest">Vyzkoušet</button><span class="note" id="llmMsg"></span></div><div id="llmRes" class="llmres"></div>
       <p class="note">${!m.keys.google && !m.keys.nvidia ? "Zatím běží jen Workers AI (Mistral). Pro chytřejší AI s lepší češtinou zadej níž v Připojení klíč Google AI Studio (Gemma) nebo NVIDIA (Nemotron) – oba jsou zdarma. " : ""}Když vybraný model neodpoví, zkusí se další v pořadí. Čísla v odpovědích se dál kontrolují proti datům. Pozor: Google na bezplatném tarifu může dotazy použít ke zlepšování svých modelů – posílají se čísla tréninku a zdraví, ne jméno ani klíče.</p>`;
