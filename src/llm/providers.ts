@@ -84,14 +84,15 @@ export async function modelChain(env: Env): Promise<{ p: Provider; model: string
   const chain: { p: Provider; model: string }[] = [];
   const m = /^(google|nvidia|workers):(.+)$/.exec(pick);
   if (m) chain.push({ p: m[1] as Provider, model: m[2]! });
-  if (!m || m[1] !== "google") if (env.GEMINI_API_KEY) {
+  // vybraný model první, za ním vždy celý záložní řetěz (duplicity se odfiltrují)
+  if (env.GEMINI_API_KEY) {
     chain.push({ p: "google", model: await bestModel(env, "google") });
     // „auto“: 4 nejnovější Gemini Flash (3.8 → 3.7 → 3.6 → 3.5; nejnovější bývá přetížený) → nejsilnější Nemotron → Gemma 31B → Workers AI
     const flash = (await listModels(env, "google").catch(() => [] as string[])).filter((x) => /^gemini-[\d.]+-flash$/i.test(x)).sort((a, b) => Number(/[\d.]+/.exec(b)?.[0]) - Number(/[\d.]+/.exec(a)?.[0]));
     for (const f of flash.slice(1, 4)) chain.push({ p: "google", model: f });
   }
-  if (!m || m[1] !== "nvidia") if (env.NVIDIA_API_KEY) chain.push({ p: "nvidia", model: await bestModel(env, "nvidia") });
-  if (!m && env.GEMINI_API_KEY) {
+  if (env.NVIDIA_API_KEY) chain.push({ p: "nvidia", model: await bestModel(env, "nvidia") });
+  if (env.GEMINI_API_KEY) {
     const gemma = (await listModels(env, "google").catch(() => [] as string[])).filter((x) => /gemma/i.test(x) && /-it\b/i.test(x)).sort((a, b) => rank(b)[0] - rank(a)[0] || rank(b)[1] - rank(a)[1])[0];
     if (gemma) chain.push({ p: "google", model: gemma });
   }
