@@ -73,10 +73,11 @@ api.get("/llm-models", async (c) => {
 });
 /** AI: krátký test (který model odpověděl a za jak dlouho). */
 api.post("/llm-test", async (c) => {
-  const t0 = Date.now();
-  const out = await runChat(c.env, [{ role: "system", content: "Jsi trenér cyklistiky. Odpovídej česky, jednou větou." }, { role: "user", content: "Co je Z2 trénink?" }], 120);
-  const m = (await import("../llm/llm")).lastModel;
-  return c.json({ ok: !!out, answer: out, model: m, ms: Date.now() - t0 });
+  // každý model z řetězu zvlášť (nebo jen vybraný) → je vidět, kdo funguje a proč ne
+  const body = (await c.req.json().catch(() => ({}))) as { model?: string };
+  const { testModels } = await import("../llm/providers");
+  const rows = await testModels(c.env, typeof body.model === "string" && body.model !== "auto" ? body.model : undefined);
+  return c.json({ ok: rows.some((x) => x.ok), rows });
 });
 
 /** Ruční synchronizace z dashboardu (tlačítko ⟳): stáhne nové aktivity, spánek, HRV a přepočte metriky. Max. 1× za 20 s. */
@@ -723,13 +724,41 @@ api.get("/activity/:id", async (c) => {
     // společná jízda: tempo určuje skupina (dotahování, kopce, střídání) → přetažená Z2 není chyba plánu ani tvoje
     const who = company === "skupina" ? "ve skupině" : `s ${company}`;
     rep.goal = rep.goal.replace("Jízda byla nad záměrem Z2, část času mimo Z2.", `Jízda byla nad záměrem Z2 – jel jsi ${who}, tempo určovala skupina, takže to je v pořádku. Zátěž se počítá normálně.`);
-    if (!rep.goal.includes("jel jsi")) rep.goal += ` 👥 Jízda ${who}.`;
+    if (!rep.goal.includes("jel jsi")) rep.goal += a.sport === "run" ? ` 👥 Běh ${who}.` : ` 👥 Jízda ${who}.`;
   }
   return c.json({
     ...rep, company, id: a.id, sport: a.sport, hasStreams: (a.moving_s ?? 0) > 60, strain: a.icu_strain, calories: a.calories, drift: a.drift, icuDecoupling: raw?.icu_decoupling ?? null, z2Power,
     extra, aerobicTe: (a as any).aerobic_te ?? null, avgPower: a.avg_power ?? null, np: a.np ?? null, avgCad: a.avg_cad, minTemp: a.min_temp, maxTemp: a.max_temp, elevGain: a.elev_gain, distance: a.distance_m, moving: a.moving_s,
     gear: { id: gearId, manual: links.has(a.id), list: gear.filter((g) => !g.to_date || g.to_date >= a.date).map((g) => ({ id: g.id, name: g.name, kind: g.kind })) },
   });
+});
+
+/** AI zhodnocení aktivity (2–3 věty, cache v KV). ?force=1 = napsat znovu. */
+api.get("/activity/:id/ai", async (c) => {
+  const ctx = await loadCtx(c.env);
+  let a = ctx.acts.find((x) => x.id === c.req.param("id"));
+  if (!a) {
+    const r = await first<any>(c.env.DB, "SELECT * FROM activities WHERE id = ?", c.req.param("id"));
+    if (!r) return c.json({ error: "not found" }, 404);
+    const { parseAct } = await import("../report/context");
+    a = parseAct(r);
+  }
+  const tag = await first<{ company: string | null }>(c.env.DB, "SELECT company FROM activity_tags WHERE activity_id = ?", a.id).catch(() => null);
+  const rep = activityReport(ctx, a);
+  const x = ((a as any).extra ?? {}) as Record<string, unknown>;
+  const { activityComment } = await import("../llm/activityAi");
+  const out = await activityComment(c.env, rep, {
+    sport: a.sport,
+    company: tag?.company ?? null,
+    aerobni_efekt: (a as any).aerobic_te ?? null,
+    anaerobni_efekt: x.ana_te ?? null,
+    hlavni_prinos_garmin: x.te_label ?? null,
+    dopad_body_battery: x.bb_diff ?? null,
+    aerobni_drift_pct: a.drift ?? null,
+    ftp: ctx.s.ftp,
+    cil_treninku: ctx.s.goal,
+  }, c.req.query("force") === "1");
+  return c.json(out ?? { text: null, model: null });
 });
 
 /** S kým jsem jel: {company: "skupina" | jméno | null} */
@@ -1020,7 +1049,7 @@ api.post("/settings", async (c) => {
     if (k === "goal") return ["udrzeni", "zvyseni", "pokles", "zavod"].includes(v as string) ? null : "neznámý cíl";
     if (k === "goal_date") return v == null || (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) ? null : "datum cíle";
     if (k === "goal_ctl" || k === "ftp" || k === "year_km_goal") return v == null || (typeof v === "number" && isFinite(v) && v > 0) ? null : "kladné číslo";
-    if (k === "llm_model") return typeof v === "string" && /^(auto|(google|nvidia|workers):[w@./:-]{1,120})$/.test(v) ? null : "neznámý AI model";
+    if (k === "llm_model") return typeof v === "string" && /^(auto|(google|nvidia|workers):[\w@./:-]{1,120})$/.test(v) ? null : "neznámý AI model";
     if (k === "ride_temps") { const t = v as any; return t && [t.cold, t.hot, t.ideal].every((x) => typeof x === "number" && isFinite(x)) ? null : "teploty musí být čísla"; }
     return null;
   };

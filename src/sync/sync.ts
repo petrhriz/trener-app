@@ -291,7 +291,8 @@ export async function syncTick(env: Env, opts: { force?: boolean; manual?: boole
       let drift: number | null = null;
       let laps: unknown = null;
       let pending = false;
-      if (bike && recent && !a.has_drift && ds.activitySamples) {
+      // drift počítám jen když ho intervals.icu nemá (decoupling) – jinak zbytečné stahování průběhu
+      if (bike && recent && !a.has_drift && icuRow?.decoupling == null && (!icu.configured || !!icuRow || a.enrich_state >= 2) && ds.activitySamples) {
         if (driftQuota-- > 0) {
           const smp = await ds.activitySamples(a.id).catch(() => null);
           if (smp) drift = computeDrift(smp, !!a.np);

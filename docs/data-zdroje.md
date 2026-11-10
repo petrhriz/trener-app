@@ -15,7 +15,8 @@ Stav k 10. 11. 2026. **Hotové** = číslo přebírám ze zdroje a jen ho zobraz
 | VO2max kolo a běh | Garmin – čtu ho z FIT souboru aktivity | starší dny z intervals.icu |
 | Zátěž aktivity (TSS s wattmetrem, HRSS z tepu) | intervals.icu | když chybí, viz výpočet níž |
 | Kondice (CTL), únava (ATL), ramp rate | intervals.icu | dny, které intervals.icu nemá, dopočítám |
-| Okruhy (lapy), splnění workoutu (%), eFTP, decoupling, strain | intervals.icu | |
+| Okruhy (lapy), splnění workoutu (%), eFTP, strain | intervals.icu | |
+| Aerobní drift (decoupling) | intervals.icu | vlastní výpočet jen když ho intervals.icu nemá (od 27. kola) |
 | FTP | intervals.icu (nebo ručně v Nastavení) | |
 | Spánek: délka, fáze (hluboký, REM, lehký, bdění), probuzení, tep a dech ve spánku | Garmin | dech Garmin zaokrouhluje na celé dechy |
 | VST (HRV) noc a 7denní průměr, klidový tep | Garmin | |
@@ -40,7 +41,9 @@ Stav k 10. 11. 2026. **Hotové** = číslo přebírám ze zdroje a jen ho zobraz
 | Forma (TSB) | CTL − ATL | `src/core/fitness.ts` |
 | CTL / ATL pro dny bez intervals.icu (např. starší roky) | denní zátěž aktivit, exponenciální průměr 42 / 7 dní | `src/core/fitness.ts`, `src/sync/metrics.ts` |
 | Zátěž aktivity bez intervals.icu | NP a FTP (TSS), jinak tep a zóny (HRSS) | `src/core/load.ts` |
-| Aerobní drift | průběh výkonu a tepu z Garminu (1. vs. 2. polovina) | `src/core/activity.ts` |
+| Aerobní drift – jen záloha | průběh výkonu a tepu z Garminu, když intervals.icu decoupling nedá | `src/core/activity.ts` |
+| Splnění plánu – jen záloha | zátěž / plánovaná zátěž, když workout není v intervals.icu spárovaný | `src/core/activity.ts` |
+| AI zhodnocení aktivity (2–3 věty) | hotová čísla z analýzy aktivity, model z Nastavení → AI model, uloženo v KV | `src/llm/activityAi.ts` |
 | Kvalita / typ jednotky (VO2, práh, sweet spot…) | čas v zónách výkonu, název | `src/core/quality.ts` |
 | Rovnováha zátěže (nízko / vysoce aerobní / anaerobní) | hlavní přínos z Garminu + zátěž | `src/core/balance.ts` |
 | Plán týdne, workouty, cíl zátěže týdne | kondice, forma, cíl, omezení, počasí | `src/core/plan.ts`, `qualityDesign.ts` |
@@ -48,7 +51,7 @@ Stav k 10. 11. 2026. **Hotové** = číslo přebírám ze zdroje a jen ho zobraz
 | Okna na jízdu, vhodnost hodin | hodinová předpověď + tvoje teplotní hranice | `src/core/weather.ts` |
 | Sacharidy na jízdu | délka a intenzita jednotky | `src/core/nutrition.ts` |
 | Měsíční a roční souhrny, srovnání let | součty aktivit | `src/api/routes.ts` |
-| Tempo (min/km) | rychlost z Garminu | `src/core/activity.ts` |
+| Tempo (min/km) | jen převod průměrné rychlosti z Garminu (1000 / m/s), Garmin tempo jako samostatné číslo nedává | `src/core/activity.ts` |
 
 ## Kondice za minulé roky
 

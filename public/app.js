@@ -70,6 +70,9 @@ const XC_SVG = '<svg class="emo" viewBox="0 0 24 24" aria-label="běžky"><g fil
 const SPORT_ICON = { ride: "🚴", mtb: "🚵", indoor: "🚴", run: "🏃", hockey: "🏒", skate: "⛸️", xc_ski: XC_SVG, walk: "🚶", hike: "🥾", padel: "🎾", strength: "🏋️", mobility: "🧘", other: "🏅" };
 const sportTxt = (s) => (s === "xc_ski" ? "🎿" : SPORT_ICON[s] || "🏅"); // pro SVG <text> a title
 /** délka „1 h 10 min“ / „48 min“ (spánek, fáze) */
+/** čas aktivity: pod hodinu „40 min“, jinak „1:25 h“ → [číslo, jednotka] */
+const hU = (s) => (s != null && s < 3600 ? [String(Math.round(s / 60)), "min"] : [hmm(s), "h"]);
+const hUt = (s) => hU(s).join(" ");
 const dur = (s) => { if (s == null) return DASH; const m = Math.round(s / 60); const h = Math.floor(m / 60); return h ? `${h} h ${String(m % 60).padStart(2, "0")} min` : `${m} min`; };
 
 /**
@@ -921,7 +924,7 @@ async function pagePrehled(el) {
   const todayLine = !d.isToday
     ? (pastActs.length ? pastActs.map((x) => `<a class="today-act" href="#/aktivita/${x.id}"><span class="ico">${SPORT_ICON[x.sport] || "🏅"}</span><div><b>${esc(x.name || SPORT_NAME[x.sport] || "aktivita")}</b><div class="sub">${dur(x.moving_s || 0)}${x.km ? ` · ${num(x.km, 1)} km` : ""}${x.load != null ? ` · zátěž ${num(x.load)}` : ""}</div></div><span class="go">→</span></a>`).join("") : `<div class="today-act"><span class="ico">🛋️</span><div><b>Volno</b></div></div>`)
     : t.done && t.done.length
-    ? `<div class="today-act">✅ <div><b>Dnes odjeto</b><div class="sub">${esc(t.done.map((x) => x.name).join(", "))}</div></div></div>`
+    ? t.done.map((x) => `<a class="today-act" href="#/aktivita/${x.id}"><span class="ico">✅</span><div><b>Dnes odjeto</b><div class="sub">${esc(x.name)}${x.load != null ? ` · zátěž ${num(x.load)}` : ""}</div></div><span class="go">→</span></a>`).join("")
     : t.name && !paused
       ? `<a class="today-act" href="#/trener"><span class="ico">${({ run: "🏃", xc_ski: XC_SVG, walk: "🚶" })[t.sport] || "🚴"}</span><div><b>${esc(t.name)}</b><div class="sub">${dur((t.durationMin || 0) * 60)}${t.targetText ? " · " + esc(t.targetText) : ""}</div></div><span class="go">→</span></a>`
       : `<div class="today-act"><span class="ico">🛋️</span><div><b>${paused ? "Plán stojí" : "Dnes volno"}</b>${tomorrowHtml(t)}</div></div>`;
@@ -964,7 +967,7 @@ async function pagePrehled(el) {
   const la = d.lastActivity;
   const laCard = la
     ? card("c12 lacard", "Poslední aktivita", "", `<a class="lastact" href="#/aktivita/${la.id}"><span class="big-ico">${SPORT_ICON[la.sport] || "🏅"}</span><div><b>${esc(la.name || SPORT_NAME[la.sport])}</b><div class="sub">${dayDm(la.date)}${la.plan ? ` · plán ${la.compliance ? `${num(la.compliance)} %` : "✓"}` : ""}</div></div><span class="go">→</span></a>
-      <div class="la2"><div class="la2-main">${la.km ? `<div><span>Vzdálenost</span><b>${num(la.km, 1)}<small> km</small></b></div>` : ""}<div><span>Čas</span><b>${hmm(la.moving_s)}<small> h</small></b></div></div><div class="la2-sub">${[la.elev ? `<span><b>${num(la.elev)}</b> m</span>` : "", la.np ? `<span><b>${num(la.np)}</b> W</span>` : "", la.avg_hr ? `<span><b>${num(la.avg_hr)}</b> bpm</span>` : "", la.load != null ? `<span>zátěž <b>${num(la.load)}</b></span>` : ""].filter(Boolean).join("")}</div></div>`)
+      <div class="la2"><div class="la2-main">${la.km ? `<div><span>Vzdálenost</span><b>${num(la.km, 1)}<small> km</small></b></div>` : ""}<div><span>Čas</span><b>${hU(la.moving_s)[0]}<small> ${hU(la.moving_s)[1]}</small></b></div></div><div class="la2-sub">${[la.elev ? `<span><b>${num(la.elev)}</b> m</span>` : "", la.np ? `<span><b>${num(la.np)}</b> W</span>` : "", la.avg_hr ? `<span><b>${num(la.avg_hr)}</b> bpm</span>` : "", la.load != null ? `<span>zátěž <b>${num(la.load)}</b></span>` : ""].filter(Boolean).join("")}</div></div>`)
     : card("c12", "Poslední aktivita", "", `<div class="empty">Žádná aktivita za 90 dní.</div>`);
 
   el.innerHTML = `<div class="head"><div><h1>${greeting(d.hour)}, <span class="acc">${esc(d.name)}</span></h1><div class="sub">data k ${d.lastSync ? new Date(d.lastSync).toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" }) : DASH}<span id="watchAt"></span></div></div></div>
@@ -1120,7 +1123,7 @@ async function pageTrener(el) {
   const RS = { done: ["✅", "splněno", "good"], partial: ["🟡", "částečně", "warn"], missed: ["❌", "vynecháno", "bad"], skipped: ["⏸️", "volno (tvoje volba)", ""], extra: ["➕", "navíc mimo plán", ""] };
   const rc = d.recent || [];
   const nPlan = rc.filter((x) => x.plan && x.status !== "skipped").length, nOk = rc.filter((x) => x.status === "done").length;
-  const recentHtml = rc.length ? `<details class="trecent"><summary><b>Posledních ${rc.length} tréninků</b><span class="sub">splněno ${nOk} z ${nPlan} plánovaných</span></summary><div class="tr-list">${rc.map((x) => { const [ic, lab, tn] = RS[x.status] || ["•", x.status, ""]; return `<div class="tr-row"><span class="tr-d"><b>${DAYS[dow(x.date) - 1]}</b> ${dm(x.date)}</span><span class="tr-m"><span class="tr-p">${x.plan ? `plán: ${esc(x.plan.name)}${x.plan.min ? ` · ${dur(x.plan.min * 60)}` : ""}${x.plan.load ? ` · zátěž ${num(x.plan.load)}` : ""}` : "bez plánu"}</span>${x.acts.length ? x.acts.map((a) => `<a href="#/aktivita/${a.id}" class="tr-a">${SPORT_ICON[a.sport] || "🏅"} ${esc(a.name || SPORT_NAME[a.sport] || "")} · ${hmm(a.moving_s)} h · zátěž ${num(a.load)}</a>`).join("") : `<span class="sub">nic odjeto</span>`}</span><span class="tr-s ${tn}">${ic} ${lab}${x.compliance != null ? `<small>${x.compliance} %</small>` : ""}</span></div>`; }).join("")}</div><p class="note">Splněno = intervals.icu hlásí splnění aspoň 80 % (nebo zátěž 80–125 % plánu, když workout nebyl spárovaný).</p></details>` : "";
+  const recentHtml = rc.length ? `<details class="trecent"><summary><b>Posledních ${rc.length} tréninků</b><span class="sub">splněno ${nOk} z ${nPlan} plánovaných</span></summary><div class="tr-list">${rc.map((x) => { const [ic, lab, tn] = RS[x.status] || ["•", x.status, ""]; return `<div class="tr-row"><span class="tr-d"><b>${DAYS[dow(x.date) - 1]}</b> ${dm(x.date)}</span><span class="tr-m"><span class="tr-p">${x.plan ? `plán: ${esc(x.plan.name)}${x.plan.min ? ` · ${dur(x.plan.min * 60)}` : ""}${x.plan.load ? ` · zátěž ${num(x.plan.load)}` : ""}` : "bez plánu"}</span>${x.acts.length ? x.acts.map((a) => `<a href="#/aktivita/${a.id}" class="tr-a">${SPORT_ICON[a.sport] || "🏅"} ${esc(a.name || SPORT_NAME[a.sport] || "")} · ${hUt(a.moving_s)} · zátěž ${num(a.load)}</a>`).join("") : `<span class="sub">nic odjeto</span>`}</span><span class="tr-s ${tn}">${ic} ${lab}${x.compliance != null ? `<small>${x.compliance} %</small>` : ""}</span></div>`; }).join("")}</div><p class="note">Splněno = intervals.icu hlásí splnění aspoň 80 % (nebo zátěž 80–125 % plánu, když workout nebyl spárovaný).</p></details>` : "";
   const prop = d.proposal;
   const pending = prop && prop.items.length ? `<div class="tpend"><span><b>${prop.items.length} ${prop.items.length === 1 ? "změna čeká" : prop.items.length < 5 ? "změny čekají" : "změn čeká"}</b> · do kalendáře a intervals.icu jdou až po potvrzení</span>
     <span class="btns"><button class="btn pri" id="applyAll">✅ Zapsat do intervals.icu</button><button class="btn" id="resetMine">↩ Vrátit moje úpravy</button></span>
@@ -1241,7 +1244,7 @@ let actQuery = "";
 let aktView = "list"; // mobil: Seznam | Souhrn roku | Týdenní objem
 const isBikeSport = (s) => ["ride", "mtb", "indoor"].includes(s);
 /** Řádek aktivity v seznamu. Na mobilu: název přes celou šířku, čísla v jednom řádku pod ním (CSS). */
-const actRowHtml = (a) => `<a class="arow" href="#/aktivita/${a.id}"><span class="aico">${SPORT_ICON[a.sport] || "🏅"}</span><span class="aname"><b>${esc(a.name || SPORT_NAME[a.sport])}</b><span class="sub">${dayDm(a.date)}${a.date.slice(0, 4) !== String(new Date().getFullYear()) ? a.date.slice(0, 4) : ""} · ${esc(SPORT_NAME[a.sport] || a.sport)}${a.company ? ` · 👥 ${esc(a.company === "skupina" ? "skupina" : a.company)}` : ""}${a.plan_name ? ` · plán ${a.icu_compliance ? `${num(a.icu_compliance)} %` : "✓"}` : a.is_quality ? " · kvalita" : ""}</span></span><span class="astats"><span class="am">${a.distance_m ? `<b>${num(a.distance_m / 1000, 1)}</b> km · ` : ""}<b>${hmm(a.moving_s)}</b> h</span><span class="sub">${isBikeSport(a.sport) && (a.np || a.avg_power) ? `<b class="pw">${num(a.np || a.avg_power)} W</b> · ` : ""}${a.avg_hr ? `${num(a.avg_hr)} bpm · ` : ""}zátěž ${num(a.load)}</span></span></a>`;
+const actRowHtml = (a) => `<a class="arow" href="#/aktivita/${a.id}"><span class="aico">${SPORT_ICON[a.sport] || "🏅"}</span><span class="aname"><b>${esc(a.name || SPORT_NAME[a.sport])}</b><span class="sub">${dayDm(a.date)}${a.date.slice(0, 4) !== String(new Date().getFullYear()) ? a.date.slice(0, 4) : ""} · ${esc(SPORT_NAME[a.sport] || a.sport)}${a.company ? ` · 👥 ${esc(a.company === "skupina" ? "skupina" : a.company)}` : ""}${a.plan_name ? ` · plán ${a.icu_compliance ? `${num(a.icu_compliance)} %` : "✓"}` : a.is_quality ? " · kvalita" : ""}</span></span><span class="astats"><span class="am">${a.distance_m ? `<b>${num(a.distance_m / 1000, 1)}</b> km · ` : ""}<b>${hU(a.moving_s)[0]}</b> ${hU(a.moving_s)[1]}</span><span class="sub">${isBikeSport(a.sport) && (a.np || a.avg_power) ? `<b class="pw">${num(a.np || a.avg_power)} W</b> · ` : ""}${a.avg_hr ? `${num(a.avg_hr)} bpm · ` : ""}zátěž ${num(a.load)}</span></span></a>`;
 let aktMonth = null; // vybraný měsíc v souhrnu „YYYY-MM“ (null = uplynulý měsíc)
 const SPORT_GROUP = (s) => (["ride", "mtb", "indoor"].includes(s) ? "kolo" : ["walk", "hike"].includes(s) ? "chuze" : ["hockey", "skate", "padel"].includes(s) ? "hry" : ["strength", "mobility"].includes(s) ? "sila" : s);
 const GROUP_LOOK = { kolo: ["🚴", "Kolo", "var(--z2)"], run: ["🏃", "Běh", "var(--acc)"], xc_ski: [XC_SVG, "Běžky", "#4fa3d8"], chuze: ["🥾", "Chůze a turistika", "var(--z4)"], hry: ["🏒", "Hokej, brusle, padel", "var(--z7)"], sila: ["🏋️", "Síla a mobilita", "var(--z6)"], other: ["🏅", "Ostatní", "var(--z1)"] };
@@ -1453,7 +1456,7 @@ function streamsChart(s, opts = {}) {
     const segs = runs(vals.map((v, i) => (xs[i] == null ? null : v)), (i) => X(xs[i]), Y);
     const d = segs.map((s2) => curvePath(s2)).join("");
     const gid = `${id}g${pi}`;
-    defs += `<linearGradient id="${gid}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${p.color}" stop-opacity=".3"/><stop offset="1" stop-color="${p.color}" stop-opacity=".05"/></linearGradient>`;
+    defs += `<linearGradient id="${gid}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${p.color}" stop-opacity=".16"/><stop offset="1" stop-color="${p.color}" stop-opacity="0"/></linearGradient>`;
     const firstI = vals.findIndex((v) => v != null), lastI = n - 1 - [...vals].reverse().findIndex((v) => v != null);
     svg += `<text class="pl" x="${P.l}" y="${y0 - 2}">${p.name}${p.unit ? ` (${p.unit})` : ""}</text>`;
     for (const t of niceTicks(mn, mx, PH > 140 ? 6 : 4)) svg += `<line class="gl" x1="${P.l}" x2="${W - P.r}" y1="${Y(t)}" y2="${Y(t)}"/><text class="yl" x="${P.l - 6}" y="${Y(t) + 4}" text-anchor="end">${p.fmt ? p.fmt(t) : p.signed ? signed(t) : num(t)}</text>`;
@@ -1538,22 +1541,26 @@ function extraHtml(a) {
   const run = a.sport === "run", foot = FOOT.includes(a.sport);
   const u = (v, unit) => `${v}<small> ${unit}</small>`;
   const rows = [
-    x.max_speed && foot && x.avg_speed ? ["⏱️ Tempo", u(paceTxt(60 / x.avg_speed), "/km"), `nejrychleji ${paceTxt(60 / x.max_speed)} /km`] : null,
+    // průměrné tempo a stoupání jsou nahoře v základních údajích → tady jen nejrychlejší tempo
+    x.max_speed && foot ? ["⏱️ Nejrychlejší tempo", u(paceTxt(60 / x.max_speed), "/km"), ""] : null,
     x.max_speed && !foot ? ["🚀 Rychlost", u(num(x.avg_speed, 1), "km/h"), `max ${num(x.max_speed, 1)} km/h`] : null,
     run && a.avgPower ? ["⚡ Výkon", u(num(a.avgPower), "W"), a.np ? `NP ${num(a.np)} W` : ""] : null,
     a.avgCad ? [run ? "👟 Kadence" : "🔄 Kadence", u(num(x.run_cad || a.avgCad), run ? "kr/min" : "ot/min"), x.max_cad ? `max ${num(x.max_cad)}` : ""] : null,
     x.strokes ? [run || foot ? "👟 Kroků" : "🔄 Otáček", thou(x.strokes), "celkem"] : a.avgCad && a.moving && !run ? ["🔄 Otáček", thou((a.avgCad * a.moving) / 60), "celkem (odhad)"] : null,
     x.stride_m ? ["📏 Délka kroku", u(num(x.stride_m, 2), "m"), ""] : null,
-    x.gct_ms ? ["🦶 Kontakt se zemí", u(num(x.gct_ms), "ms"), x.vosc_cm ? `oscilace ${num(x.vosc_cm, 1)} cm${x.vratio ? ` · poměr ${num(x.vratio, 1)} %` : ""}` : ""] : null,
+    x.gct_ms ? ["🦶 Kontakt se zemí", u(num(x.gct_ms), "ms"), ""] : null,
+    x.vosc_cm ? ["↕️ Vertikální oscilace", u(num(x.vosc_cm, 1), "cm"), x.vratio ? `poměr ${num(x.vratio, 1)} %` : ""] : null,
     x.avg_resp ? ["🫁 Dech", u(num(x.avg_resp), "/min"), `rozsah ${num(x.min_resp)}–${num(x.max_resp)}`] : null,
-    a.calories ? ["🔥 Kalorie", u(thou(a.calories), "kcal"), ""] : null,
-    a.elevGain ? ["↗️ Stoupání", u(num(a.elevGain), "m"), x.elev_loss != null ? `klesání ${num(x.elev_loss)} m` : ""] : null,
+    a.calories && !a.usedTop?.has("calories") ? ["🔥 Kalorie", u(thou(a.calories), "kcal"), ""] : null,
+    x.elev_loss != null && a.elevGain ? ["↘️ Klesání", u(num(x.elev_loss), "m"), ""] : null,
     x.min_elev != null || x.max_elev != null ? ["⛰️ Nejvýš", u(num(x.max_elev), "m n. m."), `nejníž ${num(x.min_elev)} m`] : null,
-    x.bb_diff != null ? ["🔋 Dopad na Body Battery", u(signed(x.bb_diff), ""), "čistý dopad podle hodinek"] : null,
+    x.bb_diff != null ? ["🔋 Body Battery", u(signed(x.bb_diff), ""), "dopad aktivity"] : null,
     a.minTemp != null || a.maxTemp != null ? ["🌡️ Teplota", `<em id="tAvg" class="tavg">…</em><small> °C</small>`, `rozsah ${num(a.minTemp)}–${num(a.maxTemp)} °C`] : null,
-    a.aerobicTe != null ? ["💚 Aerobní efekt", num(a.aerobicTe, 1), teWord(a.aerobicTe)] : null,
+    a.aerobicTe != null && !a.usedTop?.has("aerobic") ? ["💚 Aerobní efekt", num(a.aerobicTe, 1), teWord(a.aerobicTe)] : null,
     x.ana_te != null ? ["💥 Anaerobní efekt", num(x.ana_te, 1), teWord(x.ana_te)] : null,
   ].filter(Boolean);
+  // sudý počet buněk: lichý → pryč nejméně důležitý údaj
+  if (rows.length % 2) { const i = rows.findIndex((r) => /Otáček|Kroků|Klesání|Nejvýš/.test(r[0])); if (i >= 0) rows.splice(i, 1); }
   return rows.length ? `<div class="abasics xtra">${rows.map(([k, v, sub]) => `<div><span>${k}</span><b>${v}</b>${sub ? `<i>${esc(sub)}</i>` : ""}</div>`).join("")}</div>` : `<div class="empty">Další údaje nemám.</div>`;
 }
 // hlavní přínos aktivity podle Garminu: [název, skupina zátěže] – skupiny stejně jako graf zátěže na Kondici
@@ -1574,9 +1581,11 @@ function sliceStreams(s, from, to) {
   out.halves = null; out.route = null;
   return out;
 }
+/** podřádek okruhu: údaje se nelámou uprostřed („5 m“ na dvou řádcích), oddělovač zůstane na konci řádku */
+const subParts = (t) => { const p = String(t || "").split(" · ").filter(Boolean); return p.map((x, i) => `<span class="nw">${/^\d[\d ]* m$/.test(x) ? "↑ " : ""}${esc(x)}${i < p.length - 1 ? " ·" : ""}</span>`).join(" "); };
 function lapsHtml(a, s) {
   const tbl = a.laps.show
-    ? `<table class="t"><tr><th>Okruh</th><th class="r">Čas</th>${a.hasPower ? '<th class="r">Výkon</th>' : ""}<th class="r">Tep ⌀/max</th></tr>${a.laps.rows.map((r, i) => `<tr class="${r.iv ? "iv" : ""}${r.start_s != null && r.dur_s && a.hasStreams ? " lapclick" : ""}" ${r.start_s != null && r.dur_s && a.hasStreams ? `data-li="${i}" tabindex="0" role="button" aria-label="Průběh úseku ${esc(r.name)}"` : ""}><td><b>${esc(r.name)}</b><span class="s2">${esc(r.sub)}</span></td><td class="r">${r.time}</td>${a.hasPower ? `<td class="r">${r.power}</td>` : ""}<td class="r">${r.hr}</td></tr>`).join("")}</table><p class="note">${esc(a.laps.note)}</p>`
+    ? `<table class="t"><tr><th>Okruh</th><th class="r">Čas</th>${a.hasPower ? '<th class="r">Výkon</th>' : ""}<th class="r">Tep ⌀/max</th></tr>${a.laps.rows.map((r, i) => `<tr class="${r.iv ? "iv" : ""}${r.start_s != null && r.dur_s && a.hasStreams ? " lapclick" : ""}" ${r.start_s != null && r.dur_s && a.hasStreams ? `data-li="${i}" tabindex="0" role="button" aria-label="Průběh úseku ${esc(r.name)}"` : ""}><td><b>${esc(r.name)}</b><span class="s2">${subParts(r.sub)}</span></td><td class="r">${r.time}</td>${a.hasPower ? `<td class="r">${r.power}</td>` : ""}<td class="r">${r.hr}</td></tr>`).join("")}</table><p class="note">${esc(a.laps.note)}</p>`
     : `<div class="empty">${esc(a.laps.note || "Tréninkové okruhy nejsou – vyber okruhy po km.")}</div>`;
   const sp = s && s.splits ? s.splits : {};
   const modes = [["plan", "Tréninkové"], ...["1", "5", "10"].filter((k) => sp[k] && sp[k].length > 1).map((k) => [k, `po ${k} km`])];
@@ -1688,9 +1697,10 @@ async function drawMap(box, s, legBox, modeBox) {
   syncNight(first);
   map.on("baselayerchange", (e) => { try { localStorage.setItem("mapLayer4", e.name); } catch {} syncLogo(e.name); syncNight(e.name); });
   // ⤢ vycentrovat trasu (po přiblížení zpět na celou trasu, stejně jako po otevření)
-  const fitAll = () => map.fitBounds(L.latLngBounds(route.map((p) => [p[0], p[1]])), { padding: [22, 22] }); // malinko oddálené – trasa nekončí u okraje
+  // malinko oddálené, vlevo víc místa → trasa nevede pod tlačítky (zoom, vycentrovat, zesvětlit)
+  const fitAll = () => map.fitBounds(L.latLngBounds(route.map((p) => [p[0], p[1]])), { paddingTopLeft: [58, 24], paddingBottomRight: [24, 24] });
   const fitCtl = L.control({ position: "topleft" });
-  fitCtl.onAdd = () => { const b = L.DomUtil.create("a", "leaflet-bar mapfit"); b.href = "#"; b.title = "Vycentrovat celou trasu"; b.setAttribute("role", "button"); b.innerHTML = "⤢"; L.DomEvent.on(b, "click", (e) => { L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e); fitAll(); }); return b; };
+  fitCtl.onAdd = () => { const b = L.DomUtil.create("a", "leaflet-bar mapfit"); b.href = "#"; b.title = "Vycentrovat celou trasu"; b.setAttribute("role", "button"); b.innerHTML = '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/></svg>'; L.DomEvent.on(b, "click", (e) => { L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e); fitAll(); }); return b; };
   fitCtl.addTo(map);
   // ◐ zesvětlit podklad (trasa víc vynikne) – malé tlačítko na mapě pod ⤢
   const softCtl = L.control({ position: "topleft" });
@@ -1779,13 +1789,29 @@ function openFullscreen(title, render) {
 
 async function pageAktivita(el, id) {
   const a = await api("activity/" + id);
-  const statsTop = a.basics.filter(([k]) => !/Splnění plánu/.test(k)).slice(0, 10).map(([k, v]) => `<div><span>${k}</span><b>${esc(v)}</b></div>`).join("");
-  const gearSel = a.gear && a.gear.list.length && ["ride", "mtb", "indoor", "run", "xc_ski", "walk", "hike"].includes(a.sport)
+  const top = a.basics.filter(([k]) => !/Splnění plánu/.test(k)).slice(0, 10);
+  // sudý počet buněk (na mobilu 2 vedle sebe): lichý → doplnit důležitý údaj, který jinak je v „Dalších údajích“
+  a.usedTop = new Set();
+  if (top.length % 2) {
+    const fill = [
+      a.calories ? ["calories", "🔥 Kalorie", `${thou(a.calories)} kcal`] : null,
+      a.aerobicTe != null ? ["aerobic", "💚 Aerobní efekt", `${num(a.aerobicTe, 1)} · ${teWord(a.aerobicTe)}`] : null,
+    ].find(Boolean);
+    if (fill) { top.push([fill[1], fill[2]]); a.usedTop.add(fill[0]); }
+  }
+  // „Základ (nízko aerobní)“ → název tučně, skupina menším písmem pod ním (vejde se do buňky)
+  const cell = (k, v) => { const m = /^(.+?) \((.+)\)$/.exec(v); return `<div><span>${k}</span><b>${esc(m ? m[1] : v)}</b>${m ? `<i>${esc(m[2])}</i>` : ""}</div>`; };
+  const statsTop = top.map(([k, v]) => cell(k, v)).join("");
+  // vybavení a „s kým“ jen u kola, běhu a běžek; vybavení jen odpovídajícího druhu (kolo / boty / lyže)
+  const gk = { ride: "bike", mtb: "bike", indoor: "bike", run: "shoe", xc_ski: "ski" }[a.sport];
+  if (a.gear) a.gear.list = a.gear.list.filter((g) => g.kind === gk || g.kind === "other" || g.id === a.gear.id);
+  const gearSel = a.gear && a.gear.list.length && gk
     ? `<div class="gearsel">🚲 <select id="gearSel" title="vybavení (výchozí podle sportu, změníš tady)"><option value="auto">${a.gear.manual ? "podle sportu" : a.gear.id ? esc(a.gear.list.find((g) => g.id === a.gear.id)?.name || "podle sportu") : "bez vybavení"}</option>${a.gear.list.map((g) => `<option value="${g.id}" ${a.gear.manual && a.gear.id === g.id ? "selected" : ""}>${esc(g.name)}</option>`).join("")}<option value="none" ${a.gear.manual && a.gear.id == null ? "selected" : ""}>bez vybavení</option></select><span class="sub" id="gearMsg"></span></div>` : "";
-  const endur = ["ride", "mtb", "run", "xc_ski", "hike", "walk"].includes(a.sport);
-  const compSel = endur ? `<div class="gearsel">👥 <select id="compSel"><option value="">Jel jsem sám</option><option value="skupina" ${a.company === "skupina" ? "selected" : ""}>Ve skupině</option>${a.company && a.company !== "skupina" ? `<option value="${esc(a.company)}" selected>S: ${esc(a.company)}</option>` : ""}<option value="__new">S někým… (jméno)</option></select><span class="sub" id="compMsg">${a.company ? "přetažená Z2 se nebere jako chyba" : ""}</span></div>` : "";
+  const endur = ["ride", "mtb", "run", "xc_ski"].includes(a.sport);
+  const verb = a.sport === "run" ? ["Běžel", "běžel"] : ["Jel", "jel"];
+  const compSel = endur ? `<div class="gearsel">👥 <select id="compSel"><option value="">${verb[0]} jsem sám</option><option value="skupina" ${a.company === "skupina" ? "selected" : ""}>Ve skupině</option>${a.company && a.company !== "skupina" ? `<option value="${esc(a.company)}" selected>S: ${esc(a.company)}</option>` : ""}<option value="__new">S někým… (jméno)</option></select><span class="sub" id="compMsg">${a.company ? "přetažená Z2 se nebere jako chyba" : ""}</span></div>` : "";
   el.innerHTML = `<div class="head"><div><a class="back" href="#/aktivity" data-back>← Zpět</a><h1>${a.emoji} ${esc(a.title)}</h1><div class="sub">${dayDm(a.date)}${a.date.slice(0, 4)} · start ${a.start}${a.unitType ? " · " + esc(a.unitType) : ""}${a.envLabel ? " · " + esc(a.envLabel) : ""}${a.tempText ? " · " + esc(a.tempText) : ""}</div><div class="actsel">${gearSel}${compSel}</div></div></div>
-  <div class="verdict goal">🎯 ${esc(a.goal)}${a.compliance != null ? `<span class="pill ok">splnění ${a.compliance} %</span>` : ""}</div>
+  <div class="verdict goal" id="actAi"><span class="ai-t">🎯 ${esc(a.goal)}</span>${a.compliance != null ? `<span class="pill ok">splnění ${a.compliance} %</span>` : ""}<small class="ai-m">🤖 píšu zhodnocení…</small></div>
   <div class="grid">
    ${card("c12", "", "", `<div class="abasics">${statsTop}</div>${a.basicsNote ? `<p class="note">${esc(a.basicsNote)}</p>` : ""}`)}
    ${a.hasStreams ? `<div class="c7 col o-map" id="mapCol">${card("", "🗺️ Trasa", "", `<div id="mapmode"></div><div id="map" class="map loading sm">Načítám mapu…</div><div id="mapleg"></div>`, 'id="mapCard"')}</div>` : ""}
@@ -1800,10 +1826,21 @@ async function pageAktivita(el, id) {
   </div>`;
   el.querySelector("#aiAct")?.addEventListener("click", () => openAiPanel({ title: a.title, extra: `AKTIVITA ${a.date} ${a.title} (${SPORT_NAME[a.sport] || a.sport}): ${a.basics.map(([k, v]) => `${k.replace(/^\S+\s/, "")} ${v}`).join(", ")}. Záměr: ${a.goal}`,
     ask: "Zhodnoť tuto aktivitu: jaký měla přínos pro kondici, jestli intenzita odpovídala záměru, jak se projeví na zotavení v dalších dnech a co by měl být další trénink." }));
+  // AI zhodnocení (2–3 věty) místo opisu čísel; když AI nejede, zůstane text z kódu
+  const loadAi = (force) => {
+    const box = el.querySelector("#actAi"); if (!box) return;
+    const m = box.querySelector(".ai-m");
+    api(`activity/${a.id}/ai${force ? "?force=1" : ""}`).then((r) => {
+      if (!box.isConnected) return;
+      if (r && r.text) { box.querySelector(".ai-t").textContent = "🤖 " + r.text; m.innerHTML = `${r.model ? esc(String(r.model).replace(/^[a-z]+:/, "").replace(/^.*\//, "")) + " · " : ""}<button class="linkbtn" type="button">napsat znovu</button>`; m.querySelector("button").addEventListener("click", () => { m.textContent = "🤖 píšu…"; loadAi(true); }); }
+      else m.remove();
+    }).catch(() => m.remove());
+  };
+  loadAi(false);
   const cs = el.querySelector("#compSel");
   if (cs) cs.addEventListener("change", async () => {
     let v = cs.value;
-    if (v === "__new") { v = (prompt("S kým jsi jel?") || "").trim(); if (!v) { cs.value = a.company || ""; return; } }
+    if (v === "__new") { v = (prompt(`S kým jsi ${verb[1]}?`) || "").trim(); if (!v) { cs.value = a.company || ""; return; } }
     const msg = el.querySelector("#compMsg");
     msg.textContent = "Ukládám…";
     try { await api(`activity/${a.id}/company`, { method: "POST", body: JSON.stringify({ company: v || null }) }); cache.clear(); route(); }
@@ -2690,10 +2727,10 @@ async function pageNastaveni(el) {
     const opt = (v, l) => `<option value="${esc(v)}" ${s.llm_model === v ? "selected" : ""}>${esc(l)}</option>`;
     const grp = (p, name, ids) => ids.length ? `<optgroup label="${name}">${ids.map((id) => opt(`${p}:${id}`, id)).join("")}</optgroup>` : "";
     box.innerHTML = `<div class="form-grid"><label>Model<select id="llmSel">${opt("auto", "Automaticky (nejlepší dostupný)")}${grp("google", "Google AI Studio · Gemma", m.google)}${grp("nvidia", "NVIDIA · Nemotron", m.nvidia)}${grp("workers", "Cloudflare Workers AI", m.workers)}</select><small class="sub">Teď se zkouší v pořadí: ${m.chain.map(esc).join(" → ") || "nic – zadej klíč níž"}</small></label></div>
-      <div class="btns"><button class="btn pri" id="llmSave">Uložit model</button><button class="btn" id="llmTest">Vyzkoušet</button><span class="note" id="llmMsg"></span></div>
+      <div class="btns"><button class="btn pri" id="llmSave">Uložit model</button><button class="btn" id="llmTest">Vyzkoušet</button><span class="note" id="llmMsg"></span></div><div id="llmRes" class="llmres"></div>
       <p class="note">${!m.keys.google && !m.keys.nvidia ? "Zatím běží jen Workers AI (Mistral). Pro chytřejší AI s lepší češtinou zadej níž v Připojení klíč Google AI Studio (Gemma) nebo NVIDIA (Nemotron) – oba jsou zdarma. " : ""}Když vybraný model neodpoví, zkusí se další v pořadí. Čísla v odpovědích se dál kontrolují proti datům. Pozor: Google na bezplatném tarifu může dotazy použít ke zlepšování svých modelů – posílají se čísla tréninku a zdraví, ne jméno ani klíče.</p>`;
     box.querySelector("#llmSave").addEventListener("click", async () => { const msg = box.querySelector("#llmMsg"); try { await api("settings", { method: "POST", body: JSON.stringify({ llm_model: box.querySelector("#llmSel").value }) }); cache.clear(); msg.textContent = "Uloženo."; } catch (e) { msg.textContent = e.message; } });
-    box.querySelector("#llmTest").addEventListener("click", async (e) => { const b = e.currentTarget, msg = box.querySelector("#llmMsg"); b.disabled = true; msg.textContent = "Ptám se…"; try { const r = await api("llm-test", { method: "POST", body: "{}" }); msg.textContent = r.ok ? `${r.model} · ${(r.ms / 1000).toFixed(1)} s: „${r.answer}“` : "Žádný model neodpověděl – viz Log synchronizace (Chyby)."; } catch (err) { msg.textContent = err.message; } b.disabled = false; });
+    box.querySelector("#llmTest").addEventListener("click", async (e) => { const b = e.currentTarget, msg = box.querySelector("#llmMsg"), out = box.querySelector("#llmRes"); b.disabled = true; msg.textContent = "Ptám se všech modelů…"; out.innerHTML = ""; try { const r = await api("llm-test", { method: "POST", body: JSON.stringify({ model: box.querySelector("#llmSel").value }) }); msg.textContent = ""; out.innerHTML = r.rows.map((x) => `<div class="llmrow ${x.ok ? "good" : "bad"}"><b>${x.ok ? "✓" : "✗"} ${esc(x.model)}</b><small>${(x.ms / 1000).toFixed(1)} s</small><span>${esc(x.ok ? `„${x.answer}“` : x.error || "prázdná odpověď")}</span>${x.hint ? `<em>${esc(x.hint)}</em>` : ""}</div>`).join(""); } catch (err) { msg.textContent = err.message; } b.disabled = false; });
   }).catch(() => { const box = el.querySelector("#aiModels"); if (box) box.innerHTML = '<div class="empty">Seznam modelů se nepodařilo načíst.</div>'; });
   el.querySelectorAll("[data-theme]").forEach((b) => b.addEventListener("click", () => setTheme(b.dataset.theme)));
   el.querySelectorAll("[data-skin]").forEach((b) => b.addEventListener("click", () => { setSkin(b.dataset.skin); el.querySelectorAll("[data-skin]").forEach((x) => x.classList.toggle("on", x === b)); }));
@@ -2791,7 +2828,7 @@ function chatUi(root, { key = CHAT_KEY, sugg = [], page = null } = {}) {
   const use = (u) => { const el2 = root.querySelector(".aiuse"); if (!el2 || !u) return; const pc = Math.min(100, Math.round((u.used / u.limit) * 100)); el2.innerHTML = `<div class="au-bar"><i style="width:${pc}%" class="${pc >= 85 ? "bad" : pc >= 60 ? "warn" : ""}"></i></div><span>AI dnes ~${pc} % denního limitu zdarma${pc >= 85 ? " – brzy dojde, obnoví se v 1:00" : ""}</span>`; };
   fetch("/api/ai-usage", { credentials: "same-origin", cache: "no-store" }).then((x) => x.json()).then(use).catch(() => {});
   const draw = (pending = false) => {
-    box.innerHTML = hist.length || pending ? hist.map((m) => `<div class="msg ${m.role}">${m.role === "assistant" ? md(m.content) : `<p>${esc(m.content)}</p>`}${m.warn ? `<small class="sub">⚠️ odpověď obsahuje číslo, které v tvých datech není – ber s rezervou</small>` : ""}</div>`).join("") + (pending ? `<div class="msg assistant"><span class="spin"></span></div>` : "") : `<div class="empty">${page ? `Ptej se na to, co vidíš na stránce „${esc(page.title || "")}“.` : "Zeptej se na trénink, plán, spánek nebo cokoli dalšího."}</div>`;
+    box.innerHTML = hist.length || pending ? hist.map((m) => `<div class="msg ${m.role}">${m.role === "assistant" ? md(m.content) : `<p>${esc(m.content)}</p>`}${m.warn ? `<small class="sub">⚠️ odpověď obsahuje číslo, které v tvých datech není – ber s rezervou</small>` : ""}${m.model ? `<small class="cmodel">odpověděl ${esc(String(m.model).replace(/^(google|nvidia|workers):(nvidia\/|@cf\/[^/]+\/)?/, ""))}</small>` : ""}</div>`).join("") + (pending ? `<div class="msg assistant"><span class="spin"></span></div>` : "") : `<div class="empty">${page ? `Ptej se na to, co vidíš na stránce „${esc(page.title || "")}“.` : "Zeptej se na trénink, plán, spánek nebo cokoli dalšího."}</div>`;
     box.scrollTop = box.scrollHeight;
     sg.style.display = hist.length ? "none" : "";
   };
@@ -2804,7 +2841,7 @@ function chatUi(root, { key = CHAT_KEY, sugg = [], page = null } = {}) {
     saveChat(hist, key); draw(true); inp.value = ""; inp.style.height = "auto";
     try {
       const r = await api("chat", { method: "POST", body: JSON.stringify({ messages: hist.map(({ role, content }) => ({ role, content })), page }) });
-      hist.push({ role: "assistant", content: r.answer, warn: !r.checked });
+      hist.push({ role: "assistant", content: r.answer, warn: !r.checked, model: r.model });
       use(r.ai);
       if (r.action) cache.clear();
     } catch (e) { hist.push({ role: "assistant", content: `Teď to nejde: ${e.message}` }); }
@@ -3008,7 +3045,7 @@ async function pagePocasi(el, keep = false) {
   if (!keep) { wxLoc = "home"; wxDay = 0; } // při otevření vždy domov a dnes, hory jen přepnutím
   const d = await api(`weather-hours?model=${wxModel}&loc=${wxLoc}`);
   const days = [0, 1, 2].map((k) => addDay(d.today, k));
-  const dname = (k) => (k === 0 ? "Dnes" : k === 1 ? "Zítra" : `${DAYS[(new Date(days[k] + "T12:00").getDay() + 6) % 7]} ${dm(days[k])}`);
+  const dname = (k) => (k === 0 ? "Dnes" : k === 1 ? "Zítra" : DAYS[(new Date(days[k] + "T12:00").getDay() + 6) % 7]);
   const sunOf = (date) => (d.sun || []).find((x) => x.date === date) || null;
   const hourMin = (s) => (s ? +s.slice(0, 2) * 60 + +s.slice(3, 5) : null);
   const isNight = (h) => { const s = sunOf(h.time.slice(0, 10)), m = +h.time.slice(11, 13) * 60 + 30; return s && s.rise && s.set ? m < hourMin(s.rise) || m > hourMin(s.set) : m < 7 * 60 || m >= 18 * 60; };
@@ -3057,13 +3094,12 @@ async function pagePocasi(el, keep = false) {
   const modelName = d.model === "aladin" ? "ALADIN (ČHMÚ, 1 km)" : "Open-Meteo (mix modelů)";
   el.innerHTML = `<div class="head"><div><a class="back" href="#/prehled" data-back>← Zpět</a><h1>Počasí</h1><div class="sub">${esc(d.place || "")} · ${modelName} · aktualizováno ${updTxt}</div></div></div>
   <div class="wxbar">
-    <div class="iosg"><span class="iosl">Místo</span><div class="ioseg" role="tablist">${(d.places || []).map((p) => `<button class="${d.loc === p.key ? "on" : ""}" data-wloc="${p.key}" role="tab" aria-selected="${d.loc === p.key}">${p.key === "home" ? "🏠" : "⛰️"} ${esc(p.name)}</button>`).join("")}</div></div>
-    <div class="iosg"><span class="iosl">Předpověď</span><div class="ioseg" role="tablist">${[["best", "Mix modelů"], ["aladin", "ALADIN 1 km"]].map(([k, l]) => `<button class="${d.model === k ? "on" : ""}" data-wmod="${k}" role="tab" aria-selected="${d.model === k}">${l}</button>`).join("")}</div></div>
-    <div class="iosg wxdays"><span class="iosl">Den</span><div class="ioseg">${[0, 1, 2].map((k) => `<button data-wd="${k}">${dname(k)}</button>`).join("")}</div></div>
-    <p class="iosh">${d.model === "aladin" ? "ALADIN = model ČHMÚ s mřížkou 1 km – nejpřesnější pro Česko, předpověď jen na ~2,5 dne." : "Mix modelů = Open-Meteo pro každé místo vybere nejlepší dostupný model (ICON, ECMWF, GFS…), předpověď na víc dní."}</p>
+    <div class="ioseg ico" role="tablist" aria-label="Místo">${(d.places || []).map((p) => `<button class="${d.loc === p.key ? "on" : ""}" data-wloc="${p.key}" role="tab" aria-selected="${d.loc === p.key}" title="${esc(p.name)}" aria-label="${esc(p.name)}">${p.key === "home" ? "🏠" : "⛰️"}</button>`).join("")}</div>
+    <div class="ioseg ico" role="tablist" aria-label="Předpověď">${[["best", "🌍", "Mix modelů – Open-Meteo vybere nejlepší model (ICON, ECMWF, GFS…), víc dní"], ["aladin", "🎯", "ALADIN 1 km – model ČHMÚ, nejpřesnější pro Česko, ~2,5 dne"]].map(([k, i, t]) => `<button class="${d.model === k ? "on" : ""}" data-wmod="${k}" role="tab" aria-selected="${d.model === k}" title="${t}" aria-label="${t}">${i}</button>`).join("")}</div>
+    <div class="ioseg days">${[0, 1, 2].map((k) => `<button data-wd="${k}">${dname(k)}</button>`).join("")}</div>
   </div>
   <div class="grid">
-    ${card("c12 wxcard", "🕐 Po hodinách", `aktualizováno ${updTxt}`, table + `<p class="note">Srážky v mm za hodinu (modře, čím víc, tím sytější), šance na déšť, vítr a nárazy v km/h (zeleně od 15, oranžově od 35, červeně od 50). Posuň do strany pro další hodiny a dny.</p>`)}
+    ${card("c12 wxcard", "🕐 Po hodinách", `aktualizováno ${updTxt}`, table + `<p class="note">Srážky v mm za hodinu (modře, čím víc, tím sytější), šance na déšť, vítr a nárazy v km/h (zeleně od 15, oranžově od 35, červeně od 50). Posuň do strany pro další hodiny a dny. Přepínače nahoře: 🏠 / ⛰️ místo, 🌍 mix modelů (Open-Meteo vybere nejlepší model, víc dní), 🎯 ALADIN 1 km (model ČHMÚ, nejpřesnější pro Česko, ~2,5 dne).</p>`)}
     ${card("c12", "📈 Průběh dne", "Open-Meteo", `<div id="wxBody"></div>`)}
     ${card("c12", "🔗 Další", "", `<div class="wx-links">${has ? `<a class="btn sm" href="https://www.windy.com/${lat}/${lon}?${lat},${lon},9" target="_blank" rel="noopener">Windy ↗</a><a class="btn sm" href="https://www.ventusky.com/?p=${lat};${lon};9&l=rain-3h" target="_blank" rel="noopener">Ventusky ↗</a>` : ""}<a class="btn sm" href="#/trener" onclick="setTimeout(() => document.getElementById('pocasi')?.scrollIntoView({ behavior: 'smooth' }), 900)">Trenér → okna na trénink</a></div>`)}
   </div>`;
