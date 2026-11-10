@@ -2069,3 +2069,12 @@ html[data-rings="glow"] .dn-rings .gring::before { opacity: .85; }
 /* Trenér: datum dne na úrovni prvního řádku (název tréninku / tlačítko) */
 @media (max-width: 760px) { .tday .td-date { align-self: start !important; padding-top: 9px !important; line-height: 1.3; } }
 @media (min-width: 761px) { .tday .td-date { align-self: center; } }
+/* Trenér: datum jen v prvním řádku mřížky → svisle na střed s názvem tréninku a tlačítkem */
+@media (max-width: 760px) {
+  .td-row { grid-template-areas: "d m b" ". n n" ". w w" !important; }
+  .tday.rest .td-row { grid-template-areas: "d m b" ". w w" !important; }
+  .tday .td-date { align-self: center !important; padding-top: 0 !important; }
+}
+/* Odtrénováno: jeden tok textu (název aktivity na stejném řádku a úrovni), šipka vpravo */
+.tdark .td-done { display: block !important; }
+.tdark .td-done .go { float: right; margin-left: 8px; }

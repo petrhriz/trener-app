@@ -1117,7 +1117,7 @@ async function pageTrener(el) {
   const tmLine = ti ? `${ti.name ? esc(ti.name) : esc(ti.tag || "volno")}${ti.minutes ? ` · ${dur(ti.minutes * 60)}` : ""}${ti.rainProb != null && ti.rainProb > 40 ? ` · 🌧️ déšť ${num(ti.rainProb)} %` : ti.tmax != null ? ` · ${num(ti.tmax)}°` : ""}` : esc(String(r.tomorrow || "").replace(/^[^:]*:\s*/, ""));
   const doneActs = (t.done || []).filter((x) => x.id);
   const todayCard = `<section class="card tdark c12" data-tt="tyden"><span class="td-d">Dnes · ${dayDm(r.date)} · <span class="${tone}">${rec.emoji} ${esc(rec.stateLabel)}</span></span>
-    ${doneActs.length && !paused ? doneActs.map((x) => `<a class="td-h td-done" href="#/aktivita/${x.id}">✅ Odtrénováno: ${esc(x.name)} <span class="go">→</span></a>`).join("") : `<b class="td-h">${esc(paused ? `${d.status.label} – plán stojí` : skipped ? "Dnes volno (tvoje volba)" : t.decision)}${!paused && t.day && t.day.name && t.decision !== "Odtrénováno" ? ` · ${dur((t.day.durationMin || 0) * 60)}` : ""}</b>`}
+    ${doneActs.length && !paused ? doneActs.map((x) => `<a class="td-h td-done" href="#/aktivita/${x.id}"><span class="go">→</span>✅ Odtrénováno: ${esc(x.name)}</a>`).join("") : `<b class="td-h">${esc(paused ? `${d.status.label} – plán stojí` : skipped ? "Dnes volno (tvoje volba)" : t.decision)}${!paused && t.day && t.day.name && t.decision !== "Odtrénováno" ? ` · ${dur((t.day.durationMin || 0) * 60)}` : ""}</b>`}
     <p class="td-p">${paused ? "Stav změníš na Přehledu." : skipped ? "Omylem? Vrať to tlačítkem." : doneActs.length ? doneActs.map((x) => `${x.load != null ? `zátěž <b>${num(x.load)}</b> <small class="u">${x.unit || ""}</small>` : ""}${x.compliance != null ? ` · splněno <b class="${x.compliance >= 80 && x.compliance <= 125 ? "good" : "warn"}">${x.compliance} %</b>` : ""}`).join("<br>") : esc(t.decisionWhy)}</p>
     <p class="td-tm"><b>Zítra:</b> ${tmLine}</p>
     <div class="btns">${paused ? "" : skipped ? `<button class="btn pri" data-undo="${r.date}" data-kind="${skipped.kind}">↩️ Vrátit – dnes pojedu</button>` : t.decision === "Odtrénováno" || t.decision === "Volno" ? "" : `<button class="btn" data-skip="${r.date}">🚫 Dnes nepojedu</button>`}</div></section>`;
@@ -1132,7 +1132,7 @@ async function pageTrener(el) {
     const pd = p.days.find((x) => x.date === date), past = rc.find((x) => x.date === date);
     const acts = (past && past.acts) || [];
     const done = acts.length > 0 || (date === r.date && doneActs.length > 0);
-    const ico = done ? (SPORT_ICON[(acts[0] || {}).sport] || "✅") : pd && pd.name ? (pd.kind === "quality" ? "⚡" : tSportIco(pd.sport)) : date < r.date ? "—" : "·";
+    const ico = done ? (SPORT_ICON[(acts[0] || {}).sport || (date === r.date ? (doneActs[0] || {}).sport : "")] || "✅") : pd && pd.name ? (pd.kind === "quality" ? "⚡" : tSportIco(pd.sport)) : date < r.date ? "—" : "·";
     return `<button type="button" class="tsd ${done ? "done" : ""} ${date === r.date ? "today" : ""} ${pd && pd.kind === "quality" ? "q" : ""}" ${pd && date >= r.date ? `data-peek="${date}"` : ""} title="${dayDm(date)}${pd && pd.name ? ` · ${esc(pd.name)}` : ""}"><i>${ico}</i><b>${DAYS[dow(date) - 1]}</b><small>${Number(date.slice(8, 10))}.</small></button>`;
   };
   const strip = `<div class="tstrip-sc" id="tStrip">${[-7, 0, 7].map((o) => `<div class="tstrip" data-wk="${o}">${[0, 1, 2, 3, 4, 5, 6].map((k) => stripDay(addDay(mon, o + k))).join("")}</div>`).join("")}</div>`;
@@ -1185,13 +1185,15 @@ async function pageTrener(el) {
   const why = form == null ? "Formu zatím neznám." : form < -30 ? `Jsi hodně unavený (forma ${signed(form, 1)}) → týden výrazně lehčí, víc volna.` : form < -20 ? `Únava je vysoká (forma ${signed(form, 1)}) → týden lehčí.` : form > 15 && goalUp ? `Jsi odpočatý (forma ${signed(form, 1)})${f.ramp != null && f.ramp < 0 ? " a kondice klesá" : ""} → přidávám zátěž.` : form > 15 ? `Jsi odpočatý (forma ${signed(form, 1)}) – při cíli ${esc(d.goalLabel || "")} držím zátěž.` : `Forma ${signed(form, 1)} je v tréninkovém pásmu → plán drží zátěž.`;
   const qn = p.days.filter((x) => x.kind === "quality").length;
   // odhad: kondice (CTL, 42 dní) a únava (ATL, 7 dní) za 7 dní, když odjedeš plán
-  const fut = (p.chart || []).filter((c) => c.planned && !c.today);
+  const sunday = addDay(r.date, 7 - dow(r.date));
+  const endDay = dow(r.date) >= 6 ? addDay(sunday, 7) : sunday; // v so / ne výhled do konce příštího týdne
+  const fut = (p.chart || []).filter((c) => c.planned && !c.today && c.date <= endDay);
   const todayLoad = (p.chart || []).find((c) => c.today)?.load ?? 0;
   let ctl7 = f.ctl, atl7 = f.atl;
   const plan7 = fut.reduce((tt, c) => tt + (c.load || 0), 0);
   if (ctl7 != null && atl7 != null) for (const ld of [todayLoad, ...fut.map((c) => c.load || 0)]) { ctl7 += (ld - ctl7) / 42; atl7 += (ld - atl7) / 7; }
   const lastDay = fut.length ? fut[fut.length - 1].date : null;
-  const proj = ctl7 != null && lastDay ? `<p class="tproj">Když odjedeš plán (zátěž ${thou(plan7)} do ${dayDm(lastDay)}): kondice <b>${num(f.ctl, 1)} → ${num(ctl7, 1)}</b> (${signed(ctl7 - f.ctl, 1)}), forma <b>${signed(ctl7 - atl7, 0)}</b>.</p>` : "";
+  const proj = ctl7 != null && lastDay ? `<p class="tproj">Když odjedeš plán do neděle (zátěž ${thou(plan7 + todayLoad)} od dneška): kondice <b>${num(f.ctl, 1)} → ${num(ctl7, 1)}</b> (${signed(ctl7 - f.ctl, 1)}), forma <b>${signed(ctl7 - atl7, 0)}</b>.</p>` : "";
   const stateCard = card("t-state", "Z čeho trenér vychází", "intervals.icu · Garmin", `<div class="twhy"><b>Jak je týden postavený</b><p>${why} Cíl zátěže ${p.weeklyTarget.lo}–${p.weeklyTarget.hi}, ${qn ? `${qn}× kvalita` : "bez kvality"}, ${p.days.filter((x) => x.name).length} tréninků.</p>${proj}</div>
     <div class="tstate">
       <div><span>Kondice (CTL)</span><b class="num">${num(f.ctl, 1)}</b><small class="${f.ramp != null && f.ramp < -1 ? "warn" : ""}">${f.ramp != null ? `${signed(f.ramp, 1)} za týden` : ""}</small></div>
