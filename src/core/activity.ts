@@ -335,7 +335,7 @@ function buildLaps(a: ActRow, plan: PlannedForAct | null, isZ2: boolean, hasPowe
       }
     }
     return {
-      name: isExtra ? "Extra okruh" : name,
+      name,
       time: hms(l.moving_s || l.elapsed_s),
       power: hasPower ? `${num(l.avg_power)} W` : "",
       hr: `${num(l.avg_hr)}/${num(l.max_hr)}`,
@@ -347,8 +347,8 @@ function buildLaps(a: ActRow, plan: PlannedForAct | null, isZ2: boolean, hasPowe
   };
   res.rows = laps.map((l, i) => mk(l, named[i]!));
   if (extra) {
-    res.rows.push(mk(extra, "Extra okruh", true));
-    notes.push(`Extra okruh na konci (${hms(extra.moving_s)}): poslední krok workoutu nebyl do lapu.`);
+    // krátký poslední úsek = normální další okruh (žádné „Extra okruh“)
+    res.rows.push(mk(extra, `Okruh ${res.rows.length + 1}`, true));
   }
   // stabilita intervalů
   const ints = laps.filter((_, i) => named[i]!.startsWith("Interval"));

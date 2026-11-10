@@ -460,7 +460,7 @@ function zoneFill(pts, base, colors, yTop) {
     }
     i = end > i ? end : i + 1;
   }
-  return `<defs><linearGradient id="${id}g" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${yTop}" y2="${base}"><stop offset="0" stop-color="#fff" stop-opacity=".3"/><stop offset="1" stop-color="#fff" stop-opacity=".05"/></linearGradient><mask id="${id}m" maskUnits="userSpaceOnUse"><rect x="0" y="${yTop}" width="100000" height="${Math.max(0, base - yTop)}" fill="url(#${id}g)"/></mask></defs><g mask="url(#${id}m)">${paths}</g>`;
+  return `<defs><linearGradient id="${id}g" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="${yTop}" y2="${base}"><stop offset="0" stop-color="#fff" stop-opacity=".16"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient><mask id="${id}m" maskUnits="userSpaceOnUse"><rect x="0" y="${yTop}" width="100000" height="${Math.max(0, base - yTop)}" fill="url(#${id}g)"/></mask></defs><g mask="url(#${id}m)">${paths}</g>`;
 }
 
 function zoneLine(d, Y, mn, mx, bounds, colors, base, firstX, lastX, width = 2, zpts = null) {
@@ -955,7 +955,7 @@ async function pagePrehled(el) {
       : `<div class="today-act"><span class="ico">🛋️</span><div><b>${paused ? "Plán stojí" : "Dnes volno"}</b>${tomorrowHtml(t)}</div></div>`;
   const dnes = true
     ? card(`c8 dnes ${tone}`, "", "", `<div class="dn-wrap">${r.score != null ? `<div class="dn-rings"><a class="dn-side" href="#/detail/bb">${gradRing(d.bb.latest ?? d.bb.min, "energy", { size: 84, stroke: 9, label: "Energie", home: true })}</a><a class="dn-ring" href="#/zotaveni">${recRing(r.score, 132, true)}</a><a class="dn-side" href="#/detail/spanek">${gradRing(d.sleep?.score ?? null, "sleep", { size: 84, stroke: 9, label: "Spánek", home: true })}</a></div>` : ""}<div class="dn-body">${paused ? `<div class="dn-top"><span class="badge">${(STATUS[d.status.kind]?.[0] || "") + " " + esc(d.status.label)}</span></div>` : ""}
-      <div class="dn-head"><h2 class="dn-title"><span class="dn-dot ${paused ? "" : tone}" aria-hidden="true"></span>${esc(co.title)}</h2>${d.isToday ? `<div class="ainote side" data-ainote="prehled"></div>` : ""}</div>${d.isToday ? "" : `<p class="dn-text">${esc(co.text)}</p>`}
+      <div class="dn-head"><h2 class="dn-title"><span class="dn-dot ${paused ? "" : tone}" aria-hidden="true"></span>${esc(co.title)}</h2></div>${d.isToday ? `<div class="ainote" data-ainote="prehled"></div>` : ""}${d.isToday ? "" : `<p class="dn-text">${esc(co.text)}</p>`}
       <div class="dn-grid"><div>${co.needs.length ? `<div class="sl">Co tělo potřebuje</div><ul class="needs">${co.needs.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}</div><div><div class="sl">${d.isToday ? "Trénink" : "Odjeto"}</div>${todayLine}${d.isToday && t.name && !t.done?.length && !paused ? `<p class="note">Zítra: ${esc(t.tomorrow)}</p>` : ""}</div></div></div></div>`)
     : ""; // zpětný den: bez horní karty, aktivita je dole
 
@@ -1553,7 +1553,7 @@ function halvesHtml(h, a) {
   const decTone = dec == null ? "" : Math.abs(dec) < 5 ? "good" : dec <= 8 ? "warn" : "bad";
   const tiles = [
     dec != null ? stat("Decoupling", signed(dec, 1), " %", `${a.icuDecoupling != null ? "intervals.icu" : "z průběhu"} · pod 5 % = dobrá vytrvalost`, decTone) : "",
-    a.drift != null ? stat("Aerobní drift", num(a.drift, 1), " %", "Garmin průběh, ustálená část", Math.abs(a.drift) < 5 ? "good" : a.drift <= 8 ? "warn" : "bad") : "",
+    a.drift != null && (a.icuDecoupling == null || Math.abs(a.icuDecoupling - a.drift) > 0.05) ? stat("Aerobní drift", num(a.drift, 1), " %", "Garmin průběh, ustálená část", Math.abs(a.drift) < 5 ? "good" : a.drift <= 8 ? "warn" : "bad") : "",
     a.z2Power ? stat("Výkon na konci Z2", num(a.z2Power.w), " W", `při ${a.z2Power.hr} bpm · ${num(a.z2Power.min)} min v Z2`, "") : "",
   ].join("");
   return `${tiles ? `<div class="stats halves">${tiles}</div>` : ""}${table}<p class="note">Decoupling = o kolik % klesl výkon na jeden tep ve 2. polovině. Pod 5 % je aerobní základ dobrý, nad 8 % únava, horko nebo málo jídla. Výkon na konci Z2 = výkon, který tě v této aktivitě stál tep ${a.z2Power ? a.z2Power.hr : "na horní hranici Z2"} (výkon/tep v Z2 × hranice Z2) – roste-li v čase, zlepšuje se vytrvalost.</p>`;
