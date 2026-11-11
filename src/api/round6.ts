@@ -54,6 +54,11 @@ round6.post("/status", async (c) => {
     kind === "active"
       ? prev && prev.kind !== "active" ? { ...prev, until: addDays(T, -1) } : { kind: "active" as const, from: null, until: null }
       : { kind: kind as "sick" | "injured" | "vacation", from: T, until: until ?? null };
+  // ukončené období stavu si zapamatovat: trenér pak ví, že slabý týden byl nemoc / dovolená, ne změna návyku
+  if (prev && prev.kind !== "active" && prev.from && (kind === "active" || kind !== prev.kind)) {
+    const end = prev.until && prev.until < T ? prev.until : addDays(T, -1);
+    if (end >= prev.from) await setSetting(c.env.DB, "status_log", [...(ctx0.s.status_log ?? []), { kind: prev.kind, from: prev.from, until: end }].slice(-30));
+  }
   await setSetting(c.env.DB, "status", val);
   const p = await planFor(await loadCtx(c.env));
   let removed = 0;

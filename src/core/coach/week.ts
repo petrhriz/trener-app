@@ -221,7 +221,7 @@ export function solveWeek(inp: SolveInput): SolvedDay[] {
   // běh v plánu cyklisty (a naopak) dostane délku podle STEJNÉ ZÁTĚŽE, ne podle stejných minut
   const runPerMin = Math.max(0.4, (p.primary === "run" ? inp.rate : inp.runRate) / 60);
   const pm = (x: SolvedDay) => (x.sport === "run" ? runPerMin : perMin);
-  const runCap = Math.min(150, Math.max(p.primary === "run" ? 45 : 30, Math.round(inp.run.longest * 1.1)));
+  const runCap = Math.min(180, Math.max(60, Math.round(inp.run.longest * 1.5)));
   const rnd = (x: SolvedDay, m: number) => (x.sport === "run" ? r5(m) : r15(m));
   let left = Math.max(0, inp.load - inp.doneLoad);
   const open: SolvedDay[] = [];
@@ -250,7 +250,7 @@ export function solveWeek(inp: SolveInput): SolvedDay[] {
     left = Math.max(0, left - longDay.minutes * pm(longDay));
   }
   ends.forEach((x, i) => {
-    const cap = x.sport === "run" ? Math.min(runCap, 60) : Math.min(inp.caps.easy, longDay ? Math.max(45, longDay.minutes - 15) : inp.caps.easy);
+    const cap = x.sport === "run" ? Math.min(runCap, 90) : Math.min(inp.caps.easy, longDay ? Math.max(45, longDay.minutes - 15) : inp.caps.easy);
     const lo = x.sport === "run" ? Math.min(30, cap) : 45;
     // den přepnutý na jiný sport dostane zátěž, jakou by měl v hlavním sportu (strop délky hlavního sportu)
     const share = Math.min(left / (ends.length - i), inp.caps.easy * perMin);

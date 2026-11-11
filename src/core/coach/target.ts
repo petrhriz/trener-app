@@ -81,6 +81,8 @@ export interface Recent {
   weekLoads: number[];
   /** počet tréninkových dnů v týchž týdnech */
   weekSessions: number[];
+  /** kolik dní v týchž týdnech byl sportovec mimo (stav Nemocný / Zraněný / Dovolená) */
+  weekOff?: number[];
   /** nejdelší trénink za poslední 4 týdny (min) */
   longestMin: number;
   /** obvyklá délka tréninku za 4 týdny (medián, min); null = bez historie */
@@ -155,10 +157,15 @@ export function weekTarget(inp: TargetInput): Budget {
   // 2) strop podle skutečnosti posledních 4 týdnů: nejvýš +30 % (aspoň +40) proti jejich váženému průměru
   //    (váhy 1–2–3–4 od nejstaršího: když se objem před pár týdny změnil, plán to zachytí rychle)
   //    Jeden vypadlý týden mezi normálními (nemoc, cesta) se nepočítá; dva a víc slabých týdnů už je změna návyku.
-  const low = recent.weekLoads.map((x, i, all) => x < 0.25 * Math.max(0, ...all.filter((_y, j) => j !== i)));
+  //    Týdny, kdy měl sportovec aspoň 3 dny stav Nemocný / Zraněný / Dovolená, se nepočítají vůbec.
+  const off = (i: number) => (recent.weekOff?.[i] ?? 0) >= 3;
+  const low = recent.weekLoads.map((x, i, all) => !off(i) && x < 0.25 * Math.max(0, ...all.filter((_y, j) => j !== i && !off(j))));
   const outage = low.filter(Boolean).length === 1 ? low.indexOf(true) : -1;
-  const wl = recent.weekLoads.filter((_x, i) => i !== outage);
-  const ws = recent.weekSessions.filter((_x, i) => i !== outage);
+  const keep = recent.weekLoads.map((_x, i) => i !== outage && !off(i));
+  // kdyby vypadly všechny týdny (měsíc mimo), bere se skutečnost – návrat musí být opatrný
+  const use = keep.some(Boolean) ? keep : keep.map(() => true);
+  const wl = recent.weekLoads.filter((_x, i) => use[i]);
+  const ws = recent.weekSessions.filter((_x, i) => use[i]);
   const wavg = (v: number[]) => (v.length ? v.reduce((t, x, i) => t + x * (i + 1), 0) / v.reduce((t, _x, i) => t + i + 1, 0) : 0);
   const recentLoad = r0(wavg(wl));
   const hasHistory = wl.some((x) => x > 0);

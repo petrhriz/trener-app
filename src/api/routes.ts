@@ -1075,7 +1075,7 @@ api.post("/secrets/test", async (c) => {
 api.post("/settings", async (c) => {
   const body = (await c.req.json()) as Partial<Settings>;
   // profil trenéra má vlastní cestu s kontrolou (/coach/profile)
-  const allowed = (Object.keys(DEFAULTS) as (keyof Settings)[]).filter((k) => k !== "coach_profile");
+  const allowed = (Object.keys(DEFAULTS) as (keyof Settings)[]).filter((k) => k !== "coach_profile" && k !== "status_log");
   const before = await getSettings(c.env.DB);
   // povinné údaje (časy zpráv, místo, tréninky týdně, cíl) nesmí být prázdné ani ve špatném tvaru – null by
   // v plánovači zpráv spadl (hm(null)) a ranní / večerní zprávy by tiše přestaly chodit

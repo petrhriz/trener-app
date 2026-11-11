@@ -8,7 +8,7 @@ import { type ActPower, curveCompare, daysSince, lastStimulus } from "../power";
 import type { QualityType } from "../quality";
 import type { Format } from "../qualityDesign";
 import { type Block, type Step, type Workout, SPORT_LABEL, totalSeconds, workoutName, z1Workout, z2Workout } from "../workout";
-import { type HrZones, TARGET_PCT, hrZoneRange, pctRange, round5 } from "../zones";
+import { type HrZones, TARGET_PCT, hrZoneRange, pctRange, round5, runHrZones } from "../zones";
 import type { Phase } from "./target";
 import { type LibWorkout, LIBRARY } from "./workouts.data";
 
@@ -144,22 +144,25 @@ function hrEasy(hr: HrZones | null, minutes: number, z: number, ride: boolean): 
 // ---------- zátěž ----------
 
 const HR_IF = [0.55, 0.68, 0.82, 0.92, 1.02];
+/** běh: zóny jsou výš (Z2 = 85–89 % prahu), takže i lehký běh dává za hodinu víc zátěže než lehká jízda */
+const RUN_IF = [0.66, 0.8, 0.88, 0.95, 1.03];
 
 /**
  * Zátěž jednotky z jejích kroků: Σ čas × IF² (IF = střed pásma / FTP; u kroků podle tepu podle zóny).
  * `calib` = poměr skutečné zátěže uživatele k teorii (z jeho historie), drží odhad u jeho čísel.
  */
-export function workoutLoad(w: Workout, ftp: number | null, calib = 1): number {
+export function workoutLoad(w: Workout, ftp: number | null, calib = 1, run = false): number {
   let t = 0;
+  const tab = run ? RUN_IF : HR_IF;
   for (const b of w.blocks)
     for (const s of b.steps) {
-      const f = s.lo != null && s.hi != null && ftp ? (s.lo + s.hi) / 2 / ftp : HR_IF[(s.z ?? 2) - 1] ?? 0.68;
+      const f = s.lo != null && s.hi != null && ftp ? (s.lo + s.hi) / 2 / ftp : tab[(s.z ?? 2) - 1] ?? tab[1]!;
       t += (b.reps ?? 1) * s.dur_s * f * f;
     }
   return Math.round((t / 3600) * 100 * calib);
 }
 /** teoretická zátěž lehké hodiny (Z2) – základ kalibrace */
-export const EASY_LOAD_H = { power: 41.6, hr: 46.2 };
+export const EASY_LOAD_H = { power: 41.6, hr: 46.2, run: 64 };
 
 // ---------- stavba ----------
 
@@ -240,7 +243,7 @@ function fromLibrary(w: LibWorkout, cat: Cat, ftp: number, minutes: number, indo
 
 export function buildWorkout(inp: BuildInput): Built {
   const { sport, zones, indoor } = inp;
-  const hr = zones.hr;
+  const hr = sport === "run" ? runHrZones(zones.hr) : zones.hr;
   const calib = inp.calib ?? 1;
   const minutes = Math.max(20, Math.round(inp.minutes));
   const L = SPORT_LABEL[sport]!;
@@ -250,7 +253,7 @@ export function buildWorkout(inp: BuildInput): Built {
     name,
     minutes: Math.round(totalSeconds(workout) / 60),
     tizMin: 0,
-    load: workoutLoad(workout, zones.ftp, calib),
+    load: workoutLoad(workout, zones.ftp, calib, sport === "run"),
     qualityType: null,
     targetText: null,
     family: inp.family,

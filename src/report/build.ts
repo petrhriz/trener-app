@@ -224,6 +224,17 @@ export function fatigueOf(ctx: Ctx, rec: RecoveryResult, cons: { date: string; k
   return { form: y ? y.ctl - y.atl : null, badMornings: bad, hrvLow, illnessDays };
 }
 
+/** Dny za posledních 5 týdnů se stavem Nemocný / Zraněný / Dovolená (ukončená období + právě běžící stav). */
+export function offDaysOf(ctx: Ctx): string[] {
+  const T = ctx.T, from = addDays(T, -35);
+  const spans = [...(ctx.s.status_log ?? [])];
+  const st = ctx.s.status;
+  if (st && st.kind !== "active" && st.from) spans.push({ kind: st.kind, from: st.from, until: st.until && st.until < T ? st.until : T });
+  const out = new Set<string>();
+  for (const sp of spans) for (const d of dateRange(sp.from < from ? from : sp.from, sp.until > T ? T : sp.until)) out.add(d);
+  return [...out];
+}
+
 /** Trenér v2: uložený plán po týdnech; přepočet jen při změně vstupů (src/core/coach/engine.ts). */
 export async function planForV2(ctx: Ctx, rec: RecoveryResult): Promise<PlanResult> {
   const T = ctx.T;
@@ -255,6 +266,7 @@ export async function planForV2(ctx: Ctx, rec: RecoveryResult): Promise<PlanResu
     recovery: rec.state,
     fatigue: fatigueOf(ctx, rec, constraints),
     weekLoads: await weekLoads(ctx),
+    offDays: offDaysOf(ctx),
     stored: state.stored,
     progress: state.progress,
   });

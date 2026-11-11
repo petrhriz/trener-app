@@ -110,6 +110,11 @@ describe("cíl zátěže týdne", () => {
     expect(two.recentLoad).toBeLessThan(110);
     expect(two.load).toBeLessThan(160);
   });
+  it("PŘÍKLAD 5c – týdny se stavem Nemocný / Dovolená se do průměru nepočítají, i když jsou dva", () => {
+    const b = target({ ctl: 45, recent: { ...REC, weekLoads: [300, 310, 0, 20], weekSessions: [4, 4, 0, 1], weekOff: [0, 0, 7, 5] } });
+    expect(b.recentLoad).toBeGreaterThan(300);
+    expect(b.load).toBe(315);
+  });
   it("PŘÍKLAD 6 – začátečník bez historie: opatrný první týden", () => {
     const b = target({ ctl: 0, recent: { weekLoads: [], weekSessions: [], longestMin: 0, typicalMin: null, provenRamp: null } });
     expect(b.load).toBeLessThanOrEqual(150);
@@ -172,12 +177,14 @@ describe("knihovna tréninků", () => {
   it("běh má kroky v bpm ze zón Garminu a do intervals.icu jde % LTHR", () => {
     const b = buildWorkout({ sport: "run", family: "end", level: 0, minutes: 45, indoor: false, zones: ZONES });
     const main = b.workout.blocks.find((x) => x.kind === "main")!.steps[0]!;
-    expect([main.hrLo, main.hrHi]).toEqual([135, 163]);
-    expect(main.hr).toBe("69-83% LTHR");
+    // běžecké zóny: Z2 = 85–89 % prahu 196 (na kole je Z2 135–163)
+    expect([main.hrLo, main.hrHi]).toEqual([167, 175]);
+    expect(main.hr).toBe("85-89% LTHR");
+    expect(b.load).toBeGreaterThan(40); // 45 min běhu ≈ 64 zátěže za hodinu, víc než lehká jízda
     expect(b.name).toBe("Běh – Z2");
     const k = buildWorkout({ sport: "run", family: "vo2", level: 1, minutes: 50, indoor: false, zones: ZONES });
     expect(k.name).toContain("práh"); // běh VO2 podle tepu nemá → práh
-    expect(k.workout.blocks.find((x) => x.kind === "work")!.steps[0]!.hrLo).toBe(185);
+    expect(k.workout.blocks.find((x) => x.kind === "work")!.steps[0]!.hrLo).toBe(186);
     expect(k.minutes).toBeLessThanOrEqual(60);
   });
   it("bez FTP a bez zón vyjde platný trénink podle tepu", () => {
@@ -261,7 +268,7 @@ describe("kostra týdne", () => {
     const runs = d.filter((x) => x.role !== "rest" && x.sport === "run");
     expect(runs.length).toBe(1);
     expect(runs[0]!.role).toBe("endurance");
-    expect(runs[0]!.minutes).toBeLessThanOrEqual(45);
+    expect(runs[0]!.minutes).toBeLessThanOrEqual(60);
     expect(d.find((x) => x.role === "key")!.sport).toBe("ride");
     expect(d.find((x) => x.role === "long")!.sport).toBe("ride");
     // tři tréninky týdně: běh nevezme kolu poslední vytrvalostní den
@@ -282,14 +289,14 @@ describe("kostra týdne", () => {
     expect(e.sport).toBe("run");
     expect(e.minutes).toBeLessThan(endDay.minutes); // stejná zátěž = kratší běh
     expect(Math.abs(e.minutes * (62 / 60) - endDay.minutes * (45 / 60))).toBeLessThan(8);
-    // málo naběháno → strop 1,1× nejdelšího běhu za měsíc
-    const capped = solve({ load: 187, sessions: 3, caps: { easy: 75, long: 105, key: 60 }, run: { experienced: false, longest: 30 }, fixed: fixedFromConstraints([{ date: endDay.date, kind: "sport", note: "run" }] as Constraint[]) });
-    expect(capped.find((x) => x.date === endDay.date)!.minutes).toBeLessThanOrEqual(35);
+    // strop běhu: 1,5× nejdelšího běhu za měsíc, ale aspoň hodina (5 km → 10 km není problém)
+    const capped = solve({ load: 400, sessions: 3, caps: { easy: 120, long: 240, key: 60 }, run: { experienced: false, longest: 30 }, fixed: fixedFromConstraints([{ date: endDay.date, kind: "sport", note: "run" }] as Constraint[]) });
+    expect(capped.find((x) => x.date === endDay.date)!.minutes).toBeLessThanOrEqual(60);
   });
   it("jen běh: vše běh, dlouhý běh nepřeroste 1,1× nejdelšího", () => {
     const d = solve({ profile: prof({ primary: "run", sports: { ride: { enabled: false } } }), load: 220, sessions: 4, run: { experienced: true, longest: 70 } });
     expect(d.filter((x) => x.role !== "rest").every((x) => x.sport === "run")).toBe(true);
-    expect(d.find((x) => x.role === "long")!.minutes).toBeLessThanOrEqual(77);
+    expect(d.find((x) => x.role === "long")!.minutes).toBeLessThanOrEqual(105);
   });
   it("drží se dřívější kostry, když se nic zásadního nezmění", () => {
     const a = solve({});

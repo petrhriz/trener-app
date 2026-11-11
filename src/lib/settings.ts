@@ -29,6 +29,8 @@ export interface Settings {
   dashboard_url: string | null;
   /** stav jako v Bevelu: aktivní / nemocný / zraněný / dovolená; until = poslední den (null = do odvolání) */
   status: { kind: "active" | "sick" | "injured" | "vacation"; from: string | null; until: string | null };
+  /** ukončená období stavu Nemocný / Zraněný / Dovolená (trenér je nepočítá do průměru posledních týdnů) */
+  status_log: { kind: string; from: string; until: string }[];
   /** síla v minimu týdne */
   floor_strength: boolean;
   /** místo pro počasí na Přehledu */
@@ -69,6 +71,7 @@ export const DEFAULTS: Settings = {
   rides_per_week: 3,
   dashboard_url: null,
   status: { kind: "active", from: null, until: null },
+  status_log: [],
   floor_strength: false,
   place_name: "Hostomice",
   ride_temps: { cold: 3, hot: 30, ideal: 18 },

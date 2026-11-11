@@ -47,6 +47,17 @@ export function hrZoneRange(hz: HrZones, z: number): [number, number] {
   return [lo, hi];
 }
 
+/**
+ * Zóny tepu pro BĚH. Při běhu je tep na stejné úsilí výš než na kole (víc svalů, nese se váha), takže zóny kola
+ * by z každého běhu dělaly Z3–Z4. Běžecké zóny podle prahu (Friel): Z1 pod 85 % LTHR, Z2 85–89 %, Z3 90–94 %,
+ * Z4 95–99 %, Z5 od 100 %. Práh (LTHR) je uživatelův z Garminu; bez něj zůstanou zóny beze změny.
+ */
+export function runHrZones(hz: HrZones | null): HrZones | null {
+  if (!hz || !hz.lthr || hz.lthr < 100) return hz;
+  const f = (p: number) => Math.round(hz.lthr! * p);
+  return { ...hz, floors: [Math.min(hz.floors[0] ?? f(0.6), f(0.7)), f(0.85), f(0.9), f(0.95), f(1)], max: Math.max(hz.max, f(1.06)) };
+}
+
 export function hrZonesText(hz: HrZones): string {
   return hz.floors.map((_, i) => `Z${i + 1} ${hrZoneRange(hz, i + 1).join("–")}`).join(", ");
 }
