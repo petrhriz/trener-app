@@ -1211,7 +1211,7 @@ async function pageTrener(el) {
       <div><span>Únava (ATL)</span><b class="num">${num(f.atl, 1)}</b><small>zátěž 7 dní ${thou(f.load7)}</small></div>
       <div><span>Forma (TSB)</span><b class="num">${signed(form, 1)}</b><small class="${form == null ? "" : form < -20 || form > 20 ? "warn" : "good"}">${esc(formZoneName(form))}</small></div>
       <div><span>Zotavení</span><b class="tst-word ${tone}">${rec.score != null ? `${num(rec.score)} %` : esc(({ green: "Dobré", yellow: "Částečné", red: "Nízké" })[rec.state] || rec.stateLabel)}</b></div></div>${(d.insights || []).length ? `<div class="insights">${d.insights.map((i) => verdict(i.tone, i.text)).join("")}</div>` : ""}
-    <div class="sl" style="margin-top:12px">Kondice a forma · 30 dní + výhled</div><div id="tKond" class="loading sm">Načítám…</div>
+    <div class="sl" style="margin-top:12px">Kondice a forma · 90 dní + výhled</div><div id="tKond" class="loading sm">Načítám…</div>
     <details class="gcmp"><summary>Pravidla trenéra</summary><p class="note">${rulesTxt}</p></details>`, 'data-tt="proc"');
   // --- chat (na mobilu schovaný – stejné umí 🤖 v hlavičce) ---
   const chatCard = card("t-chat", "💬 Řekni trenérovi", "AI · úpravy plánu", `<div class="tmsgs">${hist.length ? hist.slice(-6).map((m) => `<div class="msg ${m.role}"><p>${esc(m.text)}</p>${m.applied && m.applied.length ? `<small class="sub">${m.applied.map(esc).join(" · ")}</small>` : ""}</div>`).join("") : '<div class="empty">Napiš, co se mění – trenér upraví plán (např. „ve středu nestihnu, přesuň kvalitu na čtvrtek“).</div>'}</div>
@@ -1241,10 +1241,10 @@ async function pageTrener(el) {
   el.querySelectorAll(".tday .td-row").forEach((row) => row.addEventListener("click", (e) => { if (e.target.closest("button, a, select, input")) return; const tr = row.closest(".tday"); if (!tr.querySelector(".tpeek")) return; const on = !tr.classList.contains("peek"); el.querySelectorAll(".tday.peek").forEach((x) => x.classList.remove("peek")); tr.classList.toggle("peek", on); }));
   el.querySelectorAll("[data-peek]").forEach((b) => b.addEventListener("click", () => { const row = el.querySelector(`.tday[data-day="${b.dataset.peek}"]`); if (!row) return; const on = !row.classList.contains("peek"); el.querySelectorAll(".tday.peek").forEach((x) => x.classList.remove("peek")); row.classList.toggle("peek", on); row.scrollIntoView({ behavior: "smooth", block: "center" }); }));
   bindHours(el);
-  // 30 dní kondice (CTL), únavy (ATL) a formy + čárkovaně výhled podle plánu
+  // 90 dní kondice (CTL), únavy (ATL) a formy + čárkovaně výhled podle plánu
   api("fitness").then((fd) => {
     const box = el.querySelector("#tKond"); if (!box) return;
-    const m = (fd.metrics || []).slice(-30), pr = fd.projection || [];
+    const m = (fd.metrics || []).slice(-90), pr = fd.projection || [];
     if (!m.length) { box.outerHTML = '<div class="empty">Kondici zatím nemám.</div>'; return; }
     const li = m.length - 1, pad = (a) => [...a, ...Array(pr.length).fill(null)], pre = (a) => [...Array(li).fill(null), ...a];
     box.classList.remove("loading", "sm");
