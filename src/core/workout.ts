@@ -91,8 +91,8 @@ export function humanSteps(w: Workout): string[] {
     const s0 = b.steps[0]!;
     const lap = b.steps[b.steps.length - 1]?.lap ? " → lap" : "";
     if ((b.reps ?? 1) > 1) {
-      const [work, rest] = b.steps;
-      return `${b.reps}× ${mins(work!.dur_s)} ${rng(work!)}${rest ? ` / ${mins(rest.dur_s)} ${rng(rest)}` : ""}`;
+      // série může mít víc kroků než práce + pauza (over-under: pod prahem / nad prahem / pauza)
+      return `${b.reps}× ${b.steps.map((s) => `${mins(s.dur_s)} ${rng(s)}`).join(" / ")}`;
     }
     switch (b.kind) {
       case "warmup":

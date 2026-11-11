@@ -1,4 +1,3 @@
-import type { Anchor } from "../core/coach/budget";
 import type { CoachProfile } from "../core/coach/profile";
 import { all, lit } from "./db";
 
@@ -43,10 +42,8 @@ export interface Settings {
   sleep_goal_min: number;
   /** Trenér v2: nový plánovač (uložený týden, profil sportů) místo v1 */
   coach_v2: boolean;
-  /** Trenér v2: profil sportovce (sporty, dny, hodiny); null = odhadne se z historie */
+  /** Trenér v2: profil sportovce (hlavní sport, další sporty); null = odhadne se z historie */
   coach_profile: CoachProfile | null;
-  /** Trenér v2: začátek trajektorie kondice (den nastavení cíle) */
-  goal_anchor: Anchor | null;
 }
 
 export const DEFAULTS: Settings = {
@@ -80,7 +77,6 @@ export const DEFAULTS: Settings = {
   sleep_goal_min: 480,
   coach_v2: false,
   coach_profile: null,
-  goal_anchor: null,
 };
 
 /** Platný stav k datu (po „until“ automaticky zpět aktivní). */

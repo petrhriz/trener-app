@@ -1110,7 +1110,7 @@ async function pageTrener(el) {
   const r = d.readiness, rec = r.recovery, f = r.fitness, p = r.plan;
   const co = d.coach; // Trenér v2 (uložený plán podle profilu); null = starý trenér
   const hTxt = (x) => String(x).replace(".", ",");
-  const coLine = co ? `<p class="tproj"><b>${esc(co.phaseLabel)}</b>${co.cycle ? ` · týden ${co.cycleIdx} ze 4${co.recoveryWeek ? " (lehčí)" : co.nextRecovery ? ` · lehčí týden od ${dm(co.nextRecovery)}` : ""}` : ""} · tento týden ${hTxt(co.hours)} h (profil ${hTxt(co.hoursBand.min)}–${hTxt(co.hoursBand.max)} h)</p>` : "";
+  const coLine = co ? `<p class="tproj"><b>${esc(co.phaseLabel)}</b>${co.cycle ? ` · týden ${co.cycleIdx} ze 4${co.recoveryWeek ? " (lehčí)" : co.nextRecovery ? ` · lehčí týden od ${dm(co.nextRecovery)}` : ""}` : ""} · nabídka týdne ${hTxt(co.hours)} h${co.habitHours != null ? ` (obvykle jezdíš kolem ${hTxt(co.habitHours)} h)` : ""}</p>` : "";
   const tone = rec.state === "green" ? "good" : rec.state === "yellow" ? "warn" : "bad";
   const paused = d.status && d.status.kind !== "active";
   const skipped = (d.constraints || []).find((c) => c.date === r.date && ["nepojedu", "nemuzu", "dovolena", "nemoc"].includes(c.kind));
@@ -1190,10 +1190,10 @@ async function pageTrener(el) {
   const why = form == null ? "Formu zatím neznám." : form < -30 ? `Jsi hodně unavený (forma ${signed(form, 1)}) → týden výrazně lehčí, víc volna.` : form < -20 ? `Únava je vysoká (forma ${signed(form, 1)}) → týden lehčí.` : form > 15 && goalUp ? `Jsi odpočatý (forma ${signed(form, 1)})${f.ramp != null && f.ramp < 0 ? " a kondice klesá" : ""} → přidávám zátěž.` : form > 15 ? `Jsi odpočatý (forma ${signed(form, 1)}) – při cíli ${esc(d.goalLabel || "")} držím zátěž.` : `Forma ${signed(form, 1)} je v tréninkovém pásmu → plán drží zátěž.`;
   const qn = p.days.filter((x) => x.kind === "quality").length;
   const dist = co && co.distribution;
-  const whyTxt = co ? `Týden vychází z tvého profilu a cíle: ${hTxt(co.hours)} h, kondice má na konci týdne být kolem ${num(co.ctlTarget, 1)}.${form != null && form < -20 ? ` Únava je vysoká (forma ${signed(form, 1)}), proto je týden lehčí.` : ""}` : null;
+  const whyTxt = co ? `Nabídka vychází z toho, co obvykle jezdíš, a z cíle: ${hTxt(co.hours)} h. Když ji odjedeš, kondice bude na konci týdne kolem ${num(co.ctlTarget, 1)}. Nic z toho není povinné – co vynecháš, se nedohání.${form != null && form < -20 ? ` Únava je vysoká (forma ${signed(form, 1)}), proto je týden lehčí.` : ""}` : null;
   const distTxt = co ? `<p class="tproj">${dist ? `Posledních ${dist.days} dní: lehce <b>${dist.low} %</b> · středně ${dist.mid} % · intenzivně ${dist.high} % času (${num(dist.hours, 1)} h v zónách).` : "Rozdělení intenzity zatím nemám (málo dat o čase v zónách)."} V plánu tohoto týdne je nad Z2 ${co.plannedHard} % času.</p>` : "";
   const rulesTxt = co
-    ? "Hodiny týdne bere trenér z tvého profilu, zátěž z cíle a kondice (roste nejvýš o 10–15 % týdně). Dny mají role: volno, lehký, vytrvalost, klíčový (kvalita) a dlouhý. Nejvýš 3 tréninky za sebou, kvalita nikdy den po kvalitě ani po dlouhém tréninku. Většina času lehce (do vršku tvojí Z2), nad Z2 nejvýš pětina týdne. Ráno podle zotavení: 🟡 kvalita se přesune na jiný den, 🔴 volno nebo Z1. Těžká jízda mimo plán se počítá jako kvalita. Únava a nemoc zátěž jen ubírají, nic se nedohání. Plán je uložený – mění se jen, když se změní zotavení, počasí, odjeté tréninky nebo tvoje úpravy."
+    ? "Trenér nabízí tolik, kolik obvykle jezdíš (bere to z posledních 8 týdnů), cíl to posouvá nahoru nebo dolů. Pořadí důležitosti je kvalita, dlouhý trénink, pak Z2: když týden vyjde jen na dva tréninky, zůstanou ty důležité. Kvality se střídají (práh, sweet spot, tempo, over-under, VO2, krátké VO2, anaerobní, sprinty) a vybírají se z knihovny tak, aby se neopakovaly; po zvládnuté kvalitě je další o stupeň těžší. Pravidla: nejvýš 3 tréninky za sebou, kvalita nikdy den po kvalitě ani po dlouhém tréninku, nad Z2 nejvýš pětina času. Ráno podle zotavení: 🟡 kvalita se přesune, 🔴 volno nebo Z1. Vynechaná kvalita se sama posune na další vhodný den, vynechaná Z2 propadne. Když trénink přetáhneš jinam, zbytek týdne se přeskládá. Plán je uložený – mění se jen, když se změní zotavení, počasí, odjeté tréninky nebo tvoje úpravy."
     : "Týdenní zátěž z kondice a cíle (max. +30 % proti běžnému týdnu). Forma pod −20 → týden o 12 % lehčí, pod −30 o 25 %. Kvalita 1× (zima) / 2× (sezóna) týdně, nikdy dva dny po sobě ani po hokeji; když týden zaplní tvoje volby, dá se na kolový den. Ráno podle zotavení: 🟡 kvalita → Z2 nebo zkrácení, 🔴 volno / Z1. Tvoje úpravy (přesun, délka, sport, vlastní jízda) mají přednost, zbytek týdne se dopočítá.";
   // odhad: kondice (CTL, 42 dní) a únava (ATL, 7 dní) za 7 dní, když odjedeš plán
   const sunday = addDay(r.date, 7 - dow(r.date));
@@ -1219,7 +1219,7 @@ async function pageTrener(el) {
     <form class="chatform" id="askF"><textarea rows="1" placeholder="Napiš trenérovi…"></textarea><button class="btn pri" type="submit">➤</button></form>${hist.length ? '<button class="btn sm" id="askClr" style="margin-top:6px">Smazat rozhovor</button>' : ""}`, 'data-tt="chat"');
   // --- cíl, počasí, zátěž po týdnech, intenzita ---
   const cur2 = d.goals.find((g) => g.key === d.goal);
-  const goalCard = card("t-goal", "🎯 Cíl tréninku", "", `<div class="seg">${d.goals.map((g) => `<button class="${d.goal === g.key ? "on" : ""}" data-goal="${g.key}">${esc(g.label)}</button>`).join("")}</div><p class="gtext">${esc(cur2 ? cur2.text : "")}</p>${proj}<p class="note" id="goalMsg"></p>${coLine}<p class="note">${co ? 'Sporty, dny a hodiny týdně nastavíš v <a href="#/nastaveni">Nastavení → Trenér – profil</a>.' : 'Počet tréninků plán volí sám podle cíle a zátěže týdne. Teplotní hranice pro jízdu venku změníš v <a href="#/nastaveni">Nastavení</a>.'}</p>`, 'data-tt="cil"');
+  const goalCard = card("t-goal", "🎯 Cíl tréninku", "", `<div class="seg">${d.goals.map((g) => `<button class="${d.goal === g.key ? "on" : ""}" data-goal="${g.key}">${esc(g.label)}</button>`).join("")}</div><p class="gtext">${esc(cur2 ? cur2.text : "")}</p>${proj}<p class="note" id="goalMsg"></p>${coLine}<p class="note">${co ? 'Hlavní sport a další sporty nastavíš v <a href="#/nastaveni">Nastavení → Trenér</a>. Dny ani hodiny se nenastavují – trénink přetáhni, kam se ti hodí.' : 'Počet tréninků plán volí sám podle cíle a zátěže týdne. Teplotní hranice pro jízdu venku změníš v <a href="#/nastaveni">Nastavení</a>.'}</p>`, 'data-tt="cil"');
   const weatherCard = card("c12 t-weather", "🌤️ Počasí na trénink · 7 dní", "Open-Meteo", weatherList(p.days.map((x) => ({ label: x.isToday ? "Dnes" : dayDm(x.date), w: x.weather })).filter((x) => x.w)) + `<p style="margin-top:10px"><a class="btn sm" href="#/pocasi">Počasí po hodinách →</a></p>`, 'id="pocasi" data-tt="pocasi"');
   const loadsCard = card("t-loads", "📈 Zátěž po týdnech", "TSS / HRSS", weekLoadsHtml(d.weeks), 'data-tt="proc"');
   const intens = card("t-int", "Průvodce intenzitou", "FTP", `<details><summary>Watty pro jednotlivé jednotky (FTP ${d.intensity.ftp} W)</summary><table class="t"><tr><th>Jednotka</th><th class="r">% FTP</th><th class="r">Watty</th></tr>${d.intensity.targets.map((x) => `<tr><td>${esc(x.name)}</td><td class="r">${x.pct[0]}–${x.pct[1]} %</td><td class="r">${x.w[0]}–${x.w[1]} W</td></tr>`).join("")}</table></details>`, 'data-tt="cil"');
@@ -2791,7 +2791,7 @@ async function pageNastaveni(el) {
      <label class="chk"><input type="checkbox" name="floor_strength" ${s.floor_strength ? "checked" : ""}> Síla 1× týdně v minimu týdne</label>
      <label class="chk"><input type="checkbox" name="icu_sync" ${s.icu_sync ? "checked" : ""}> Zápis plánu do intervals.icu</label>
    </div><div class="btns"><button class="btn pri" type="submit">Uložit</button><span class="note" id="saved"></span></div></form>`)}
-   ${card("c12", "🧭 Trenér – profil", "sporty, dny, hodiny", `<div id="coachProf" class="loading sm">Načítám profil…</div>`)}
+   ${card("c12", "🧭 Trenér", "hlavní sport a další sporty", `<div id="coachProf" class="loading sm">Načítám profil…</div>`)}
    ${card("c4", "Zóny tepu", s.hr_zones ? s.hr_zones.source : "", s.hr_zones ? kv([...s.hr_zones.floors.map((v, i) => [`Z${i + 1} od`, v + " bpm"]), ["Max", s.hr_zones.max + " bpm"], ["LTHR", (s.hr_zones.lthr ?? DASH) + " bpm"], ["Klidový", (s.hr_zones.rest ?? DASH) + " bpm"]]) : '<div class="empty">Nemám.</div>')}
    ${st0 ? card("c6", "Stav synchronizace", st.source, kv([
      ["Aplikace stáhla data z Garminu", st.state.last_sync_ok ? `${new Date(st.state.last_sync_ok).toLocaleString("cs-CZ")} <small class="sub">(${ago(st.state.last_sync_ok)})</small>` : DASH],
@@ -2856,80 +2856,42 @@ async function pageNastaveni(el) {
   el.querySelector("#secTest")?.addEventListener("click", async () => { const msg = el.querySelector("#secMsg"); msg.textContent = "Zkouším…"; try { const r = await api("secrets/test", { method: "POST" }); msg.textContent = `Garmin: ${r.garmin} · intervals.icu: ${r.intervals}`; } catch (e) { msg.textContent = e.message; } });
 }
 
-// ---------- Nastavení: profil trenéra (sporty, dny, hodiny) ----------
+// ---------- Nastavení: trenér (hlavní sport, další sporty) ----------
 async function coachProfileForm(box) {
   if (!box) return;
   let d;
-  try { d = await api("coach/profile"); } catch (e) { box.classList.remove("loading", "sm"); box.innerHTML = `<div class="empty">Profil se nepodařilo načíst: ${esc(e.message)}</div>`; return; }
+  try { d = await api("coach/profile"); } catch (e) { box.classList.remove("loading", "sm"); box.innerHTML = `<div class="empty">Nastavení trenéra se nepodařilo načíst: ${esc(e.message)}</div>`; return; }
   box.classList.remove("loading", "sm");
-  const SP = [["ride", "🚴 Kolo"], ["run", "🏃 Běh"], ["xc_ski", "🎿 Běžky"], ["walk", "🚶 Chůze"]];
-  const DN = ["Po", "Út", "St", "Čt", "Pá", "So", "Ne"];
-  const draw = (p, v2, msg = "", aiBox = "") => {
-    const winter = p.winterMonths || [11, 12, 1, 2];
-    const shareOf = (isWinter, s) => { const m = (p.mix || []).find((x) => x.months.some((mo) => winter.includes(mo)) === isWinter); return m && m.share[s] ? Math.round(m.share[s] * 100) : ""; };
-    const hrs = (k, label) => `<label>${label} (h týdně od–do)<span class="tp-len"><input type="number" step="0.5" min="1" max="30" data-h="${k}.min" value="${p.hours[k].min}"> – <input type="number" step="0.5" min="1" max="30" data-h="${k}.max" value="${p.hours[k].max}"></span></label>`;
+  const OTHER = { ride: [["run", "🏃 Občas běhám"], ["xc_ski", "🎿 V zimě běžky"]], run: [["ride", "🚴 Občas jezdím na kole"], ["xc_ski", "🎿 V zimě běžky"]] };
+  const hTxt = (x) => String(x).replace(".", ",");
+  const draw = (p, v2, msg = "") => {
+    const h = d.habit || {};
     box.innerHTML = `
-      <label class="chk"><input type="checkbox" id="cpV2" ${v2 ? "checked" : ""}> <b>Nový trenér</b> – plán uložený po týdnech podle tohoto profilu (vypnuto = původní trenér)</label>
-      <div class="sl" style="margin:12px 0 6px">Řekni to trenérovi větou</div>
-      <form class="aiweek" id="cpAi"><input name="t" placeholder="např. hlavně kolo, v zimě jednou týdně běh, nejvíc času mám pátek až neděle" autocomplete="off"><button class="btn" type="submit">🤖 Převést</button></form>
-      <div id="cpAiRes">${aiBox}</div>
+      <label class="chk"><input type="checkbox" id="cpV2" ${v2 ? "checked" : ""}> <b>Nový trenér</b> – pestré tréninky z knihovny, plán se sám přeskládá (vypnuto = původní trenér)</label>
       <div class="sl" style="margin:14px 0 6px">Hlavní sport</div>
       <div class="seg" id="cpPrim">${[["ride", "Kolo"], ["run", "Běh"]].map(([k, l]) => `<button type="button" class="${p.primary === k ? "on" : ""}" data-prim="${k}">${l}</button>`).join("")}</div>
       <div class="sl" style="margin:14px 0 6px">Další sporty</div>
-      <div style="overflow-x:auto"><table class="t"><tr><th>Sport</th><th>Zapnuto</th><th class="r">Nejvýš týdně</th><th class="r">Nejdéle (min)</th><th>Intervaly</th><th class="r">Podíl času v zimě %</th><th class="r">v sezóně %</th></tr>
-      ${SP.filter(([k]) => k !== p.primary).map(([k, l]) => { const x = p.sports[k]; return `<tr><td>${l}</td><td><input type="checkbox" data-sp="${k}.enabled" ${x.enabled ? "checked" : ""}></td><td class="r"><input type="number" min="0" max="7" style="width:4.5em" data-sp="${k}.maxPerWeek" value="${x.maxPerWeek ?? ""}"></td><td class="r"><input type="number" min="20" max="600" step="5" style="width:5.5em" data-sp="${k}.maxMin" value="${x.maxMin ?? ""}"></td><td><input type="checkbox" data-sp="${k}.quality" ${x.quality ? "checked" : ""}></td><td class="r">${k === "walk" ? "" : `<input type="number" min="0" max="80" step="5" style="width:4.5em" data-mix="w.${k}" value="${shareOf(true, k)}">`}</td><td class="r">${k === "walk" ? "" : `<input type="number" min="0" max="80" step="5" style="width:4.5em" data-mix="s.${k}" value="${shareOf(false, k)}">`}</td></tr>`; }).join("")}</table></div>
-      <p class="note">Podíl času = jaká část týdne má patřit tomuto sportu (prázdné = sport se sám neplánuje, jen když si ho u dne zvolíš). Běžky se plánují jen se zapnutým „Je sníh“. Zima = ${winter.map((m) => m + ".").join(" ")} měsíc.</p>
-      <div class="sl" style="margin:14px 0 6px">Dny</div>
-      <div class="tp-g"><span class="tp-k">Nejraději trénuju</span><div class="seg sm" id="cpPref">${DN.map((n, i) => `<button type="button" class="${p.days.preferred.includes(i + 1) ? "on" : ""}" data-d="${i + 1}">${n}</button>`).join("")}</div></div>
-      <div class="tp-g"><span class="tp-k">Nemůžu</span><div class="seg sm" id="cpUn">${DN.map((n, i) => `<button type="button" class="${p.days.unavailable.includes(i + 1) ? "on" : ""}" data-d="${i + 1}">${n}</button>`).join("")}</div></div>
-      <div class="form-grid" style="margin-top:10px">
-        <label>Dlouhý trénink<select id="cpLong"><option value="">vybere trenér</option>${DN.map((n, i) => `<option value="${i + 1}" ${p.days.long === i + 1 ? "selected" : ""}>${n}</option>`).join("")}</select></label>
-        <label>Nejvýš tréninků týdně (prázdné = podle hodin)<input type="number" min="2" max="7" id="cpMax" value="${p.maxSessions ?? ""}"></label>
-        ${hrs("season", "Sezóna")}${hrs("winter", "Zima")}${hrs("snow", "Zima se sněhem")}
-        <label>Růst kondice za týden při cíli Zlepšit (0,5–3)<input type="number" min="0.5" max="3" step="0.1" id="cpRamp" value="${p.ramp}"></label>
-        <label class="chk"><input type="checkbox" id="cpSnow" ${p.snow ? "checked" : ""}> Je sníh (běžky a hodiny „se sněhem“)</label>
-      </div>
-      <div class="btns"><button class="btn pri" id="cpSave">Uložit profil</button><span class="note" id="cpMsg">${esc(msg)}</span></div>
-      <ul class="alerts" style="margin-top:10px">${(d.summary || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
-      ${d.saved ? "" : '<p class="note">Profil je zatím odhad z tvé historie (nejčastější sport, obvyklé dny, medián hodin). Uprav ho a ulož.</p>'}`;
+      ${OTHER[p.primary].map(([k, l]) => `<label class="chk"><input type="checkbox" data-sp="${k}" ${p.sports[k].enabled ? "checked" : ""}> ${l}</label>`).join("")}
+      ${p.primary === "ride" ? `<label class="chk"><input type="checkbox" id="cpRunQ" ${p.sports.run.quality ? "checked" : ""}> Běh může mít i intervaly (jinak jen lehce)</label>` : ""}
+      <label class="chk"><input type="checkbox" id="cpSnow" ${p.snow ? "checked" : ""}> Teď je sníh (běžky se začnou plánovat)</label>
+      <div class="btns"><button class="btn pri" id="cpSave">Uložit</button><span class="note" id="cpMsg">${esc(msg)}</span></div>
+      <p class="note">${h.hours != null ? `Trenér vychází z toho, co opravdu jezdíš: za posledních 8 týdnů obvykle <b>${hTxt(h.hours)} h</b> a <b>${h.sessions} tréninky</b> týdně.` : "Zatím nemám tvou historii, začnu opatrně: kolem 3,5 h a 3 tréninků týdně."} Dny ani hodiny se nenastavují. Zaškrtnutý další sport trenér nabídne nejvýš jednou týdně místo lehké jízdy; kdykoli si ho můžeš zvolit u dne sám. Cíl (Zlepšit / Udržet / Pokles) se přepíná v Trenérovi.</p>`;
     const read = () => {
       const q = JSON.parse(JSON.stringify(p));
-      q.primary = box.querySelector("#cpPrim .on")?.dataset.prim || p.primary;
-      box.querySelectorAll("[data-sp]").forEach((i) => { const [k, f2] = i.dataset.sp.split("."); q.sports[k][f2] = i.type === "checkbox" ? i.checked : i.value === "" ? null : +i.value; });
-      const mixW = {}, mixS = {};
-      box.querySelectorAll("[data-mix]").forEach((i) => { const [w, k] = i.dataset.mix.split("."); if (+i.value > 0) (w === "w" ? mixW : mixS)[k] = +i.value / 100; });
-      const all = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-      q.mix = [...(Object.keys(mixW).length ? [{ months: winter, share: mixW }] : []), ...(Object.keys(mixS).length ? [{ months: all.filter((m) => !winter.includes(m)), share: mixS }] : [])];
-      const on = (id) => [...box.querySelectorAll(`#${id} .on`)].map((b) => +b.dataset.d);
-      q.days = { preferred: on("cpPref"), unavailable: on("cpUn"), long: box.querySelector("#cpLong").value ? +box.querySelector("#cpLong").value : null };
-      box.querySelectorAll("[data-h]").forEach((i) => { const [k, f2] = i.dataset.h.split("."); q.hours[k][f2] = +String(i.value).replace(",", "."); });
-      q.maxSessions = box.querySelector("#cpMax").value ? +box.querySelector("#cpMax").value : null;
-      q.ramp = +String(box.querySelector("#cpRamp").value).replace(",", ".") || p.ramp;
+      box.querySelectorAll("[data-sp]").forEach((i) => { q.sports[i.dataset.sp].enabled = i.checked; });
+      const rq = box.querySelector("#cpRunQ"); if (rq) q.sports.run.quality = rq.checked;
       q.snow = box.querySelector("#cpSnow").checked;
       return q;
     };
-    box.querySelectorAll("#cpPrim button").forEach((b) => b.addEventListener("click", () => { const q = read(); q.primary = b.dataset.prim; q.sports[q.primary].enabled = true; draw(q, box.querySelector("#cpV2").checked); }));
-    box.querySelectorAll("#cpPref button, #cpUn button").forEach((b) => b.addEventListener("click", () => b.classList.toggle("on")));
-    const save = async (prof) => {
+    box.querySelectorAll("#cpPrim button").forEach((b) => b.addEventListener("click", () => { const q = read(); q.primary = b.dataset.prim; draw(q, box.querySelector("#cpV2").checked); }));
+    box.querySelector("#cpSave").addEventListener("click", async () => {
       const m = box.querySelector("#cpMsg"), btn = box.querySelector("#cpSave");
-      btn.disabled = true; m.textContent = "Ukládám a přepočítávám plán…";
+      btn.disabled = true; m.textContent = "Ukládám a skládám plán…";
       try {
-        const r = await api("coach/profile", { method: "POST", body: JSON.stringify({ profile: prof, v2: box.querySelector("#cpV2").checked }) });
-        cache.clear(); d = { ...d, saved: true, summary: r.summary };
+        const r = await api("coach/profile", { method: "POST", body: JSON.stringify({ profile: read(), v2: box.querySelector("#cpV2").checked }) });
+        cache.clear();
         draw(r.profile, r.v2, r.proposal && r.proposal.changes ? `Uloženo. ${r.proposal.changes} změn v plánu čeká na potvrzení v Trenérovi.` : "Uloženo.");
       } catch (e) { m.textContent = `Nepovedlo se: ${e.message}`; btn.disabled = false; }
-    };
-    box.querySelector("#cpSave").addEventListener("click", () => save(read()));
-    box.querySelector("#cpAi").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const t = e.target.querySelector("input").value.trim(), btn = e.target.querySelector("button"), out = box.querySelector("#cpAiRes");
-      if (!t) return;
-      btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Převádím…';
-      try {
-        const r = await api("coach/profile/ai", { method: "POST", body: JSON.stringify({ text: t }) });
-        if (r.ok && r.changed && r.changed.length) { d = { ...d, summary: r.summary }; draw(r.profile, box.querySelector("#cpV2").checked, "Návrh je ve formuláři – zkontroluj a ulož.", `<div class="aiw-res"><p>${esc(r.reply)}</p><ul class="alerts">${r.changed.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>`); }
-        else { out.innerHTML = `<div class="aiw-res"><p>${esc(r.reply || "Nic se nemění.")}</p></div>`; btn.disabled = false; btn.textContent = "🤖 Převést"; }
-      } catch (err) { out.innerHTML = `<div class="aiw-res"><p>Teď to nejde: ${esc(err.message)}</p></div>`; btn.disabled = false; btn.textContent = "🤖 Převést"; }
     });
   };
   draw(d.profile, d.v2);

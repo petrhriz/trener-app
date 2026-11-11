@@ -1,110 +1,115 @@
-# Jak funguje Trenér v2 (stav k 11. 11. 2026)
+# Jak funguje Trenér v2 (stav k 11. 11. 2026, druhá verze)
 
-Nový plánovač za přepínačem **Nastavení → Trenér – profil → Nový trenér** (`settings.coach_v2`). Když je vypnutý,
-běží původní trenér (`docs/jak-funguje-trener.md`). Vzhled stránky je stejný, mění se, **co** se plánuje.
-Proč a jak se návrh liší od zadání, je v [`review.md`](review.md).
+Nový plánovač za přepínačem **Nastavení → Trenér → Nový trenér** (`settings.coach_v2`). Když je vypnutý, běží
+původní trenér (`docs/jak-funguje-trener.md`). Vzhled stránky je stejný, mění se, **co** se plánuje.
+
+Rozhoduje kód, ne AI (bezplatné modely jsou malé a často přetížené). Postup je převzatý z projektu
+[Domestique](https://github.com/platypus45/domestique) (Apache-2.0): stálá kostra, denní úpravy, zmeškaný
+trénink se přesune sám, výběr z knihovny s důrazem na pestrost. Z jejich Pythonu je přepsaná jen podstata
+a přizpůsobená malému objemu bez nastavených hodin a dnů.
+
+## Schéma: jak vzniká trénink
 
 ```mermaid
 flowchart TD
-  P[Profil: sporty, dny, hodiny, mix] --> B
-  G[Cíl + trajektorie kondice] --> B[Rozpočet týdne<br/>hodiny, zátěž, počet kvalit]
-  F[Únava: forma, horší rána, VST, nemoc] -->|jen ubírá| B
-  B --> W[Kostra týdne po–ne<br/>role dnů, sport, délky]
-  U[Tvoje úpravy dnů] --> W
-  R[Ráno: zotavení · počasí · odjeté tréninky] --> W
-  W --> L[Knihovna: rodina + stupeň → kroky ve W / tepu]
-  L --> S[(Uložený týden v D1)]
-  S --> N[Návrh změn → Zapsat → intervals.icu → Garmin]
+  H[Historie 8 týdnů<br/>kolik a jak často obvykle jezdíš] --> N
+  G[Cíl: Zlepšit / Udržet / Pokles] --> N[Nabídka týdne<br/>hodiny, počet tréninků, počet kvalit]
+  F[Únava: forma, horší rána, VST, nemoc] -->|jen ubírá| N
+  N --> K[Kostra týdne po–ne<br/>pořadí důležitosti: kvalita → dlouhý → Z2]
+  U[Tvoje úpravy: přetažení, volno, sport, délka] --> K
+  R[Ráno: zotavení · počasí · co se opravdu jelo] --> K
+  K --> Q{Klíčový den?}
+  Q -->|ano| C[Kategorie kvality<br/>podle období, dat o výkonu a střídání]
+  C --> L[Trénink z knihovny<br/>správný stupeň, co nejdéle nebyl]
+  Q -->|ne| Z[Z2 / dlouhý / regenerace<br/>délka z nabídky týdne]
+  L --> W[Kroky: rozjetí, hlavní část, dojezd<br/>watty a tep z tvých zón]
+  Z --> W
+  W --> S[(Uložený týden)]
+  S --> P[Návrh změn → Zapsat → intervals.icu → Garmin]
+  S -.po odjetí.-> E[Vyhodnocení okruhů<br/>zvládnuto → příště o stupeň výš]
+  E -.-> C
 ```
 
-## 1. Zóny
+## 1. Co se nastavuje
 
-Trenér používá **zóny uživatele z Garminu** (kolo 55–75–90–105–120–150 % FTP, tep podle Garminu). Stupnici
-80/20 Endurance nepřebírá – jejich „Z2“ (70–83 % FTP, 81–90 % LTHR) je v běžném dělení z velké části tempo.
-Z 80/20 je princip (většina času lehce, málo intenzivně, každý den má účel) a stavba tréninků, přeložená
-podle prahu: jejich Z1 → Z1, Z2 → Z2, X → Z3, Z3 → Z4, Z4 → Z5.
+Jen tři věci: **hlavní sport** (kolo / běh), **další sporty** (občas běh, v zimě běžky) a **cíl**. Dny ani
+hodiny se nenastavují – trénovat jde kdykoli a trénink se dá přetáhnout na jiný den.
 
-## 2. Profil (`src/core/coach/profile.ts`)
+## 2. Nabídka týdne (`budget.ts`, `profile.ts → habitOf`)
 
-Každý uživatel má svůj (`settings.coach_profile`). Nastaví se ručně v Nastavení nebo větou přes AI
-(AI vrátí jen JSON, kód ho zkontroluje, uživatel potvrdí). Nový uživatel dostane odhad z historie.
+- **Obvyklý objem** = horní čtvrtina z posledních 8 týdnů, kdy se trénovalo (hodiny a počet tréninků).
+  Pár vynechaných týdnů ho nestáhne dolů. Bez historie 3,5 h a 3 tréninky.
+- **Cíl**: Udržet = obvyklý objem; Zlepšit = +5 / +10 / +15 % ve třech týdnech bloku, čtvrtý lehčí (65 %);
+  Pokles = o trénink míň a 80 % objemu.
+- **Pojistky**: nejvýš +15 % proti běžnému týdnu, zátěž do 1,3násobku dlouhodobého průměru.
+- **Únava jen ubírá**: forma pod −20 / −30, 2–3 horší rána za 5 dní, týdenní VST pod normou, dny po nemoci.
+- Kvalit týdně: 1, při 3 a více trénincích v sezóně a cíli Zlepšit 2, při 5 a více trénincích 2.
 
-- hlavní sport (kolo / běh), další sporty se stropy (kolikrát týdně, nejdéle, intervaly ano / ne);
-- podíl času dalších sportů v zimě a v sezóně; běžky jen se zapnutým „Je sníh“;
-- oblíbené dny, dny, kdy nemůžeš, den dlouhého tréninku;
-- hodiny týdně od–do pro sezónu, zimu a zimu se sněhem.
+Nabídka není limit. Co se vynechá, to se nedohání.
 
-## 3. Rozpočet týdne (`budget.ts`)
+## 3. Kostra týdne (`week.ts`)
 
-1. **Trajektorie kondice (CTL)** od dne, kdy byl cíl nastaven: Zlepšit + `ramp` bodů týdně v zátěžových týdnech,
-   Udržet 0, Pokles −1, Závod růst a 10–14 dní ladění. Každý týden se opraví nejvýš polovina odchylky.
-2. Zátěž týdne vzorcem `7 × (C_cíl − C_teď × 0,847) / 0,153`.
-3. **Hodiny z profilu jsou pásmo**: strop vždy, spodní hranice mimo lehčí týden. Když se cíl do hodin nevejde,
-   trenér napíše, kde se kondice ustálí a kolik hodin by bylo potřeba.
-4. Zlepšit a Závod jedou v blocích **3 týdny + 1 lehčí** (65 % zátěže předchozího týdne).
-5. Pojistky: nejvýš +15 % proti běžnému týdnu nebo +10 % proti poslednímu plnému, poměr 7/28 dní do 1,3.
-6. **Únava jen ubírá**: forma pod −20 / −30, 2–3 horší rána za 5 dní, týdenní VST pod normou, dny po nemoci →
-   rozpočet × 0,9 až 0,7 a méně kvalit.
-7. Kvalit týdně: do 4 h 1; do 7 h 1 (Základ) nebo 2 (Rozvoj); nad 7 h 2; lehčí týden, ladění a Pokles 1.
+Role dne: volno, lehký (Z1), vytrvalost (Z2), klíčový (kvalita), dlouhý. Řešič projde kombinace a oboduje je.
 
-Režimy: **Základ** (zima při Zlepšit), **Rozvoj** (sezóna), **Udržování** (Udržet, Pokles), **Ladění** (před závodem).
+- **Tvrdá pravidla**: nejvýš 3 tréninky za sebou (i přes hranu týdne), klíčový den ne po klíčovém ani po dlouhém.
+- **Pořadí důležitosti**: kvalita, dlouhý, pak vytrvalost. Když v týdnu zbývá málo dnů, vytrvalost propadne.
+- **Bodují se**: kvalita po volnu, dlouhý o víkendu, pondělí volno, počasí a shoda s dřívější kostrou.
+- **Tvoje úpravy** (přetažení, volno, sport, délka, vlastní jízda) platí a zbytek se přeskládá kolem nich.
+- **Další sport** nejvýš jednou týdně místo vytrvalostního dne, a jen když kolu zůstane aspoň jeden.
 
-## 4. Kostra týdne (`week.ts`)
+## 4. Kvalita: kategorie a trénink (`library.ts`, `workouts.data.ts`)
 
-Role dne: volno, lehký (Z1), vytrvalost (Z2), klíčový (kvalita), dlouhý. Řešič projde kombinace dnů a rolí.
+Osm kategorií: tempo, sweet spot, práh, over-under, VO2max, VO2 krátké, anaerobní, sprinty.
 
-Tvrdá pravidla: dny, kdy nemůžeš; nejvýš 3 tréninky za sebou i přes hranu týdne; klíčový den ne den po klíčovém
-ani po dlouhém; tvoje úpravy dnů platí. Bodují se oblíbené dny, dlouhý o víkendu / ve zvoleném dni, klíčový po
-volnu, rozestup kvalit, počasí a **shoda s dřívější kostrou** (proto se týden nepřeskupuje).
+1. **Které připadají v úvahu** určí období: Základ (zima) tempo / sweet spot / práh / over-under; Rozvoj (sezóna)
+   práh / VO2max / krátké VO2 / over-under / anaerobní; lehčí týden sprinty.
+2. **Která se vybere**: ta, kterou data nejvíc potřebují (pokles 20min / 5min / 1min výkonu za 6 týdnů a jak
+   dlouho chybí podnět) a která nejdéle nebyla. Stejná kategorie dvakrát po sobě nejde.
+3. **Trénink z knihovny**: 214 hlavních částí převzatých z Domestique, v každé kategorii 6 stupňů náročnosti.
+   Vybere se správný stupeň, který se vejde do délky dne a nebyl mezi posledními deseti.
+4. **Kroky**: rozjetí, hlavní část, dojezd. Watty ze zón uživatele (Garmin), lapy podle pravidel aplikace.
+5. **Postup**: po čistě zvládnuté kvalitě (okruhy, tep) o stupeň výš (jen Zlepšit a Závod), po nezvládnuté níž.
 
-Sport: klíčový a dlouhý v hlavním sportu, další sporty do vytrvalostních dnů podle podílu a stropu. Běh ne dva
-dny po sobě, dokud neběháš pravidelně; nejdelší běh nejvýš 1,1× nejdelšího za 4 týdny.
+U každého dne je napsaný účel a důvod, např. „Práh: zvedá výkon na prahu (FTP). Proč teď: 20min výkon za
+6 týdnů klesl o 3 %, poslední podnět 30. 10.“
 
-## 5. Tréninky (`library.ts`)
+Běh, běžky a kolo bez wattmetru jedou podle tepu z vlastních žebříčků (bpm ze zón Garminu, do intervals.icu
+jako % LTHR). Zóny 80/20 Endurance se nepoužívají – viz [`review.md`](review.md).
 
-Rodiny se žebříčkem (stupeň = minuty v cílové zóně): tempo, sweet spot, práh, VO2, VO2 30/15, krátké ostré;
-k tomu regenerace, vytrvalost, dlouhá a dlouhá s rychlým závěrem. Rodiny klíčových dnů se střídají podle režimu
-a podle toho, co se nejelo nejdéle. Kolo má kroky ve wattech, běh / běžky / kolo bez wattmetru v tepu
-(bpm ze zón Garminu; do intervals.icu jde stejný cíl jako % LTHR, protože bpm jejich zápis neumí).
+Knihovnu vyrábí `scripts/build-workout-library.mjs` ze složky `src/workouts` projektu Domestique (kontroluje
+smysluplnost každé kategorie a vybírá různé tvary).
 
-Postup (`progress.ts`): po čistě zvládnuté jednotce o stupeň výš (jen Zlepšit a Závod), po nezvládnuté níž.
-Hodnotí se okruhy (výkon proti pásmu, nárůst tepu), jinak splnění z intervals.icu. Stupně jsou v `coach_progress`.
+## 5. Kdy se plán mění (`engine.ts`)
 
-Pojistka 80/20: plánovaný čas nad Z2 nejvýš 20 % týdne (25 % pod 5 h). Ve Stavu je skutečné rozdělení za 28 dní
-z času v zónách z Garminu.
-
-## 6. Kdy se plán mění (`engine.ts`)
-
-Plán tohoto a příštího týdne je v tabulce `coach_weeks`. Při čtení se spočítá otisk vstupů. Stejný otisk →
-vrátí se uložený plán a nic se nezapisuje. Jiný otisk → přepočítají se **jen dny od dneška**.
+Plán tohoto a příštího týdne je v tabulce `coach_weeks`. Při čtení se spočítá otisk vstupů; stejný otisk =
+uložený plán beze změny. Jinak se přepočítají **jen dny od dneška**.
 
 | Co se stalo | Co trenér udělá |
 |---|---|
-| 🟡 ráno | kvalita dnes ne (přesune se na jiný den, když to pravidla dovolí), dlouhý o čtvrtinu kratší |
+| 🟡 ráno | kvalita dnes ne, přesune se na další vhodný den; dlouhý o čtvrtinu kratší |
 | 🔴 ráno | volno nebo Z1 do 45 min |
+| vynechaná kvalita | sama se posune, když je kam; vynechaná Z2 propadne |
 | těžká aktivita mimo plán | počítá se jako kvalita, další den kvalita není |
-| týden přes rozpočet | zbylé vytrvalostní dny se zkrátí, nic se nepřidává |
-| zmeškaný trénink | nedohání se; kvalita se přesune jen, když je kam |
-| nemoc | plán stojí, 2 dny po návratu lehce do 60 min bez kvality, týden lehčí |
+| odjeto víc, než týden nabízel | zbylé vytrvalostní dny se zkrátí |
+| nemoc | plán stojí, 2 dny po návratu lehce do 60 min bez kvality |
 | pauza přes 14 dní | blok začíná znovu od 1. týdne |
 | špatné počasí | kvalita na trenažér, Z2 jinde v týdnu nebo trenažér na 2/3 délky |
 | změna profilu / cíle, „Vrátit moje úpravy“ | týden se postaví od nuly |
 
-Zápis do kalendáře a intervals.icu zůstal: plán se porovná s kalendářem, změny čekají na „Zapsat“.
-
-## 7. Soubory
+## 6. Soubory
 
 | Soubor | Obsah |
 |---|---|
-| `src/core/coach/*.ts` | čisté funkce (profil, rozpočet, kostra, knihovna, postup, engine) |
+| `src/core/coach/*.ts` | čisté funkce (profil, nabídka týdne, kostra, knihovna, postup, engine) |
+| `src/core/coach/workouts.data.ts` | generovaná knihovna hlavních částí tréninků |
 | `src/coach/store.ts` | čtení a zápis `coach_weeks`, `coach_progress` |
 | `src/report/build.ts` → `planForV2` | napojení na data |
-| `src/api/coach.ts` | `/coach/profile` (čtení, uložení, text přes AI) |
-| `migrations/0011_coach_v2.sql` | tabulky |
+| `src/api/coach.ts` | `/coach/profile` |
 | `test/coach/coach.test.ts` | pravidla a simulace 8–12 týdnů |
 
-## 8. Co zbývá
+## 7. Co zbývá
 
 - Po týdnu ostrého provozu smazat v1 (`src/core/plan.ts` → jen typy, `weekCheck.ts`, AI návrh týdne).
-- Výkonnostní cíl (120 km / 4 h): sledování nejlepšího výkonu na 3–4 h a FTP proti cíli.
+- Výkonnostní cíl (120 km / 4 h).
 - Zóny tepu zvlášť pro běh (Garmin je umí, aplikace zatím má jedny).
+- Test FTP v lehčím týdnu.

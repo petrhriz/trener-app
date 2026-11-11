@@ -1,14 +1,17 @@
-// Rozpočet týdne Trenéra v2: hodiny z profilu + zátěž z trajektorie kondice (CTL), cyklus 3 + 1, pojistky, únava.
+// Návrh týdne Trenéra v2: kolik hodin a kolik kvalit nabídnout. Vychází z toho, co uživatel obvykle jezdí
+// (žádné nastavené hodiny), cíl objem posouvá a únava ho ubírá. Není to limit, který se „musí splnit“ –
+// je to velikost nabídky; vynechaný trénink se nedohání.
 import { num } from "../../lib/format";
 import { daysBetween } from "../../lib/time";
 import { K_CTL, type Goal } from "../fitness";
-import type { Phase } from "./library";
-import { type CoachProfile, hoursFor, isWinter } from "./profile";
+import { type Habit, isWinter } from "./profile";
+
+export type Phase = "zaklad" | "rozvoj" | "udrzovani" | "ladeni";
+export const PHASE_LABEL: Record<Phase, string> = { zaklad: "Základ", rozvoj: "Rozvoj", udrzovani: "Udržování", ladeni: "Ladění" };
 
 /** CTL po 7 dnech stejné denní zátěže d: C·k7 + d·(1 − k7) */
 export const K7 = Math.pow(1 - K_CTL, 7);
-
-/** Zátěž týdne, po které bude kondice za 7 dní `target` (uzavřený vzorec). */
+/** Zátěž týdne, po které bude kondice za 7 dní `target`. */
 export function loadForCtl(ctlNow: number, target: number): number {
   return Math.max(0, (7 * (target - ctlNow * K7)) / (1 - K7));
 }
@@ -47,7 +50,7 @@ export interface Fatigue {
 }
 export const NO_FATIGUE: Fatigue = { form: null, badMornings: 0, hrvLow: false, illnessDays: 0 };
 
-/** Únava jen ubírá: násobek rozpočtu a strop klíčových dnů. */
+/** Únava jen ubírá: násobek objemu a strop klíčových dnů. */
 export function fatigueFactor(f: Fatigue): { factor: number; keysMax: number; notes: string[] } {
   let factor = 1, keysMax = 2;
   const notes: string[] = [];
@@ -64,20 +67,13 @@ export function fatigueFactor(f: Fatigue): { factor: number; keysMax: number; no
   return { factor, keysMax, notes };
 }
 
-export interface Anchor {
-  /** den, od kterého trajektorie běží (kdy byl cíl nastaven) */
-  date: string;
-  ctl: number;
-  goal: Goal;
-}
-
 export interface BudgetInput {
   weekStart: string;
   goal: Goal;
-  profile: CoachProfile;
+  /** obvyklý objem uživatele z historie */
+  habit: Habit;
   /** kondice na konci dne před týdnem */
   ctl: number;
-  anchor: Anchor | null;
   raceDate: string | null;
   /** zátěž posledních ukončených týdnů (nejstarší první) */
   prevWeeks: number[];
@@ -88,24 +84,28 @@ export interface BudgetInput {
 }
 
 export interface Budget {
-  /** cíl zátěže týdne a pásmo */
+  /** orientační zátěž týdne a pásmo (když odjedeš vše, co trenér nabízí) */
   load: number;
   lo: number;
   hi: number;
+  /** nabízené hodiny týdne */
   hours: number;
-  hoursBand: { min: number; max: number };
+  /** obvyklé hodiny uživatele (z historie), null = bez historie */
+  habitHours: number | null;
+  /** nabízený počet tréninků */
+  sessions: number;
   keys: number;
   phase: Phase;
   recoveryWeek: boolean;
   cycleIdx: number;
-  /** kam má kondice na konci týdne dojít */
+  /** kam se kondice dostane, když týden odjedeš */
   ctlTarget: number;
   /** násobek kvůli únavě (1 = bez úpravy) */
   factor: number;
   notes: string[];
 }
 
-export function phaseFor(goal: Goal, profile: CoachProfile, weekStart: string, raceDate: string | null): Phase {
+export function phaseFor(goal: Goal, weekStart: string, raceDate: string | null): Phase {
   if (goal === "udrzeni" || goal === "pokles") return "udrzovani";
   if (goal === "zavod" && raceDate) {
     const d = daysBetween(weekStart, raceDate);
@@ -113,98 +113,76 @@ export function phaseFor(goal: Goal, profile: CoachProfile, weekStart: string, r
     if (d > 84) return "zaklad";
     if (d >= 0) return "rozvoj";
   }
-  return isWinter(profile, weekStart) ? "zaklad" : "rozvoj";
+  return isWinter(weekStart) ? "zaklad" : "rozvoj";
 }
 
 const r0 = Math.round;
 const h1 = (x: number) => String(Math.round(x * 10) / 10).replace(".", ",");
+/** bez historie: opatrný začátek */
+const START = { hours: 3.5, sessions: 3 };
+/** Zlepšit: zátěžové týdny bloku přidávají proti obvyklému objemu */
+const BUILD = [1.05, 1.1, 1.15];
 
 export function weekBudget(inp: BudgetInput): Budget {
-  const { goal, profile, ctl, rate } = inp;
+  const { goal, ctl, rate, habit } = inp;
   const notes: string[] = [];
-  const band = hoursFor(profile, inp.weekStart);
-  const phase = phaseFor(goal, profile, inp.weekStart, inp.raceDate);
+  const phase = phaseFor(goal, inp.weekStart, inp.raceDate);
   const cyc = goal === "zvyseni" || goal === "zavod";
   const cycleIdx = cyc ? Math.max(1, Math.min(4, inp.cycleIdx)) : 1;
+  const recoveryWeek = cyc && cycleIdx === 4 && phase !== "ladeni";
+  const light = recoveryWeek || phase === "ladeni";
+  const ft = fatigueFactor(inp.fatigue);
+  const base = habit.hours ?? START.hours;
+  const baseN = habit.sessions ?? START.sessions;
+
+  // 1) objem: obvyklý × cíl
+  let hours = base;
+  if (recoveryWeek) { hours = base * 0.65; notes.push("Lehčí týden po 3 týdnech zátěže: asi o třetinu míň, jedna krátká ostrá jednotka."); }
+  else if (phase === "ladeni") { hours = base * (inp.raceDate && daysBetween(inp.weekStart, inp.raceDate) <= 7 ? 0.45 : 0.65); notes.push("Ladění před závodem: objem dolů, krátké ostré úseky zůstávají."); }
+  else if (cyc) hours = base * BUILD[cycleIdx - 1]!;
+  else if (goal === "pokles") hours = Math.max(Math.min(base, 2), base * 0.8);
+
+  // 2) počet tréninků a kvalit podle toho, jak často jezdíš
+  let sessions = Math.max(2, Math.min(6, r0(baseN)));
+  if (light || goal === "pokles") sessions = Math.max(2, sessions - 1);
+  let keys = light || goal === "pokles" ? 1 : sessions >= 5 ? 2 : sessions >= 3 && phase === "rozvoj" ? 2 : 1;
+  keys = Math.min(keys, ft.keysMax);
+
+  // 3) pojistky proti skoku: +15 % proti běžnému týdnu (nebo +10 % proti poslednímu plnému), poměr 7/28 dní do 1,3
+  let load = loadForHours(hours, keys, rate);
   const wl = inp.prevWeeks.filter((x) => x > 0);
   const top = wl.length ? Math.max(...wl) : 0;
   const normal = wl.filter((x) => x >= top * 0.6);
   const ref = normal.length ? normal.reduce((a, b) => a + b, 0) / normal.length : 0;
-  const recoveryWeek = cyc && cycleIdx === 4 && phase !== "ladeni";
-  const ft = fatigueFactor(inp.fatigue);
-
-  // 1) trajektorie kondice: přímka od kotvy, oprava nejvýš poloviny odchylky za týden
-  const ramp = goal === "zvyseni" || goal === "zavod" ? profile.ramp : goal === "pokles" ? -1 : 0;
-  const anchor = inp.anchor && inp.anchor.goal === goal ? inp.anchor : null;
-  const weeksIn = anchor ? Math.max(0, daysBetween(anchor.date, inp.weekStart) / 7) : 0;
-  // průměr přes blok 3 + 1 (zátěžové týdny rostou 1,5× rychleji, lehčí týden kousek vrátí) vychází na ~0,8 rampy
-  const lineNow = anchor ? anchor.ctl + ramp * (cyc ? 0.8 : 1) * weeksIn : ctl;
-  const dev = lineNow - ctl;
-  let delta = (cyc ? ramp * 1.5 : ramp) + 0.5 * dev;
-  delta = Math.max(-2.5, Math.min(3, delta));
-  let load = loadForCtl(ctl, ctl + delta);
-
-  // 2) lehčí týden / ladění
-  if (recoveryWeek) {
-    const last = wl.length ? wl[wl.length - 1]! : load;
-    load = last * 0.65;
-    notes.push(`Lehčí týden po 3 týdnech zátěže: ${r0(load)} (65 % minulého).`);
-  } else if (phase === "ladeni" && inp.raceDate) {
-    const d = daysBetween(inp.weekStart, inp.raceDate);
-    load = (ref || load) * (d <= 7 ? 0.45 : 0.65);
-    notes.push(`Ladění před závodem: objem dolů, krátké ostré úseky zůstávají.`);
-  }
-
-  // 3) klíčové dny podle hodin a režimu (počítá se s horní hranicí hodin)
-  let keys = recoveryWeek || phase === "ladeni" || goal === "pokles" ? 1 : band.max < 4 ? 1 : band.max <= 7 ? (phase === "rozvoj" ? 2 : 1) : 2;
-  keys = Math.min(keys, ft.keysMax);
-
-  // 4) hodiny z profilu: strop vždy, spodní hranice mimo lehčí týden a ladění
-  let hours = hoursForLoad(load, keys, rate);
-  const light = recoveryWeek || phase === "ladeni";
-  if (hours > band.max) {
-    hours = band.max;
-    load = loadForHours(hours, keys, rate);
-    const sustain = load / 7;
-    if (goal !== "pokles" && sustain < ctl - 2) notes.push(`Do ${h1(band.max)} h týdně se cíl nevejde: s tímto objemem se kondice ustálí kolem ${r0(sustain)} (teď ${r0(ctl)}). Na udržení ${r0(ctl)} potřebuješ asi ${h1(hoursForLoad(ctl * 7, keys, rate))} h týdně.`);
-    else if (goal === "pokles") notes.push(`Řízený pokles: ${h1(band.max)} h týdně, kondice klesne k ${r0(sustain)}.`);
-  } else if (!light && hours < band.min) {
-    hours = band.min;
-    load = loadForHours(hours, keys, rate);
-    if (goal === "pokles") notes.push(`Pokles se zastavil na spodní hranici hodin (${h1(band.min)} h týdně) – kondice se ustálí kolem ${r0(load / 7)}.`);
-  }
-
-  // 5) pojistky: skok proti běžnému týdnu a poměr 7/28 dní
-  // strop: +15 % proti běžnému týdnu, nebo +10 % proti poslednímu plnému týdnu (co je víc)
   const lastFull = normal.length ? normal[normal.length - 1]! : 0;
   const capLoad = Math.max(ref * 1.15, lastFull * 1.1);
-  if (!light && ref > 0 && load > capLoad) {
-    load = capLoad;
-    notes.push(`Zátěž roste postupně: nejvýš ${r0(load)} (běžný týden ${r0(ref)}, poslední plný ${r0(lastFull)}).`);
-  }
-  if (ctl > 10 && load > ctl * 7 * 1.3) {
-    load = ctl * 7 * 1.3;
-    notes.push(`Zátěž omezena poměrem 7/28 dní 1,3 (${r0(load)}).`);
-  }
+  if (!light && ref > 0 && load > capLoad) { load = capLoad; notes.push(`Přidává se postupně: tento týden nejvýš zátěž ${r0(load)} (běžný týden ${r0(ref)}).`); }
+  if (ctl > 10 && load > ctl * 7 * 1.3) { load = ctl * 7 * 1.3; notes.push(`Zátěž držím do 1,3násobku dlouhodobého průměru (${r0(load)}).`); }
 
-  // 6) únava ubírá
+  // 4) únava ubírá
   if (ft.factor < 1) {
     load *= ft.factor;
     notes.push(`Únava (${ft.notes.join(", ")}): týden o ${r0((1 - ft.factor) * 100)} % lehčí${ft.keysMax < 2 ? `, kvalita nejvýš ${ft.keysMax}×` : ""}.`);
   }
-  hours = Math.min(band.max, hoursForLoad(load, keys, rate));
+  hours = Math.min(hours, hoursForLoad(load, keys, rate));
   load = r0(load);
+  const after = ctlAfterWeek(ctl, load);
+  if (!light && ctl > 15) {
+    if (goal === "zvyseni" && after < ctl - 0.3) notes.push(`S objemem kolem ${h1(hours)} h týdně kondice neroste (ustálí se u ${r0(load / 7)}). Na růst je potřeba jezdit o něco víc nebo častěji – trenér přidává postupně.`);
+    if (goal === "udrzeni" && after < ctl - 1) notes.push(`Obvykle jezdíš kolem ${h1(base)} h týdně; s tím se kondice ustálí u ${r0(load / 7)} (teď ${r0(ctl)}).`);
+  }
   return {
     load,
-    lo: r0(load * 0.9),
+    lo: r0(load * 0.85),
     hi: r0(load * 1.1),
     hours: Math.round(hours * 4) / 4,
-    hoursBand: band,
+    habitHours: habit.hours,
+    sessions,
     keys,
     phase,
     recoveryWeek,
     cycleIdx,
-    ctlTarget: Math.round(ctlAfterWeek(ctl, load) * 10) / 10,
+    ctlTarget: Math.round(after * 10) / 10,
     factor: ft.factor,
     notes,
   };

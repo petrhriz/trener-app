@@ -1,7 +1,6 @@
 // Trenér v2 – uložení plánu (D1): týdny a postup v žebříčcích. Dva dotazy na čtení, jedna dávka na zápis.
 import type { EngineOutput, ProgressRow, StoredWeek } from "../core/coach/engine";
 import { all, execAll, upsertSql } from "../lib/db";
-import { setSettingSql } from "../lib/settings";
 import { addDays, mondayOf } from "../lib/time";
 
 export interface CoachState {
@@ -24,14 +23,13 @@ export async function loadCoachState(db: D1Database, today: string): Promise<Coa
   return { stored, progress };
 }
 
-/** Zapíše jen to, co se změnilo (týdny, stupně, kotva trajektorie). Bez změny žádný dotaz. */
-export async function saveCoachState(db: D1Database, out: Pick<EngineOutput, "save" | "progress" | "anchor">): Promise<void> {
+/** Zapíše jen to, co se změnilo (týdny, stupně). Bez změny žádný dotaz. */
+export async function saveCoachState(db: D1Database, out: Pick<EngineOutput, "save" | "progress">): Promise<void> {
   const now = new Date().toISOString();
   const sqls = [
     ...upsertSql("coach_weeks", ["week_start", "data", "hash", "updated_at"], out.save.map((w) => [w.weekStart, JSON.stringify(w), w.hash, now]), ["week_start"]),
     ...upsertSql("coach_progress", ["key", "level", "last_date", "last_outcome"], out.progress.map((p) => [p.key, p.level, p.last, p.outcome.slice(0, 200)]), ["key"]),
   ];
-  if (out.anchor) sqls.push(setSettingSql("goal_anchor", out.anchor));
   await execAll(db, sqls);
 }
 

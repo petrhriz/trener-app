@@ -1,17 +1,19 @@
 // Kostra týdne Trenéra v2: role dnů (volno / lehký / vytrvalost / klíčový / dlouhý), sport a délky.
 // Malý řešič: projde kombinace dnů a rolí, tvrdá pravidla vyřadí, zbytek oboduje. Stejný vstup = stejný výsledek.
+// Žádné nastavené dny: trénovat jde kdykoli. Pořadí důležitosti je kvalita → dlouhý → vytrvalost, takže když
+// v týdnu zbývá málo dnů (něco jsi vynechal), zůstane to důležité a vytrvalost propadne.
 import type { PlanSport } from "../../datasource/types";
 import { addDays, dow } from "../../lib/time";
 import type { OwnRide } from "../ownRide";
 import { KEY_MIN } from "./budget";
-import { type CoachProfile, mixFor } from "./profile";
+import type { CoachProfile } from "./profile";
 
 export type Role = "rest" | "easy" | "endurance" | "key" | "long";
 export const MAX_STREAK = 3;
 
 /** Úprava dne od uživatele (nebo stav): má přednost před pravidly. */
 export interface Fixed {
-  /** nelze trénovat (nemoc, nemůžu, dovolená…) – text důvodu */
+  /** nelze trénovat (nemoc, nepojedu, dovolená…) – text důvodu */
   blocked?: string;
   /** volno zvolené uživatelem */
   rest?: boolean;
@@ -30,6 +32,8 @@ export interface PastDay {
   key: boolean;
   minutes: number;
   sport: PlanSport | null;
+  /** dlouhý trénink týdne už proběhl (den byl v plánu jako dlouhý, nebo byl opravdu dlouhý) */
+  long?: boolean;
 }
 
 export interface SolveInput {
@@ -37,7 +41,9 @@ export interface SolveInput {
   /** první plánovaný den; dřívější dny týdne se berou podle skutečnosti */
   from: string;
   profile: CoachProfile;
+  /** nabízené hodiny, počet tréninků a kvalit v týdnu */
   hours: number;
+  sessions: number;
   keys: number;
   /** skutečnost: dny týdne před `from` a 3 dny před týdnem */
   past: Map<string, PastDay>;
@@ -67,13 +73,6 @@ export interface SolvedDay {
   own: OwnRide | null;
 }
 
-/** Kolik tréninků týdně z hodin (strop z profilu a z dostupných dnů). */
-export function sessionsFor(hours: number, profile: CoachProfile): number {
-  const n = Math.max(2, Math.min(5, Math.round(hours / 1.75) + 1));
-  const free = 7 - profile.days.unavailable.length;
-  return Math.max(1, Math.min(n, profile.maxSessions ?? 7, free));
-}
-
 const r15 = (x: number) => Math.round(x / 15) * 15;
 const r5 = (x: number) => Math.round(x / 5) * 5;
 const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x));
@@ -95,18 +94,16 @@ export function solveWeek(inp: SolveInput): SolvedDay[] {
   const fx = (d: string) => inp.fixed.get(d);
   const cannot = (d: string) => { const f = fx(d); return !!f?.blocked || !!f?.rest; };
   const must = (d: string) => { const f = fx(d); return !!f && !f.blocked && !f.rest && (!!f.sport || !!f.type || !!f.minutes || !!f.own); };
-  const unavailable = (d: string) => p.days.unavailable.includes(dow(d)) && !must(d);
   const pastTrained = (d: string) => !!inp.past.get(d)?.trained;
   const pastHard = (d: string) => !!inp.past.get(d)?.hard;
 
   const future = dates.filter((d) => !isPast(d));
   const forced = future.filter((d) => must(d));
-  const free = future.filter((d) => !must(d) && !cannot(d) && !unavailable(d));
+  const free = future.filter((d) => !must(d) && !cannot(d));
   const donePast = dates.filter((d) => isPast(d) && pastTrained(d)).length;
-  const hardPast = dates.filter((d) => isPast(d) && !!inp.past.get(d)?.key).length;
-  const longPast = dates.some((d) => isPast(d) && (inp.past.get(d)?.minutes ?? 0) >= Math.max(100, 0.28 * T));
-  const wantN = sessionsFor(inp.hours, p);
-  const wantKeys = Math.max(0, inp.keys - hardPast);
+  const keysPast = dates.filter((d) => isPast(d) && !!inp.past.get(d)?.key).length;
+  const longPast = dates.some((d) => isPast(d) && !!inp.past.get(d)?.long);
+  const wantKeys = Math.max(0, inp.keys - keysPast);
   const needLong = inp.hours >= 3 && !longPast;
 
   // řada dní tréninku za sebou (3 dny před týdnem + týden); hlídá se jen řada, do které patří plánovaný den
@@ -125,33 +122,29 @@ export function solveWeek(inp: SolveInput): SolvedDay[] {
 
   interface Cand { train: string[]; keys: string[]; long: string | null; score: number; sig: string }
   const st: { best: Cand | null } = { best: null };
-  const pref = p.days.preferred;
   const roleOf = (c: { train: Set<string>; keys: Set<string>; long: string | null }, d: string): Role =>
     !c.train.has(d) ? "rest" : inp.easyOnly.has(d) ? "easy" : c.keys.has(d) ? "key" : c.long === d ? "long" : "endurance";
 
   const evalCand = (trainArr: string[], keyArr: string[], long: string | null) => {
     const train = new Set(trainArr), keys = new Set(keyArr);
-    // tvrdá pravidla klíčového dne: ne den po klíčovém ani po dlouhém
+    // pořadí důležitosti: kvalita, pak dlouhý
+    let s = keyArr.length * 5 + (long ? 4 : 0);
+    // tvrdé pravidlo klíčového dne: ne den po klíčovém ani po dlouhém. Kvalitu, kterou sis na den dal sám,
+    // řešič nechá – ale snaží se těžký den před ní odsunout.
     for (const k of keyArr) {
       const y = addDays(k, -1);
       const yHard = isPast(y) || y < weekStart ? pastHard(y) : keys.has(y) || long === y;
-      if (yHard && fx(k)?.type !== "quality") return;
+      if (!yHard) continue;
+      if (fx(k)?.type !== "quality") return;
+      s -= 8;
     }
-    let s = keyArr.length * 5 + (long ? 4 : 0);
-    for (const d of trainArr) {
-      if (pref.length) s += pref.includes(dow(d)) ? 3 : -1;
-      if (inp.weatherBad.has(d) && !keys.has(d)) s -= long === d ? 4 : 1.5;
-    }
-    if (!pref.length && !train.has(dates[0]!) && !isPast(dates[0]!)) s += 1;
-    if (long) {
-      if (p.days.long != null) s += dow(long) === p.days.long ? 6 : 0;
-      else s += dow(long) >= 6 ? 3 : 0;
-      s += dow(long) / 14; // spíš ke konci týdne
-    }
+    for (const d of trainArr) if (inp.weatherBad.has(d) && !keys.has(d)) s -= long === d ? 4 : 1.5;
+    if (!train.has(dates[0]!) && !isPast(dates[0]!)) s += 1; // pondělí spíš volno
+    if (long) s += (dow(long) >= 6 ? 3 : 0) + dow(long) / 14; // dlouhý o víkendu, spíš ke konci týdne
     for (const k of keyArr) {
       const y = addDays(k, -1), t = addDays(k, 1);
       const yTrain = isPast(y) || y < weekStart ? pastTrained(y) : train.has(y);
-      s += yTrain ? -1 : 2;
+      s += yTrain ? -1 : 2; // kvalita nejlíp po volnu
       if (long === t) s -= 1;
     }
     if (keyArr.length === 2) s += Math.abs(dates.indexOf(keyArr[0]!) - dates.indexOf(keyArr[1]!)) >= 3 ? 1 : 0;
@@ -171,7 +164,7 @@ export function solveWeek(inp: SolveInput): SolvedDay[] {
     if (!cb || s > cb.score + 1e-9 || (Math.abs(s - cb.score) <= 1e-9 && sig < cb.sig)) st.best = { train: trainArr, keys: keyArr, long, score: s, sig };
   };
 
-  const maxFree = Math.max(0, Math.min(free.length, wantN - donePast - forced.length));
+  const maxFree = Math.max(0, Math.min(free.length, inp.sessions - donePast - forced.length));
   for (let nFree = maxFree; nFree >= 0 && !st.best; nFree--) {
     for (const pick of combos(free, nFree)) {
       const trainArr = [...forced, ...pick].sort();
@@ -203,43 +196,29 @@ export function solveWeek(inp: SolveInput): SolvedDay[] {
     return { date: d, role, sport: f?.sport ?? p.primary, minutes: 0, fixed: !!f && !f.blocked, blocked: f?.blocked ?? null, userRest: !!f?.rest, own: f?.own ?? null };
   });
   const day = (d: string) => out.find((x) => x.date === d);
-  // vedlejší sporty podle mixu: do vytrvalostních dnů bez volby sportu
-  const mix = mixFor(p, weekStart);
-  const pastSport = (s: PlanSport) => dates.filter((d) => isPast(d) && inp.past.get(d)?.sport === s).length;
-  for (const s of Object.keys(mix) as PlanSport[]) {
-    const share = mix[s] ?? 0;
-    const typical = s === "run" ? 45 : 75;
-    const cap = p.sports[s].maxPerWeek ?? 3;
-    let n = clamp(Math.round((share * T) / typical), 1, cap) - pastSport(s) - out.filter((x) => x.role !== "rest" && x.sport === s).length;
-    if (n <= 0) continue;
-    const okRun = (x: SolvedDay) => {
-      if (s !== "run" || inp.run.experienced) return true;
-      const near = [addDays(x.date, -1), addDays(x.date, 1)];
-      return !near.some((nd) => day(nd)?.sport === "run" && day(nd)?.role !== "rest") && inp.past.get(near[0]!)?.sport !== "run";
-    };
-    const pool = out.filter((x) => (x.role === "endurance" || x.role === "easy" || (x.role === "long" && s === "xc_ski" && share >= 0.4)) && !fx(x.date)?.sport && !x.own && x.sport === p.primary);
-    // kratší všední dny napřed (dlouhý a víkend zůstanou hlavnímu sportu)
-    pool.sort((a, c) => (a.role === "long" ? 1 : 0) - (c.role === "long" ? 1 : 0) || (dow(a.date) >= 6 ? 1 : 0) - (dow(c.date) >= 6 ? 1 : 0) || a.date.localeCompare(c.date));
-    for (const x of pool) {
-      if (n <= 0) break;
-      if (!okRun(x)) continue;
-      x.sport = s;
-      n--;
-    }
+  // další sporty („občas taky“): každý nejvýš jednou týdně místo jednoho vytrvalostního dne, když jich je dost
+  const pastSport = (s: PlanSport) => dates.some((d) => isPast(d) && inp.past.get(d)?.sport === s);
+  const others = (["run", "ride", "xc_ski"] as PlanSport[]).filter((s) => s !== p.primary && p.sports[s].enabled && (s !== "xc_ski" || p.snow));
+  for (const s of others) {
+    if (pastSport(s) || out.some((x) => x.role !== "rest" && x.sport === s)) continue;
+    const pool = out.filter((x) => x.role === "endurance" && !fx(x.date)?.sport && !x.own && x.sport === p.primary);
+    // hlavnímu sportu musí zůstat aspoň jeden vytrvalostní den
+    if (pool.length < 2) continue;
+    const ok = pool.find((x) => s !== "run" || inp.run.experienced || (inp.past.get(addDays(x.date, -1))?.sport !== "run" && day(addDays(x.date, 1))?.sport !== "run"));
+    if (ok) ok.sport = s;
   }
   for (const x of out) {
     if (x.role === "rest") continue;
-    // chůze je regenerace; běh bez pravidelného běhání nebo bez povolených intervalů nemá kvalitu
+    // chůze je regenerace; vedlejší sport má kvalitu, jen když ji má povolenou (běh navíc jen při pravidelném běhání)
     if (x.sport === "walk") x.role = "easy";
-    if (x.role === "key" && x.sport !== "ride" && x.sport !== p.primary && fx(x.date)?.type !== "quality" && !(p.sports[x.sport].quality && (x.sport !== "run" || inp.run.experienced))) x.role = "endurance";
-    if (x.role === "key" && x.sport === "run" && p.primary !== "run" && !inp.run.experienced && fx(x.date)?.type !== "quality") x.role = "endurance";
+    if (x.role === "key" && x.sport !== p.primary && fx(x.date)?.type !== "quality" && !(p.sports[x.sport].quality && (x.sport !== "run" || inp.run.experienced))) x.role = "endurance";
   }
 
   // ---- délky ----
   const doneMin = dates.filter(isPast).reduce((t, d) => t + (inp.past.get(d)?.minutes ?? 0), 0);
   const R = Math.max(0, T - doneMin);
-  const runCap = Math.min(p.sports.run.maxMin ?? 150, Math.max(p.primary === "run" ? 45 : 30, Math.round(inp.run.longest * 1.1)));
-  const capOf = (x: SolvedDay) => (x.sport === "run" ? runCap : p.sports[x.sport].maxMin ?? 600);
+  const runCap = Math.min(150, Math.max(p.primary === "run" ? 45 : 30, Math.round(inp.run.longest * 1.1)));
+  const capOf = (x: SolvedDay) => (x.sport === "run" ? runCap : 600);
   const rnd = (x: SolvedDay, m: number) => (x.sport === "run" ? r5(m) : r15(m));
   let left = R;
   const open: SolvedDay[] = [];
@@ -255,8 +234,9 @@ export function solveWeek(inp: SolveInput): SolvedDay[] {
   }
   const longDay = open.find((x) => x.role === "long");
   const ends = open.filter((x) => x.role === "endurance");
+  const longCap = (x: SolvedDay) => (x.sport === "run" ? runCap : Math.max(120, r15(inp.longestRide * 1.2)));
   if (longDay) {
-    const cap = longDay.sport === "run" ? runCap : Math.min(capOf(longDay), Math.max(120, r15(inp.longestRide * 1.2)));
+    const cap = longCap(longDay);
     const lo = longDay.sport === "run" ? Math.min(45, cap) : 90;
     const minEnd = ends.reduce((t, x) => t + (x.sport === "run" ? 30 : 45), 0);
     longDay.minutes = rnd(longDay, clamp(Math.max(0.33 * T, ends.length ? 0 : left), lo, Math.max(lo, Math.min(cap, left - minEnd))));
@@ -264,14 +244,11 @@ export function solveWeek(inp: SolveInput): SolvedDay[] {
   }
   ends.forEach((x, i) => {
     const lo = x.sport === "run" ? Math.min(30, capOf(x)) : 45;
-    const hi = Math.min(capOf(x), x.sport === "run" ? runCap : 150, longDay ? Math.max(lo, longDay.minutes - 15) : 150);
+    const hi = Math.min(capOf(x), 150, longDay ? Math.max(lo, longDay.minutes - 15) : 150);
     x.minutes = rnd(x, clamp(left / (ends.length - i), lo, Math.max(lo, hi)));
     left -= x.minutes;
   });
   // co se nevešlo do vytrvalostních dnů, jde do dlouhého (do jeho stropu)
-  if (longDay && left >= 15) {
-    const cap = longDay.sport === "run" ? runCap : Math.min(capOf(longDay), Math.max(120, r15(inp.longestRide * 1.2)));
-    longDay.minutes = rnd(longDay, Math.min(cap, longDay.minutes + left));
-  }
+  if (longDay && left >= 15) longDay.minutes = rnd(longDay, Math.min(longCap(longDay), longDay.minutes + left));
   return out;
 }

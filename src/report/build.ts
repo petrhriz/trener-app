@@ -21,7 +21,7 @@ import type { Ctx, FullAct, MetricRow } from "./context";
 import { loadCoachState, saveCoachState } from "../coach/store";
 import type { Fatigue } from "../core/coach/budget";
 import { type EngineAct, runEngine } from "../core/coach/engine";
-import { profileFromHistory } from "../core/coach/profile";
+import { profileFromHistory, validateProfile } from "../core/coach/profile";
 import { norm } from "../core/recovery";
 import { setSetting } from "../lib/settings";
 
@@ -228,7 +228,7 @@ export function fatigueOf(ctx: Ctx, rec: RecoveryResult, cons: { date: string; k
 export async function planForV2(ctx: Ctx, rec: RecoveryResult): Promise<PlanResult> {
   const T = ctx.T;
   const db = ctx.env.DB;
-  let profile = ctx.s.coach_profile;
+  let profile = ctx.s.coach_profile ? validateProfile(ctx.s.coach_profile).profile : null;
   if (!profile) {
     // první spuštění: profil odhadnutý z historie se uloží, ať se plán nemění s každou novou aktivitou
     profile = profileFromHistory(ctx.acts, T);
@@ -243,10 +243,10 @@ export async function planForV2(ctx: Ctx, rec: RecoveryResult): Promise<PlanResu
     today: T,
     goal: ctx.s.goal,
     raceDate: ctx.s.goal === "zavod" ? ctx.s.goal_date : null,
-    anchor: ctx.s.goal_anchor,
     profile,
-    zones: { ftp: ctx.s.ftp ?? null, hr: ctx.s.hr_zones, p5: bestIn(power, addDays(T, -42), T, 300)?.w ?? null },
+    zones: { ftp: ctx.s.ftp ?? null, hr: ctx.s.hr_zones },
     acts,
+    power,
     metric: (d) => metricOn(ctx, d),
     calendar: ctx.calendar,
     constraints,
@@ -258,10 +258,7 @@ export async function planForV2(ctx: Ctx, rec: RecoveryResult): Promise<PlanResu
     stored: state.stored,
     progress: state.progress,
   });
-  if (out.save.length || out.progress.length || out.anchor) {
-    await saveCoachState(db, out);
-    if (out.anchor) ctx.s.goal_anchor = out.anchor;
-  }
+  if (out.save.length || out.progress.length) await saveCoachState(db, out);
   return out.plan;
 }
 

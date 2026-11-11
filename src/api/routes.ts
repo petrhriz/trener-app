@@ -430,9 +430,9 @@ function goalsViewV2(ctx: CtxT, plan: Awaited<ReturnType<typeof planFor>>) {
   const now = co ? ` Tento týden: ${String(co.hours).replace(".", ",")} h, zátěž ${t.lo}–${t.hi}, kvalita ${co.keys}×.` : "";
   const g = (key: Goal, label: string, text: string) => ({ key, label, lo: t.lo, hi: t.hi, text: text + (ctx.s.goal === key ? now : "") });
   return [
-    g("zvyseni", "Zlepšit", "Kondice roste v blocích: 3 týdny zátěže a 1 lehčí. Zátěž jde nahoru postupně (nejvýš o 10–15 % týdně) a jen v rámci hodin z tvého profilu."),
-    g("udrzeni", "Udržet", "Kondice se drží: zátěž odpovídá dnešní kondici, kvalita zůstává ve stejné dávce."),
-    g("pokles", "Řízený pokles", "Konec sezóny / zima: kondice klesá asi o bod týdně až tam, kam ji unesou tvoje hodiny. Jedna krátká kvalita týdně drží intenzitu."),
+    g("zvyseni", "Zlepšit", "Trenér nabízí o něco víc, než obvykle jezdíš: 3 týdny přidává a 4. je lehčí. Kvality postupně těžknou, když je zvládáš."),
+    g("udrzeni", "Udržet", "Trenér nabízí tolik, kolik obvykle jezdíš. Kvality zůstávají stejně těžké, jen se střídají."),
+    g("pokles", "Řízený pokles", "Konec sezóny / zima: o trénink míň a kratší jízdy, kondice pomalu klesá. Jedna lehčí kvalita týdně drží intenzitu."),
     g("zavod", "Závod", `Příprava na ${ctx.s.goal_name || "závod"}${ctx.s.goal_date ? ` (${dm(ctx.s.goal_date)})` : ""}: Základ, pak Rozvoj a posledních 10–14 dní ladění.`),
   ];
 }
@@ -1074,8 +1074,8 @@ api.post("/secrets/test", async (c) => {
 
 api.post("/settings", async (c) => {
   const body = (await c.req.json()) as Partial<Settings>;
-  // profil trenéra a kotva trajektorie mají vlastní cestu s kontrolou (/coach/profile)
-  const allowed = (Object.keys(DEFAULTS) as (keyof Settings)[]).filter((k) => k !== "coach_profile" && k !== "goal_anchor");
+  // profil trenéra má vlastní cestu s kontrolou (/coach/profile)
+  const allowed = (Object.keys(DEFAULTS) as (keyof Settings)[]).filter((k) => k !== "coach_profile");
   const before = await getSettings(c.env.DB);
   // povinné údaje (časy zpráv, místo, tréninky týdně, cíl) nesmí být prázdné ani ve špatném tvaru – null by
   // v plánovači zpráv spadl (hm(null)) a ranní / večerní zprávy by tiše přestaly chodit
