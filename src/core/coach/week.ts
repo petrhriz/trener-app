@@ -46,8 +46,9 @@ export interface SolveInput {
   sessions: number;
   keys: number;
   long: boolean;
-  /** zátěž za hodinu lehké jednotky a stropy délek (min) */
+  /** zátěž za hodinu lehké jednotky (hlavní sport) a běhu; stropy délek (min) */
   rate: number;
+  runRate: number;
   caps: { easy: number; long: number; key: number };
   /** skutečnost: dny týdne před `from` a 3 dny před týdnem */
   past: Map<string, PastDay>;
@@ -217,6 +218,9 @@ export function solveWeek(inp: SolveInput): SolvedDay[] {
 
   // ---- délky: ze zátěže týdne (ne z hodin), se stropy podle toho, co sportovec opravdu jezdí ----
   const perMin = Math.max(0.4, inp.rate / 60);
+  // běh v plánu cyklisty (a naopak) dostane délku podle STEJNÉ ZÁTĚŽE, ne podle stejných minut
+  const runPerMin = Math.max(0.4, (p.primary === "run" ? inp.rate : inp.runRate) / 60);
+  const pm = (x: SolvedDay) => (x.sport === "run" ? runPerMin : perMin);
   const runCap = Math.min(150, Math.max(p.primary === "run" ? 45 : 30, Math.round(inp.run.longest * 1.1)));
   const rnd = (x: SolvedDay, m: number) => (x.sport === "run" ? r5(m) : r15(m));
   let left = Math.max(0, inp.load - inp.doneLoad);
@@ -225,9 +229,14 @@ export function solveWeek(inp: SolveInput): SolvedDay[] {
     if (x.role === "rest") continue;
     const f = fx(x.date);
     if (x.own) { x.minutes = x.own.min; left -= x.minutes * perMin; }
-    else if (f?.minutes) { x.minutes = f.minutes; left -= x.minutes * perMin * (x.role === "key" ? 1.45 : 1); }
-    else if (x.role === "key") { x.minutes = x.sport === "run" ? Math.min(runCap, 50) : inp.caps.key; left -= x.minutes * perMin * 1.45; }
-    else if (x.role === "easy") { x.minutes = Math.min(x.sport === "run" ? runCap : 45, 40); left -= x.minutes * perMin * 0.7; }
+    else if (f?.minutes) { x.minutes = f.minutes; left -= x.minutes * pm(x) * (x.role === "key" ? 1.45 : 1); }
+    else if (x.role === "key") {
+      // zátěž kvality v hlavním sportu → tolik minut druhého sportu, aby zátěž vyšla podobně
+      const keyLoad = inp.caps.key * perMin * 1.45;
+      x.minutes = x.sport === "run" && p.primary !== "run" ? Math.max(Math.min(30, runCap), Math.min(runCap, r5(keyLoad / (runPerMin * 1.3)))) : x.sport === "run" ? Math.min(runCap, 50) : inp.caps.key;
+      left -= keyLoad;
+    }
+    else if (x.role === "easy") { x.minutes = Math.min(x.sport === "run" ? runCap : 45, 40); left -= x.minutes * pm(x) * 0.7; }
     else open.push(x);
   }
   left = Math.max(0, left);
@@ -237,14 +246,16 @@ export function solveWeek(inp: SolveInput): SolvedDay[] {
     const cap = longDay.sport === "run" ? runCap : inp.caps.long;
     const lo = longDay.sport === "run" ? Math.min(40, cap) : Math.min(75, cap);
     // dlouhý den dostane větší díl zbylé zátěže, lehké dny zbytek
-    longDay.minutes = rnd(longDay, clamp(((ends.length ? 0.6 : 1) * left) / perMin, lo, cap));
-    left = Math.max(0, left - longDay.minutes * perMin);
+    longDay.minutes = rnd(longDay, clamp(((ends.length ? 0.6 : 1) * left) / pm(longDay), lo, cap));
+    left = Math.max(0, left - longDay.minutes * pm(longDay));
   }
   ends.forEach((x, i) => {
     const cap = x.sport === "run" ? Math.min(runCap, 60) : Math.min(inp.caps.easy, longDay ? Math.max(45, longDay.minutes - 15) : inp.caps.easy);
     const lo = x.sport === "run" ? Math.min(30, cap) : 45;
-    x.minutes = rnd(x, clamp(left / (ends.length - i) / perMin, lo, Math.max(lo, cap)));
-    left = Math.max(0, left - x.minutes * perMin);
+    // den přepnutý na jiný sport dostane zátěž, jakou by měl v hlavním sportu (strop délky hlavního sportu)
+    const share = Math.min(left / (ends.length - i), inp.caps.easy * perMin);
+    x.minutes = rnd(x, clamp(share / pm(x), lo, Math.max(lo, cap)));
+    left = Math.max(0, left - x.minutes * pm(x));
   });
   return out;
 }

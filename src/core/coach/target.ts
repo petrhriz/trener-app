@@ -154,7 +154,11 @@ export function weekTarget(inp: TargetInput): Budget {
 
   // 2) strop podle skutečnosti posledních 4 týdnů: nejvýš +30 % (aspoň +40) proti jejich váženému průměru
   //    (váhy 1–2–3–4 od nejstaršího: když se objem před pár týdny změnil, plán to zachytí rychle)
-  const wl = recent.weekLoads;
+  //    Jeden vypadlý týden mezi normálními (nemoc, cesta) se nepočítá; dva a víc slabých týdnů už je změna návyku.
+  const low = recent.weekLoads.map((x, i, all) => x < 0.25 * Math.max(0, ...all.filter((_y, j) => j !== i)));
+  const outage = low.filter(Boolean).length === 1 ? low.indexOf(true) : -1;
+  const wl = recent.weekLoads.filter((_x, i) => i !== outage);
+  const ws = recent.weekSessions.filter((_x, i) => i !== outage);
   const wavg = (v: number[]) => (v.length ? v.reduce((t, x, i) => t + x * (i + 1), 0) / v.reduce((t, _x, i) => t + i + 1, 0) : 0);
   const recentLoad = r0(wavg(wl));
   const hasHistory = wl.some((x) => x > 0);
@@ -186,7 +190,7 @@ export function weekTarget(inp: TargetInput): Budget {
   const keyLoad = (caps.key / 60) * inp.easyRate * 1.45;
   const longLoad = (caps.long / 60) * inp.easyRate;
   const easyLoad = (caps.easy / 60) * inp.easyRate;
-  const maxN = Math.max(3, Math.min(6, r0(wavg(recent.weekSessions)) + 1));
+  const maxN = Math.max(3, Math.min(6, r0(wavg(ws)) + 1));
   const rest = Math.max(0, load - keys * keyLoad - (long ? longLoad : 0));
   const sessions = Math.max(2, Math.min(maxN, keys + (long ? 1 : 0) + Math.ceil(rest / Math.max(20, easyLoad) - 0.25)));
   // 5) co se do těch tréninků a délek vejde – víc se nenabízí (žádné natahování jízd kvůli číslu)

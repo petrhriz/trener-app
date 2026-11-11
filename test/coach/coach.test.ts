@@ -102,6 +102,14 @@ describe("cíl zátěže týdne", () => {
     expect(b.sessions).toBeLessThanOrEqual(3);
     expect(b.caps.long).toBeLessThanOrEqual(90);
   });
+  it("PŘÍKLAD 5b – jeden vypadlý týden (nemoc) mezi normálními se nepočítá; dva slabé týdny už ano", () => {
+    const ill = target({ ctl: 45, recent: { ...REC, weekLoads: [300, 310, 0, 305], weekSessions: [4, 4, 0, 4] } });
+    expect(ill.recentLoad).toBeGreaterThan(295); // týden s nulou vypadl z průměru
+    expect(ill.load).toBe(315);
+    const two = target({ ctl: 45, recent: { ...REC, weekLoads: [300, 310, 0, 20], weekSessions: [4, 4, 0, 1] } });
+    expect(two.recentLoad).toBeLessThan(110);
+    expect(two.load).toBeLessThan(160);
+  });
   it("PŘÍKLAD 6 – začátečník bez historie: opatrný první týden", () => {
     const b = target({ ctl: 0, recent: { weekLoads: [], weekSessions: [], longestMin: 0, typicalMin: null, provenRamp: null } });
     expect(b.load).toBeLessThanOrEqual(150);
@@ -194,7 +202,7 @@ describe("knihovna tréninků", () => {
 // ---------- kostra týdne ----------
 const noPast = new Map<string, PastDay>();
 const solve = (x: Partial<Parameters<typeof solveWeek>[0]>) =>
-  solveWeek({ weekStart: "2026-11-16", from: "2026-11-16", profile: RIDER, load: 300, doneLoad: 0, sessions: 4, keys: 1, long: true, rate: 45, caps: { easy: 90, long: 150, key: 60 }, past: noPast, fixed: new Map(), weatherBad: new Set(), prev: null, noKey: new Set(), easyOnly: new Set(), run: { experienced: false, longest: 0 }, ...x });
+  solveWeek({ weekStart: "2026-11-16", from: "2026-11-16", profile: RIDER, load: 300, doneLoad: 0, sessions: 4, keys: 1, long: true, rate: 45, runRate: 62, caps: { easy: 90, long: 150, key: 60 }, past: noPast, fixed: new Map(), weatherBad: new Set(), prev: null, noKey: new Set(), easyOnly: new Set(), run: { experienced: false, longest: 0 }, ...x });
 const shape = (d: ReturnType<typeof solve>) => d.map((x) => x.role[0]).join("");
 
 describe("kostra týdne", () => {
@@ -258,6 +266,25 @@ describe("kostra týdne", () => {
     expect(d.find((x) => x.role === "long")!.sport).toBe("ride");
     // tři tréninky týdně: běh nevezme kolu poslední vytrvalostní den
     expect(solve({ profile: prof({ sports: { run: { enabled: true } } }), sessions: 3, load: 200 }).filter((x) => x.sport === "run" && x.role !== "rest").length).toBe(0);
+  });
+  it("přepnutí dne na běh: délka se přepočte na stejnou zátěž, ne na stejné minuty", () => {
+    const base = solve({ load: 187, sessions: 3, caps: { easy: 75, long: 105, key: 60 } });
+    const keyDay = base.find((x) => x.role === "key")!, endDay = base.find((x) => x.role === "endurance")!;
+    const runner = { experienced: true, longest: 60 };
+    const swapKey = solve({ load: 187, sessions: 3, caps: { easy: 75, long: 105, key: 60 }, run: runner, profile: prof({ sports: { run: { enabled: true, quality: true } } }), fixed: fixedFromConstraints([{ date: keyDay.date, kind: "sport", note: "run" }] as Constraint[]) });
+    const k = swapKey.find((x) => x.date === keyDay.date)!;
+    expect(k.sport).toBe("run");
+    // kvalita na kole 60 min ≈ zátěž 65 → běh s intervaly asi 50 min (běh dává za minutu víc)
+    expect(k.minutes).toBeGreaterThanOrEqual(40);
+    expect(k.minutes).toBeLessThan(60);
+    const swapEnd = solve({ load: 187, sessions: 3, caps: { easy: 75, long: 105, key: 60 }, run: runner, fixed: fixedFromConstraints([{ date: endDay.date, kind: "sport", note: "run" }] as Constraint[]) });
+    const e = swapEnd.find((x) => x.date === endDay.date)!;
+    expect(e.sport).toBe("run");
+    expect(e.minutes).toBeLessThan(endDay.minutes); // stejná zátěž = kratší běh
+    expect(Math.abs(e.minutes * (62 / 60) - endDay.minutes * (45 / 60))).toBeLessThan(8);
+    // málo naběháno → strop 1,1× nejdelšího běhu za měsíc
+    const capped = solve({ load: 187, sessions: 3, caps: { easy: 75, long: 105, key: 60 }, run: { experienced: false, longest: 30 }, fixed: fixedFromConstraints([{ date: endDay.date, kind: "sport", note: "run" }] as Constraint[]) });
+    expect(capped.find((x) => x.date === endDay.date)!.minutes).toBeLessThanOrEqual(35);
   });
   it("jen běh: vše běh, dlouhý běh nepřeroste 1,1× nejdelšího", () => {
     const d = solve({ profile: prof({ primary: "run", sports: { ride: { enabled: false } } }), load: 220, sessions: 4, run: { experienced: true, longest: 70 } });

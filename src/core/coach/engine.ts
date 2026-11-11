@@ -214,6 +214,9 @@ export function runEngine(inp: EngineInput): EngineOutput {
   // ---- co se ví z historie: zátěž za hodinu, poslední 4 týdny, obvyklé a nejdelší délky ----
   const er = easyRate(inp.acts, T, p.primary, p.primary === "ride" && power);
   const calibOf = (s: PlanSport) => (s === p.primary ? er.calib : easyRate(inp.acts, T, s, s === "ride" && power).calib);
+  // běh: zátěž za hodinu z vlastních běhů (stačí jeden), jinak obvyklých 60
+  const runH = inp.acts.filter((a) => a.sport === "run" && a.date > addDays(T, -60) && (a.moving_s ?? 0) >= 15 * 60 && (a.load ?? 0) > 0).map((a) => a.load! / (a.moving_s! / 3600));
+  const runRate = Math.max(45, Math.min(75, median(runH) ?? 60));
   const dayMin = new Map<string, number>();
   for (const a of inp.acts) if (ENDURANCE_SPORTS.includes(a.sport) && a.date > addDays(T, -28) && a.date <= T && (a.moving_s ?? 0) >= 20 * 60) dayMin.set(a.date, (dayMin.get(a.date) ?? 0) + (a.moving_s ?? 0) / 60);
   const mins = [...dayMin.values()].sort((a, b) => a - b);
@@ -291,11 +294,11 @@ export function runEngine(inp: EngineInput): EngineOutput {
     if (current && from === T && inp.recovery === "red") easyOnly.add(T);
     for (const d of dates) if (d >= from && afterIllness(d)) noKey.add(d);
     const levels = Object.entries(progress).map(([k, v]) => `${k}=${v.level}`).sort();
-    const hash = hashOf([from, current ? inp.recovery : null, [...fixed.entries()], [...past.entries()], baseKey, budget.load, budget.keys, budget.sessions, budget.long, budget.caps, budget.recoveryWeek, Math.round(doneLoad / 5), skipKey, [...weatherBad], inp.weatherOk, inp.zones.ftp, inp.zones.hr?.floors, levels, Math.round(er.calib * 20), used.map((u) => u.wid ?? u.cat)]);
+    const hash = hashOf([from, current ? inp.recovery : null, [...fixed.entries()], [...past.entries()], baseKey, budget.load, budget.keys, budget.sessions, budget.long, budget.caps, budget.recoveryWeek, Math.round(doneLoad / 5), skipKey, Math.round(runRate), [...weatherBad], inp.weatherOk, inp.zones.ftp, inp.zones.hr?.floors, levels, Math.round(er.calib * 20), used.map((u) => u.wid ?? u.cat)]);
     if (stored && stored.hash === hash) return stored;
     const sameBase = !!stored && stored.baseKey === baseKey;
     const prev = sameBase ? new Map(stored!.days.map((d) => [d.date, d.role] as [string, Role])) : null;
-    const solved = solveWeek({ weekStart, from, profile: p, load: budget.load, doneLoad, sessions: budget.sessions, keys: Math.max(0, budget.keys - (skipKey ? 1 : 0)), long: budget.long, rate: er.rate, caps: budget.caps, past, fixed, weatherBad, prev, noKey, easyOnly, run: runInfo });
+    const solved = solveWeek({ weekStart, from, profile: p, load: budget.load, doneLoad, sessions: budget.sessions, keys: Math.max(0, budget.keys - (skipKey ? 1 : 0)), long: budget.long, rate: er.rate, runRate, caps: budget.caps, past, fixed, weatherBad, prev, noKey, easyOnly, run: runInfo });
 
     const T60 = solved.reduce((t, x) => t + x.minutes, 0) + dates.filter((d) => d < from).reduce((t, d) => t + (past.get(d)?.minutes ?? 0), 0);
     const doneKeys = dates.filter((d) => d < from && past.get(d)?.key).length;
@@ -335,6 +338,9 @@ export function runEngine(inp: EngineInput): EngineOutput {
         }
       }
       if (was?.role === "key" && role !== "key" && !why.length) why.push("kvalita přesunuta na jiný den");
+      // sport přepnutý uživatelem: délka je přepočtená tak, aby zátěž odpovídala nahrazovanému tréninku
+      const swapped = !!fixed.get(x.date)?.sport && x.sport !== p.primary && !x.own && !fixed.get(x.date)?.minutes;
+      if (swapped && x.sport === "run") why.push(`běh místo kola: ${minutes} min dává podobnou zátěž jako plánovaná jízda${x.role === "key" ? "; místo intervalů na kole tempo / práh podle tepu" : ""}`);
       // co se pojede a proč
       let family: Family, level = 0, wid: string | null = null, reason = "";
       if (x.own) family = x.own.min >= 120 ? "long" : "end";
