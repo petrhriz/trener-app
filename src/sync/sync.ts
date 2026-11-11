@@ -33,6 +33,18 @@ const WELL_COLS = [
   "icu_ctl", "icu_atl", "icu_ramp", "floors_up", "floors_down", "sleep_resp_lo", "sleep_resp_hi", "sleep_score_g", "sleep_need_g_min", "next_sleep_need_g_min", "updated_at",
 ];
 
+/** verze přepočtu zón tepu z intervals.icu (zvýšení = projde aktivity znovu) */
+const HRZ_V = 1;
+/** čas v 5 zónách tepu z intervals.icu (podle zón, které tam platí teď) jako JSON pro sloupec hr_z */
+function icuHrZ(row: any): string | null {
+  const z = row?.icu_hr_zone_times;
+  if (!Array.isArray(z) || !z.some((v: unknown) => typeof v === "number" && v > 0)) return null;
+  const five = z.slice(0, 5).map((v: unknown) => Number(v) || 0);
+  while (five.length < 5) five.push(0);
+  five[4] = (five[4] ?? 0) + z.slice(5).reduce((t: number, v: unknown) => t + (Number(v) || 0), 0);
+  return JSON.stringify(five);
+}
+
 /** Zátěž z intervals.icu má přednost (stejná čísla jako v intervals.icu). */
 const ICU_LOAD_SQL = "UPDATE activities SET load = icu_load, load_source = 'icu' WHERE icu_load IS NOT NULL AND (load_source != 'icu' OR load != icu_load)";
 
@@ -314,6 +326,7 @@ export async function syncTick(env: Env, opts: { force?: boolean; manual?: boole
           `icu_compliance = COALESCE(${lit(icuRow?.compliance ?? null)}, icu_compliance), icu_eftp = COALESCE(${lit(icuRow?.icu_rolling_ftp ?? null)}, icu_eftp), ` +
           `icu_strain = COALESCE(${lit(icuRow?.strain_score ?? null)}, icu_strain), icu_intensity = COALESCE(${lit(icuRow?.icu_intensity ?? null)}, icu_intensity), ` +
           `icu_pwhr_z2 = COALESCE(${lit(icuRow?.icu_power_hr_z2 ?? null)}, icu_pwhr_z2), icu_pwhr_z2_min = COALESCE(${lit(icuRow?.icu_power_hr_z2_mins ?? null)}, icu_pwhr_z2_min), ` +
+          `hr_z = COALESCE(${lit(icuHrZ(icuRow))}, hr_z), ` +
           `enrich_state = ${state} WHERE id = ${lit(a.id)}`,
       );
     }
@@ -321,6 +334,36 @@ export async function syncTick(env: Env, opts: { force?: boolean; manual?: boole
     await execAll(env.DB, sqls);
     await markDirty(env.DB, minDate);
     rep.steps.push(`doplnění (${rows.length})`);
+  });
+
+  // 3d) čas v zónách tepu z intervals.icu: po změně zón (nebo přepočtu aktivit v intervals.icu) se u starších aktivit
+  //     drží stará čísla z Garminu → popisky a AI hodnocení neseděly s grafem. Projde 400 dní po 60denních oknech.
+  await guard("zóny tepu z icu", async () => {
+    if (!icu.configured) return;
+    const sig = `${HRZ_V}:${JSON.stringify(s.hr_zones?.floors ?? null)}`;
+    let st = (await getState<{ sig: string; cursor: string; done: boolean }>(env.DB, "hrz_sync")) ?? null;
+    if (!st || st.sig !== sig) st = { sig, cursor: T, done: false };
+    if (st.done) return;
+    const from = addDays(st.cursor, -60);
+    const list = await icu.activitiesRaw(from, st.cursor);
+    const ours = await all<{ id: string; hr_z: string | null }>(env.DB, "SELECT id, hr_z FROM activities WHERE date >= ? AND date <= ?", from, st.cursor);
+    const sqls: string[] = [];
+    const changed: string[] = [];
+    for (const a of ours) {
+      const row = list.find((x) => String(x.external_id ?? "") === a.id || String(x.external_id ?? "").includes(a.id));
+      const z = icuHrZ(row);
+      if (z && z !== a.hr_z) { sqls.push(`UPDATE activities SET hr_z = ${lit(z)} WHERE id = ${lit(a.id)}`); changed.push(a.id); }
+    }
+    st.cursor = addDays(from, -1);
+    st.done = st.cursor < addDays(T, -400);
+    sqls.push(setStateSql("hrz_sync", st));
+    await execAll(env.DB, sqls);
+    // uložené AI hodnocení vycházelo ze starých zón → napíše se znovu
+    if (changed.length) {
+      const keys = new Set((await env.KV.list({ prefix: "actai:v1:" }).catch(() => ({ keys: [] as { name: string }[] }))).keys.map((k) => k.name));
+      for (const id of changed) if (keys.has(`actai:v1:${id}`)) await env.KV.delete(`actai:v1:${id}`).catch(() => {});
+    }
+    rep.steps.push(`zóny tepu z icu (${from}, změněno ${changed.length})`);
   });
 
   // 3c) VO2max z FIT souboru (kolo i běh zvlášť): 1 aktivita za běh, 150 dní zpět, max. 3 pokusy

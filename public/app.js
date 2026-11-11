@@ -1132,8 +1132,10 @@ async function pageTrener(el) {
     const pd = p.days.find((x) => x.date === date), past = rc.find((x) => x.date === date);
     const acts = (past && past.acts) || [];
     const done = acts.length > 0 || (date === r.date && doneActs.length > 0);
-    const ico = done ? (SPORT_ICON[(acts[0] || {}).sport || (date === r.date ? (doneActs[0] || {}).sport : "")] || "✅") : pd && pd.name ? (pd.kind === "quality" ? "⚡" : tSportIco(pd.sport)) : date < r.date ? "—" : "·";
-    return `<button type="button" class="tsd ${done ? "done" : ""} ${pd && pd.name && !done ? "pl" : ""} ${date === r.date ? "today" : ""} ${pd && pd.kind === "quality" ? "q" : ""}" ${pd && date >= r.date ? `data-peek="${date}"` : ""} title="${dayDm(date)}${pd && pd.name ? ` · ${esc(pd.name)}` : ""}"><i>${ico}</i><b>${DAYS[dow(date) - 1]}</b><small>${Number(date.slice(8, 10))}.</small></button>`;
+    // kvalita = sytější barva (naplánovaná oranžově, odtrénovaná zeleně), ikona vždy sport; prázdný den vždy tečka
+    const ico = done ? (SPORT_ICON[(acts[0] || {}).sport || (date === r.date ? (doneActs[0] || {}).sport : "")] || "✅") : pd && pd.name ? tSportIco(pd.sport) : "·";
+    const q = done ? acts.some((a) => a.q) || !!(past && past.plan && past.plan.kind === "quality") || (date === r.date && !!pd && pd.kind === "quality") : !!pd && pd.kind === "quality";
+    return `<button type="button" class="tsd ${done ? "done" : ""} ${pd && pd.name && !done ? "pl" : ""} ${date === r.date ? "today" : ""} ${q ? "q" : ""}" ${pd && date >= r.date ? `data-peek="${date}"` : ""} title="${dayDm(date)}${pd && pd.name ? ` · ${esc(pd.name)}` : ""}"><i>${ico}</i><b>${DAYS[dow(date) - 1]}</b><small>${Number(date.slice(8, 10))}.</small></button>`;
   };
   const strip = `<div class="tstrip-sc" id="tStrip">${[-7, 0, 7].map((o) => `<div class="tstrip" data-wk="${o}">${[0, 1, 2, 3, 4, 5, 6].map((k) => stripDay(addDay(mon, o + k))).join("")}</div>`).join("")}</div>`;
   const bars = (cur ? weekBar({ ...cur, target: d.weeks.target }, `Tento týden · ${wkLabel(cur)}`) : "") + (inPlan(next) ? weekBar({ ...next, target: d.weeks.target }, `Příští týden · ${wkLabel(next)}`) : "");
@@ -1143,7 +1145,7 @@ async function pageTrener(el) {
   const dayRow = (x) => {
     const ride = !!x.name;
     const q = x.kind === "quality";
-    const tags = [q ? '<span class="ttag q">kvalita</span>' : "", x.kind === "long" ? '<span class="ttag">dlouhá</span>' : "", x.own ? '<span class="ttag">vlastní jízda</span>' : ""].join("");
+    const tags = [x.kind === "long" ? '<span class="ttag">dlouhá</span>' : "", x.own ? '<span class="ttag">vlastní jízda</span>' : ""].join("");
     const w = x.weather;
     const wtxt = w ? `${weatherIcon(w)} ${num(w.tmax)}°${w.window && ride && !x.indoor && x.sport === "ride" ? ` · okno ${String(w.window.from).padStart(2, "0")}–${String(w.window.to).padStart(2, "0")} h` : ""}${x.indoor ? " · trenažér" : ""}` : "";
     const open = tOpen === x.date;
@@ -1156,7 +1158,7 @@ async function pageTrener(el) {
       ${x.steps && x.steps.length ? `<details class="stepsd"><summary>Kroky tréninku (${x.steps.length})</summary><ol class="steps">${x.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol></details>` : ""}
       ${x.note ? `<p class="note">${esc(x.note)}</p>` : ""}</div>` : "";
     return `<div class="tday ${x.isToday ? "today" : ""} ${ride ? "" : "rest"} ${q ? "q" : ""} ${open ? "open" : ""}" data-day="${x.date}" ${ride ? 'draggable="true"' : ""}>
-      <div class="td-row"><span class="td-date"><b>${DAYS[dow(x.date) - 1]}</b> ${dm(x.date)}</span>
+      <div class="td-row"><span class="td-date"><b>${DAYS[dow(x.date) - 1]}</b> ${dm(x.date)}${q ? '<span class="ttag q">kvalita</span>' : ""}</span>
       <span class="td-main">${ride ? `<span class="td-ico">${tSportIco(x.sport)}</span>` : ""}<span class="td-t"><b>${esc(x.name || (x.kind === "blocked" ? x.tag : x.kind === "hockey" ? "Hokej" : "Volno"))}</b>${tags}${x.targetText && ride ? `<small>${esc(x.targetText)}</small>` : ""}</span></span>
       <span class="td-n num">${ride ? `${dur((x.durationMin || 0) * 60)}<small>zátěž ${num(x.load)}</small>${x.targetText ? `<small class="td-tg">${esc(String(x.targetText).replace(/\s*\(.*$/, ""))}</small>` : ""}` : ""}</span>
       <span class="td-w">${wtxt}</span>
@@ -1200,6 +1202,7 @@ async function pageTrener(el) {
       <div><span>Únava (ATL)</span><b class="num">${num(f.atl, 1)}</b><small>zátěž 7 dní ${thou(f.load7)}</small></div>
       <div><span>Forma (TSB)</span><b class="num">${signed(form, 1)}</b><small class="${form == null ? "" : form < -20 || form > 20 ? "warn" : "good"}">${esc(formZoneName(form))}</small></div>
       <div><span>Zotavení</span><b class="tst-word ${tone}">${rec.score != null ? `${num(rec.score)} %` : esc(({ green: "Dobré", yellow: "Částečné", red: "Nízké" })[rec.state] || rec.stateLabel)}</b></div></div>${(d.insights || []).length ? `<div class="insights">${d.insights.map((i) => verdict(i.tone, i.text)).join("")}</div>` : ""}
+    <div class="sl" style="margin-top:12px">Kondice a forma · 30 dní + výhled</div><div id="tKond" class="loading sm">Načítám…</div>
     <details class="gcmp"><summary>Pravidla trenéra</summary><p class="note">Týdenní zátěž z kondice a cíle (max. +30 % proti běžnému týdnu). Forma pod −20 → týden o 12 % lehčí, pod −30 o 25 %. Kvalita 1× (zima) / 2× (sezóna) týdně, nikdy dva dny po sobě ani po hokeji; když týden zaplní tvoje volby, dá se na kolový den. Ráno podle zotavení: 🟡 kvalita → Z2 nebo zkrácení, 🔴 volno / Z1. Tvoje úpravy (přesun, délka, sport, vlastní jízda) mají přednost, zbytek týdne se dopočítá.</p></details>`, 'data-tt="proc"');
   // --- chat (na mobilu schovaný – stejné umí 🤖 v hlavičce) ---
   const chatCard = card("t-chat", "💬 Řekni trenérovi", "AI · úpravy plánu", `<div class="tmsgs">${hist.length ? hist.slice(-6).map((m) => `<div class="msg ${m.role}"><p>${esc(m.text)}</p>${m.applied && m.applied.length ? `<small class="sub">${m.applied.map(esc).join(" · ")}</small>` : ""}</div>`).join("") : '<div class="empty">Napiš, co se mění – trenér upraví plán (např. „ve středu nestihnu, přesuň kvalitu na čtvrtek“).</div>'}</div>
@@ -1229,6 +1232,22 @@ async function pageTrener(el) {
   el.querySelectorAll(".tday .td-row").forEach((row) => row.addEventListener("click", (e) => { if (e.target.closest("button, a, select, input")) return; const tr = row.closest(".tday"); if (!tr.querySelector(".tpeek")) return; const on = !tr.classList.contains("peek"); el.querySelectorAll(".tday.peek").forEach((x) => x.classList.remove("peek")); tr.classList.toggle("peek", on); }));
   el.querySelectorAll("[data-peek]").forEach((b) => b.addEventListener("click", () => { const row = el.querySelector(`.tday[data-day="${b.dataset.peek}"]`); if (!row) return; const on = !row.classList.contains("peek"); el.querySelectorAll(".tday.peek").forEach((x) => x.classList.remove("peek")); row.classList.toggle("peek", on); row.scrollIntoView({ behavior: "smooth", block: "center" }); }));
   bindHours(el);
+  // 30 dní kondice (CTL), únavy (ATL) a formy + čárkovaně výhled podle plánu
+  api("fitness").then((fd) => {
+    const box = el.querySelector("#tKond"); if (!box) return;
+    const m = (fd.metrics || []).slice(-30), pr = fd.projection || [];
+    if (!m.length) { box.outerHTML = '<div class="empty">Kondici zatím nemám.</div>'; return; }
+    const li = m.length - 1, pad = (a) => [...a, ...Array(pr.length).fill(null)], pre = (a) => [...Array(li).fill(null), ...a];
+    box.classList.remove("loading", "sm");
+    box.innerHTML = lineChart({ x: [...m.map((q) => q.date), ...pr.map((q) => q.date)], xfmt: dm, height: 170, markIndex: li, series: [
+      { name: "Kondice (CTL)", values: pad(m.map((q) => q.ctl)), color: "var(--z2)", width: 2.6, area: true },
+      { name: "Únava (ATL)", values: pad(m.map((q) => q.atl)), color: "var(--z7)", width: 1.6 },
+      { name: "Forma (TSB)", values: pad(m.map((q) => q.form)), color: "var(--fg)", width: 1.4, opacity: 0.55 },
+      { name: "výhled CTL", values: pre([m[li].ctl, ...pr.map((q) => q.ctl)]), color: "var(--z2)", dash: true, noLegend: true },
+      { name: "výhled ATL", values: pre([m[li].atl, ...pr.map((q) => q.atl)]), color: "var(--z7)", dash: true, noLegend: true },
+      { name: "výhled formy", values: pre([m[li].form, ...pr.map((q) => q.form)]), color: "var(--fg)", dash: true, opacity: 0.45, noLegend: true },
+    ] }) + '<p class="note">Čárkovaně = výhled, když odjedeš plán. Delší historie na stránce <a href="#/kondice">Kondice</a>.</p>';
+  }).catch(() => el.querySelector("#tKond")?.remove());
   const keepScroll = async () => { const y = scrollY; cache.clear(); await route(); requestAnimationFrame(() => scrollTo(0, y)); };
   const post = async (path, body, msgEl) => { try { await api(path, { method: "POST", body: JSON.stringify(body) }); await keepScroll(); } catch (e) { if (msgEl) msgEl.textContent = e.message; else alert(e.message); } };
   el.querySelectorAll("[data-open]").forEach((b) => b.addEventListener("click", () => { tOpen = tOpen === b.dataset.open ? null : b.dataset.open; pageTrener(el).then(() => el.querySelector(`[data-day="${tOpen}"]`)?.scrollIntoView({ block: "nearest" })); }));
@@ -3243,6 +3262,15 @@ function fitCells(root) {
 }
 let fitT = null;
 addEventListener("resize", () => { clearTimeout(fitT); fitT = setTimeout(() => fitCells(document), 150); });
+/** Sbalený štítek „🤖 AI shrnutí“ v hlavičce: když by přetekl z karty (dlouhý nadpis), zůstane jen robot. */
+function fitAiChip(box) {
+  const head = box.parentElement, sp = box.querySelector(".an-show span");
+  if (!head || !sp) return;
+  sp.hidden = false;
+  const card = head.closest(".card") || head;
+  requestAnimationFrame(() => { if (head.scrollWidth > head.clientWidth + 1 || box.getBoundingClientRect().right > card.getBoundingClientRect().right - 4) sp.hidden = true; });
+}
+addEventListener("resize", () => document.querySelectorAll(".ainote.folded").forEach(fitAiChip));
 function loadAiNotes(root) {
   root.querySelectorAll("[data-ainote]").forEach((box) => {
     const page = box.dataset.ainote, hk = `aiNoteHide:${page}`;
@@ -3252,7 +3280,7 @@ function loadAiNotes(root) {
       // Přehled: sbalený štítek vpravo vedle stavu, rozbalené shrnutí přes celou šířku pod ním
       const head = page === "prehled" ? box.closest(".card")?.querySelector(".dn-head") : null;
       if (head) { if (hidden) { if (box.parentElement !== head) head.appendChild(box); } else if (box.parentElement === head) head.after(box); }
-      if (hidden) { box.className = box.className.replace(" busy", "") + (box.classList.contains("folded") ? "" : " folded"); box.innerHTML = `<button type="button" class="linkbtn an-show" title="Zobrazit AI shrnutí" aria-label="Zobrazit AI shrnutí">🤖 <span>AI shrnutí</span></button>`; box.querySelector("button").onclick = () => { hidden = false; try { localStorage.removeItem(hk); } catch {} box.classList.remove("folded"); if (last) draw(last); else load(false); }; return; }
+      if (hidden) { box.className = box.className.replace(" busy", "") + (box.classList.contains("folded") ? "" : " folded"); box.innerHTML = `<button type="button" class="linkbtn an-show" title="Zobrazit AI shrnutí" aria-label="Zobrazit AI shrnutí">🤖 <span>AI shrnutí</span></button>`; fitAiChip(box); box.querySelector("button").onclick = () => { hidden = false; try { localStorage.removeItem(hk); } catch {} box.classList.remove("folded"); if (last) draw(last); else load(false); }; return; }
       if (!r) { box.innerHTML = `<span class="an-t">🤖 ${msg || "píšu shrnutí…"}</span>`; return; }
       box.innerHTML = `<span class="an-t">🤖 ${esc(r.text)}</span><small class="an-m">${r.model ? esc(String(r.model).replace(/^[a-z]+:/, "").split("/").pop()) + " · " : ""}<button type="button" class="linkbtn" data-re>napsat znovu</button> · <button type="button" class="linkbtn" data-hide>skrýt</button>${msg ? ` · ${esc(msg)}` : ""}</small>`;
       box.querySelector("[data-re]").onclick = () => load(true);

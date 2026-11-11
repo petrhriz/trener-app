@@ -361,7 +361,7 @@ api.get("/coach", async (c) => {
     recent.push({
       date: D, status, compliance: comp != null ? Math.round(comp) : null, load,
       plan: plan ? { name: plan.name, min: plan.duration_min, load: plan.target_load, kind: plan.kind } : skipped ? { name: skipped.name, min: skipped.duration_min, load: skipped.target_load, kind: skipped.kind } : null,
-      acts: acts.map((a) => ({ id: a.id, name: a.name, sport: a.sport, moving_s: a.moving_s, load: Math.round(a.load ?? 0) })),
+      acts: acts.map((a) => ({ id: a.id, name: a.name, sport: a.sport, moving_s: a.moving_s, load: Math.round(a.load ?? 0), q: !!a.is_quality })),
     });
   }
   return c.json({

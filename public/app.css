@@ -2082,3 +2082,10 @@ html[data-rings="glow"] .dn-rings .gring::before { opacity: .85; }
 .tsd.pl { background: color-mix(in srgb, var(--acc) 13%, var(--card2)); }
 .tsd.q:not(.done) { background: color-mix(in srgb, var(--acc) 34%, var(--card2)) !important; }
 .tsd.q:not(.done) b { color: var(--acc); }
+/* Trenér: Odtrénováno stejně tučně jako ostatní nadpisy dne; kvalita pod datem; odtrénovaná kvalita tmavší zelenou */
+.tdark a.td-h { font-weight: 700; }
+.td-date .ttag.q { display: table; margin-top: 4px; font-size: 10.5px; padding: 1px 6px; }
+.tsd.q.done { background: color-mix(in srgb, var(--ok) 38%, var(--card2)) !important; }
+.tsd.q.done b { color: var(--ok); }
+.dn-head { min-width: 0; }
+.dn-head .ainote.folded .an-show span[hidden] { display: none; }
