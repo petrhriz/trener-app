@@ -18,6 +18,12 @@ import { all } from "../lib/db";
 import { dayDm, dm, hmm, num, signed } from "../lib/format";
 import { addDays, dateRange, mondayOf } from "../lib/time";
 import type { Ctx, FullAct, MetricRow } from "./context";
+import { loadCoachState, saveCoachState } from "../coach/store";
+import type { Fatigue } from "../core/coach/budget";
+import { type EngineAct, runEngine } from "../core/coach/engine";
+import { profileFromHistory } from "../core/coach/profile";
+import { norm } from "../core/recovery";
+import { setSetting } from "../lib/settings";
 
 const isBike = (s: string) => BIKE_SPORTS.includes(s as any);
 
@@ -196,9 +202,73 @@ export async function weekLoads(ctx: Ctx): Promise<number[]> {
   return out;
 }
 
+/** Stav zotavení v daný den (bez „den po zátěži“) – pro počet horších rán za posledních 5 dní. */
+function recoveryStateOn(ctx: Ctx, date: string): "green" | "yellow" | "red" | null {
+  const w = ctx.well.find((x) => x.date === date);
+  if (!w || (w.hrv == null && w.sleep_s == null && w.rhr == null)) return null;
+  const nights = ctx.well.filter((x) => x.date <= date).map((x) => ({ date: x.date, hrv: x.hrv, rhr: x.rhr, sleep_hr: x.sleep_hr, sleep_s: x.sleep_s, sleep_need_min: x.sleep_need_min, sleep_score: x.sleep_score, sleep_resp: x.sleep_resp }));
+  const rs = recoveryScore(nights.find((n) => n.date === date) ?? null, nights);
+  return evaluateRecovery({ score: { score: rs.score, drags: [], boosts: [] }, date, rows: ctx.well.filter((x) => x.date <= date).map((x) => ({ date: x.date, hrv: x.hrv, rhr: x.rhr, sleep_s: x.sleep_s, sleep_score: x.sleep_score, sleep_q: x.sleep_q })), dayAfter: null, illness: false }).state;
+}
+
+/** Únava pro rozpočet týdne: forma, horší rána za 5 dní, týdenní VST pod normou, dny nemoci. */
+export function fatigueOf(ctx: Ctx, rec: RecoveryResult, cons: { date: string; kind: string }[]): Fatigue {
+  const T = ctx.T;
+  const y = metricOn(ctx, addDays(T, -1));
+  let bad = rec.state !== "green" ? 1 : 0;
+  for (let i = 1; i <= 4; i++) { const st = recoveryStateOn(ctx, addDays(T, -i)); if (st && st !== "green") bad++; }
+  const hist = norm(ctx.well.filter((w) => w.date >= addDays(T, -60) && w.date < addDays(T, -7)).map((w) => w.hrv));
+  const last7 = norm(ctx.well.filter((w) => w.date >= addDays(T, -6) && w.date <= T).map((w) => w.hrv));
+  const hrvLow = hist.n >= 21 && last7.n >= 4 && last7.mean < hist.mean - 0.75 * hist.sd;
+  const illnessDays = new Set(cons.filter((c) => c.kind === "nemoc" && c.date > addDays(T, -10) && c.date <= T).map((c) => c.date)).size;
+  return { form: y ? y.ctl - y.atl : null, badMornings: bad, hrvLow, illnessDays };
+}
+
+/** Trenér v2: uložený plán po týdnech; přepočet jen při změně vstupů (src/core/coach/engine.ts). */
+export async function planForV2(ctx: Ctx, rec: RecoveryResult): Promise<PlanResult> {
+  const T = ctx.T;
+  const db = ctx.env.DB;
+  let profile = ctx.s.coach_profile;
+  if (!profile) {
+    // první spuštění: profil odhadnutý z historie se uloží, ať se plán nemění s každou novou aktivitou
+    profile = profileFromHistory(ctx.acts, T);
+    await setSetting(db, "coach_profile", profile);
+    ctx.s.coach_profile = profile;
+  }
+  const constraints = [...ctx.constraints, ...statusConstraints(ctx)];
+  const acts: EngineAct[] = ctx.acts.map((a) => ({ id: a.id, date: a.date, sport: a.sport, load: a.load, moving_s: a.moving_s, quality: !!a.is_quality && a.sport !== "skate" && a.sport !== "padel", hr_z: a.hr_z, pwr_z: a.pwr_z, laps: a.laps, compliance: a.icu_compliance != null && a.icu_compliance > 0 ? a.icu_compliance : null }));
+  const power = ctx.acts.filter((a) => isBike(a.sport)).map((a) => ({ id: a.id, date: a.date, mmp: a.mmp, max20: a.max20, pwr_z: a.pwr_z }));
+  const state = await loadCoachState(db, T);
+  const out = runEngine({
+    today: T,
+    goal: ctx.s.goal,
+    raceDate: ctx.s.goal === "zavod" ? ctx.s.goal_date : null,
+    anchor: ctx.s.goal_anchor,
+    profile,
+    zones: { ftp: ctx.s.ftp ?? null, hr: ctx.s.hr_zones, p5: bestIn(power, addDays(T, -42), T, 300)?.w ?? null },
+    acts,
+    metric: (d) => metricOn(ctx, d),
+    calendar: ctx.calendar,
+    constraints,
+    weather: weatherMap(ctx, T, 14),
+    weatherOk: ctx.weatherOk,
+    recovery: rec.state,
+    fatigue: fatigueOf(ctx, rec, constraints),
+    weekLoads: await weekLoads(ctx),
+    stored: state.stored,
+    progress: state.progress,
+  });
+  if (out.save.length || out.progress.length || out.anchor) {
+    await saveCoachState(db, out);
+    if (out.anchor) ctx.s.goal_anchor = out.anchor;
+  }
+  return out.plan;
+}
+
 export async function planFor(ctx: Ctx, rec?: RecoveryResult): Promise<PlanResult> {
   const T = ctx.T;
   const recovery = rec ?? recoveryFor(ctx);
+  if (ctx.s.coach_v2) return planForV2(ctx, recovery);
   const ftp = ctx.s.ftp ?? 250;
   const acts: ActDay[] = ctx.acts
     .filter((a) => a.date >= addDays(T, -42))

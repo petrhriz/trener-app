@@ -6,7 +6,12 @@ export interface Step {
   dur_s: number;
   lo?: number; // W
   hi?: number; // W
-  hr?: string; // MTB: 'Z2 HR'
+  hr?: string; // cíl tepu v syntaxi intervals.icu: 'Z2 HR' nebo '69-83% LTHR'
+  /** cíl tepu v bpm (ze zón uživatele z Garminu) – pro zobrazení */
+  hrLo?: number;
+  hrHi?: number;
+  /** zóna kroku (1–5) u kroků podle tepu – pro odhad zátěže */
+  z?: number;
   lap?: boolean; // krok končí stiskem lapu
 }
 
@@ -78,7 +83,7 @@ export function totalSeconds(w: Workout): number {
 }
 
 const mins = (s: number) => (s % 60 === 0 ? `${s / 60} min` : s < 60 ? `${s} s` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")} min`);
-const rng = (s: Step) => (s.hr ? s.hr.replace(" HR", "") : `${s.lo}–${s.hi} W`);
+const rng = (s: Step) => (s.hrLo && s.hrHi ? `${s.hrLo}–${s.hrHi} bpm` : s.hr ? s.hr.replace(" HR", "") : `${s.lo}–${s.hi} W`);
 
 /** Lidsky čitelné kroky do reportu/zprávy (📋 Průběh). */
 export function humanSteps(w: Workout): string[] {
@@ -97,7 +102,7 @@ export function humanSteps(w: Workout): string[] {
       case "pause":
         return `Pauza ${mins(s0.dur_s)} ${rng(s0)}${lap}`;
       case "main":
-        return `Z2 ${minHm(s0.dur_s / 60)} ${rng(s0)}${lap}`;
+        return `${b.label === "Z2" ? "Z2" : b.label} ${minHm(s0.dur_s / 60)} ${rng(s0)}${lap}`;
       default:
         return `${b.label} ${mins(s0.dur_s)} ${rng(s0)}${lap}`;
     }

@@ -14,6 +14,9 @@ import { getLastModel, runLlm } from "../llm/llm";
 import { addConstraint, saveProposal } from "../plan/proposals";
 import { planFor, recoveryFor } from "../report/build";
 import { loadCtx } from "../report/context";
+import { resetCoachWeeks } from "../coach/store";
+import { PROFILE_SCHEMA_TEXT, profileFromHistory, profileSummary, validateProfile } from "../core/coach/profile";
+import { getSettings, setSetting } from "../lib/settings";
 
 export const coachApi = new Hono<{ Bindings: Env; Variables: { uid: number } }>();
 const isDate = (d: unknown): d is string => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d);
@@ -79,6 +82,8 @@ coachApi.post("/plan/len", async (c) => {
 coachApi.post("/plan/reset", async (c) => {
   const ctx = await loadCtx(c.env);
   await run(c.env.DB, `DELETE FROM constraints WHERE date >= ? AND kind IN (${USER_KINDS.map(() => "?").join(", ")})`, ctx.T, ...USER_KINDS);
+  // Trenér v2: uložený týden zahodit → postaví se znovu od nuly
+  if (ctx.s.coach_v2) await resetCoachWeeks(c.env.DB, ctx.T);
   return c.json({ ok: true, ...(await proposalAfter(c.env)) });
 });
 
@@ -196,6 +201,8 @@ function mergeCons(existing: Con[], add: Con[]): Con[] {
 coachApi.post("/coach/ai-week", async (c) => {
   const { text, dry } = ((await c.req.json().catch(() => ({}))) ?? {}) as { text?: string; dry?: boolean };
   const ctx = await loadCtx(c.env);
+  // Trenér v2 má plán uložený a skládá ho kód – AI návrh týdne by šel proti němu
+  if (ctx.s.coach_v2) return c.json({ ok: false, reply: "Nový trenér skládá týden sám podle tvého profilu. Úpravy udělej u dnů nebo napiš trenérovi.", changes: 0 });
   const base = await planFor(ctx);
   const days = base.days;
   const locked = (d: Day) => d.kind === "blocked" || d.kind === "hockey" || d.kind === "xc_ski" || !!d.own;
@@ -283,4 +290,76 @@ POKYN UŽIVATELE: ${String(text ?? "").slice(0, 400) || "žádný"}`;
   const after = await proposalAfter(c.env);
   const load = planned.days.reduce((t, d) => t + d.load, 0);
   return c.json({ ok: true, reply: summary || "Týden navržen.", load: Math.round(load), target: rules.target, attempts: tries, model: getLastModel(), fixed, remaining: viol.map((v) => v.msg), ...after });
+});
+
+// ---------- Trenér v2: profil sportovce (sporty, dny, hodiny) ----------
+
+/** Profil pro Nastavení. Když ještě není uložený, vrací se odhad z historie (saved = false). */
+coachApi.get("/coach/profile", async (c) => {
+  const ctx = await loadCtx(c.env);
+  const profile = ctx.s.coach_profile ?? profileFromHistory(ctx.acts, ctx.T);
+  return c.json({ v2: ctx.s.coach_v2, saved: !!ctx.s.coach_profile, profile, summary: profileSummary(profile) });
+});
+
+/** Uložení profilu (a přepínače nového trenéra). Plán se postaví znovu, změny čekají na „Zapsat“. */
+coachApi.post("/coach/profile", async (c) => {
+  const body = (await c.req.json()) as { profile?: unknown; v2?: boolean };
+  const s = await getSettings(c.env.DB);
+  let profile = s.coach_profile;
+  if (body.profile !== undefined) {
+    const r = validateProfile(body.profile, s.coach_profile ?? undefined);
+    if (r.errors.length) return c.json({ error: `Neuloženo: ${r.errors.join("; ")}.`, errors: r.errors }, 400);
+    profile = r.profile;
+    await setSetting(c.env.DB, "coach_profile", profile);
+  }
+  if (typeof body.v2 === "boolean") await setSetting(c.env.DB, "coach_v2", body.v2);
+  const ctx = await loadCtx(c.env);
+  let after: { id: number; changes: number } | null = null;
+  if (ctx.s.coach_v2) {
+    await resetCoachWeeks(c.env.DB, ctx.T);
+    after = await proposalAfter(c.env);
+  } else if (typeof body.v2 === "boolean") after = await proposalAfter(c.env);
+  return c.json({ ok: true, v2: ctx.s.coach_v2, profile, summary: profile ? profileSummary(profile) : [], proposal: after });
+});
+
+/**
+ * Profil větou: „hlavně kolo, v zimě jednou týdně běh, nejvíc času mám v pátek až neděli“.
+ * AI vrátí jen JSON se změnami, kód ho zkontroluje (rozsahy, známé sporty). Nic se neukládá –
+ * uživatel uvidí shrnutí a potvrdí (POST /coach/profile).
+ */
+coachApi.post("/coach/profile/ai", async (c) => {
+  const { text } = (await c.req.json()) as { text: string };
+  const q = String(text ?? "").trim().slice(0, 800);
+  if (!q) return c.json({ error: "prázdná zpráva" }, 400);
+  const ctx = await loadCtx(c.env);
+  const cur = ctx.s.coach_profile ?? profileFromHistory(ctx.acts, ctx.T);
+  const system = `Převádíš přání sportovce na nastavení trenéra. Odpověz POUZE JSON objektem se stejnou stavbou jako profil níže.
+Uveď jen pole, která se podle přání mění; co se nemění, vynech. Žádný text okolo.
+STAVBA PROFILU:
+${PROFILE_SCHEMA_TEXT}
+Pravidla: dny 1 = pondělí … 7 = neděle. Sporty: ride = kolo, run = běh, xc_ski = běžky, walk = chůze.
+„jen běh“ = primary run a ride enabled false. „prokládat během“ = run enabled true. Podíl v mix je část týdenního času (0–1).
+Hodiny piš jen, když je uživatel řekl.`;
+  let errors: string[] = [];
+  let profile = cur;
+  let ok = false;
+  let feedback = "";
+  for (let i = 0; i < 2 && !ok; i++) {
+    const raw = await runLlm(c.env, system, `DNEŠNÍ PROFIL: ${JSON.stringify(cur)}\nPŘÁNÍ: ${q}${feedback}`, 600);
+    if (!raw) return c.json({ ok: false, reply: "AI teď neodpovídá (denní limit nebo výpadek). Nastav profil ručně níž." });
+    try {
+      const r = validateProfile(JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)), cur);
+      errors = r.errors;
+      profile = r.profile;
+      ok = !errors.length;
+      if (!ok) feedback = `\nMINULÝ POKUS MĚL CHYBY, oprav je: ${errors.join("; ")}`;
+    } catch {
+      errors = ["odpověď nebyla platný JSON"];
+      feedback = "\nMINULÝ POKUS nebyl platný JSON.";
+    }
+  }
+  if (!ok) return c.json({ ok: false, reply: `AI to nepřevedla správně (${errors.join("; ")}). Zkus to říct jinak nebo nastav ručně.` });
+  const before = profileSummary(cur), after = profileSummary(profile);
+  const changed = after.filter((x) => !before.includes(x));
+  return c.json({ ok: true, profile, summary: after, changed, reply: changed.length ? "Rozumím tomu takhle – zkontroluj a ulož:" : "Podle mě se tím nic nemění." });
 });

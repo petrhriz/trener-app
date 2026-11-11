@@ -1,5 +1,8 @@
 # Jak funguje Trenér (stav k 10. 11. 2026, večer)
 
+> **Nový trenér (v2)** se zapíná v Nastavení → Trenér – profil a je popsaný v
+> [`trener-v2/jak-funguje-trener-v2.md`](trener-v2/jak-funguje-trener-v2.md). Tento dokument popisuje původní trenér (v1).
+
 Popis toho, co aplikace dělá, odkud bere data, jak plánuje týden a co na čem závisí. **Rozhoduje kód**
 (`src/core/`), AI jen píše texty a návrhy, které kód zkontroluje.
 

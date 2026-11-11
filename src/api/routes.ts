@@ -394,7 +394,8 @@ api.get("/coach", async (c) => {
     weeks: weekLoadsView(ctx, r.plan),
     goalLabel: GOAL_LABEL[ctx.s.goal as Goal],
     goal: ctx.s.goal,
-    goals: goalsView(ctx, await weekLoads(ctx)),
+    goals: ctx.s.coach_v2 ? goalsViewV2(ctx, r.plan) : goalsView(ctx, await weekLoads(ctx)),
+    coach: (r.plan as { coach?: unknown }).coach ?? null,
     eftp: eftpOf(ctx),
     ftpCheck: ftpCheckOf(ctx, await getState<string>(c.env.DB, "ftp_set_at")),
   });
@@ -419,6 +420,20 @@ function goalsView(ctx: CtxT, wl: number[]) {
     { key: "udrzeni", label: "Udržet", lo: u.lo, hi: u.hi, rides: rpw, quality: lim, maxRun: 2, z2Max: mx("udrzeni"), text: `Kondice zůstává: zátěž ${u.lo}–${u.hi} za týden, ${rpw} tréninky, kvalita ${lim}× týdně ve stejné dávce, Z2 až ${mx("udrzeni")}. Max. 2 dny tréninku za sebou.${capNote(u)}` },
     { key: "pokles", label: "Řízený pokles", lo: p.lo, hi: p.hi, rides: Math.max(2, rpw - 1), quality: 1, maxRun: 2, z2Max: mx("pokles"), text: `Konec sezóny / zima: zátěž ${p.lo}–${p.hi} za týden, o trénink méně (${Math.max(2, rpw - 1)} týdně), jedna kratší kvalita drží intenzitu, Z2 až ${mx("pokles")}. Kondice klesá pomalu, forma roste.${capNote(p)}` },
     { key: "zavod", label: "Závod", lo: z.lo, hi: z.hi, rides: rpw, quality: lim, maxRun: 3, z2Max: mx("zavod"), text: `Příprava na ${ctx.s.goal_name || "závod"}${ctx.s.goal_date ? ` (${dm(ctx.s.goal_date)})` : ""}: zátěž jako Zlepšit (${z.lo}–${z.hi}).` },
+  ];
+}
+
+/** Trenér v2: popis cílů; u zvoleného cíle čísla tohoto týdne z rozpočtu. */
+function goalsViewV2(ctx: CtxT, plan: Awaited<ReturnType<typeof planFor>>) {
+  const co = (plan as { coach?: { hours: number; keys: number } }).coach;
+  const t = plan.weeklyTarget;
+  const now = co ? ` Tento týden: ${String(co.hours).replace(".", ",")} h, zátěž ${t.lo}–${t.hi}, kvalita ${co.keys}×.` : "";
+  const g = (key: Goal, label: string, text: string) => ({ key, label, lo: t.lo, hi: t.hi, text: text + (ctx.s.goal === key ? now : "") });
+  return [
+    g("zvyseni", "Zlepšit", "Kondice roste v blocích: 3 týdny zátěže a 1 lehčí. Zátěž jde nahoru postupně (nejvýš o 10–15 % týdně) a jen v rámci hodin z tvého profilu."),
+    g("udrzeni", "Udržet", "Kondice se drží: zátěž odpovídá dnešní kondici, kvalita zůstává ve stejné dávce."),
+    g("pokles", "Řízený pokles", "Konec sezóny / zima: kondice klesá asi o bod týdně až tam, kam ji unesou tvoje hodiny. Jedna krátká kvalita týdně drží intenzitu."),
+    g("zavod", "Závod", `Příprava na ${ctx.s.goal_name || "závod"}${ctx.s.goal_date ? ` (${dm(ctx.s.goal_date)})` : ""}: Základ, pak Rozvoj a posledních 10–14 dní ladění.`),
   ];
 }
 
@@ -1059,7 +1074,8 @@ api.post("/secrets/test", async (c) => {
 
 api.post("/settings", async (c) => {
   const body = (await c.req.json()) as Partial<Settings>;
-  const allowed = Object.keys(DEFAULTS) as (keyof Settings)[];
+  // profil trenéra a kotva trajektorie mají vlastní cestu s kontrolou (/coach/profile)
+  const allowed = (Object.keys(DEFAULTS) as (keyof Settings)[]).filter((k) => k !== "coach_profile" && k !== "goal_anchor");
   const before = await getSettings(c.env.DB);
   // povinné údaje (časy zpráv, místo, tréninky týdně, cíl) nesmí být prázdné ani ve špatném tvaru – null by
   // v plánovači zpráv spadl (hm(null)) a ranní / večerní zprávy by tiše přestaly chodit
@@ -1067,6 +1083,7 @@ api.post("/settings", async (c) => {
     if (["morning_from", "morning_to", "evening_time", "weekly_time"].includes(k)) return typeof v === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? null : "čas ve tvaru HH:MM";
     if (k === "rides_per_week") return Number.isInteger(v) && (v as number) >= 2 && (v as number) <= 5 ? null : "tréninky týdně 2–5";
     if (k === "sleep_goal_min") return Number.isInteger(v) && (v as number) >= 360 && (v as number) <= 600 ? null : "cíl spánku 6:00–10:00";
+    if (k === "coach_v2") return typeof v === "boolean" ? null : "přepínač trenéra";
     if (k === "place_name") return typeof v === "string" && v.trim() ? null : "místo nesmí být prázdné";
     if (k === "goal") return ["udrzeni", "zvyseni", "pokles", "zavod"].includes(v as string) ? null : "neznámý cíl";
     if (k === "goal_date") return v == null || (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) ? null : "datum cíle";
