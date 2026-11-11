@@ -9,6 +9,15 @@ zůstává). Přílohy:
 
 Na konci je hotový **prompt** pro silnější model (kap. 12).
 
+**Dvě základní pravidla zadání:**
+
+1. **Trenér je pro kohokoli s loginem**, ne pro jednoho člověka. Žádné natvrdo zadané dny, sporty, hodiny ani
+   aktivity vlastníka. Vše, co se týká konkrétního člověka, je v jeho profilu (kap. 6.1) a má rozumné výchozí
+   hodnoty pro nového uživatele. Příklady v tomto dokumentu jsou jen ukázky.
+2. **Zdroje dat se nemění**: aktivity, průběhy, tep, čas v zónách, FTP a zóny tepu jsou z **Garmin API**;
+   z intervals.icu jen zátěž (TSS / HRSS), kondice, únava, forma, splnění workoutu a zápis plánu do kalendáře.
+   Zóny se zpětně nepřepočítávají.
+
 ---
 
 ## 1. Proč přestavba
@@ -21,7 +30,7 @@ Trenér je hlavní funkce stránky, ale pořád dělá chyby, které se opravuj�
 | Tréninky čt, pá, so, v neděli volno, pak zase 3 dny po sobě | Plán je **klouzavé okno 7 dní od dneška**, ne kalendářní týden se šablonou. Každý přepočet poskládá dny znovu; pravidlo „max. 3 dny za sebou“ se kontroluje až dodatečně a jen uvnitř okna, takže na hraně dvou oken vznikají řady. Dny nemají pevné role (klíčový den, dlouhý den, volno). |
 | Kvalita / délky se mění při každém otevření stránky | Žádná paměť: plán nemá fázi, blok ani týden v cyklu. Vše se odvozuje z dnešních čísel. |
 | Sport (kolo × běh × běžky) se řeší jen ručně po dnech | Neexistuje profil sportů a sezónní mix. Běh je „náhrada za kolo“ (`workout.ts → otherWorkout`), ne plnohodnotná součást plánu. |
-| Popisky aktivit neseděly se zónami v grafu | Opraveno 11. 11. (čas v zónách z intervals.icu po přepočtu zón). V2 musí mít **zóny po sportech** (kolo a běh mají v intervals.icu jiné zóny tepu). |
+| Sport, hodiny a dny jsou ušité na vlastníka | Víkendové délky, limity Z2, hokej… jsou v kódu. V2: vše v profilu uživatele. |
 
 `src/core/plan.ts` má 1136 řádků pravidel a výjimek. Přestavba = **nová vrstva plánování**, ne další pravidla do v1.
 
@@ -42,8 +51,12 @@ Zdroj: 22 stránek 8020endurance.com (seznam v příloze) + knihovna tréninků.
 7. **Ladění před závodem 10–14 dní**: objem dolů, intenzita zůstává v krátkých dávkách, žádný dlouhý ani těžký
    trénink na poslední chvíli. Cíl: CTL −5–10 %, forma (TSB) v den závodu +10 až +20.
 8. **Úroveň (Level 0–3) = hodiny, které zvládneš udržet většinu týdnů**, ne ty, které bys chtěl. Při váhání nižší.
-9. **Zóny z vlastního prahu** (FTP, LTHR, prahové tempo), **zvlášť pro každý sport**. Kolo: výkon hlavní, tep
-   kontrolní. Běh: tep nebo tempo. Na trenažéru je práh o 5–10 bpm a 10–15 W nižší.
+9. **Zóny z vlastního prahu** (FTP, LTHR). Kolo: výkon hlavní, tep kontrolní. Běh, běžky: tep.
+   **V2 používá zóny uživatele z Garminu** (kolo: klasická stupnice z % FTP, Z2 = 56–75 % FTP, např.
+   165–224 W při FTP 298 W), ne vlastní stupnici 80/20. 80/20 má jinou stupnici (jejich „Z2“ na kole 70–83 % FTP
+   zasahuje do klasického tempa) – z 80/20 se přebírá jen **rozdělení nízká / střední / vysoká intenzita** a stavba
+   tréninků. Převod: nízká = Z1–Z2 uživatele, střední = Z3 (tempo, sweet spot), vysoká = Z4+ (práh a výš).
+   Kroky z přílohy se přeloží: 80/20 Z1 → Z1, Z2 → Z2, X → Z3, Z3 (práh) → Z4, Z4 → Z5 (VO2), Z5 → Z6.
 10. **Intervaly rovnoměrně, ne naplno**: střed zóny. Když je úsek o >3 % pomalejší / slabší než předchozí, sérii
     ukonči a dojeď v Z1–2.
 11. **Náhrada sportu**: lehkou (Z1–2) jednotku jde nahradit jiným sportem stejné délky a intenzity. Zátěž se
@@ -109,6 +122,15 @@ v1 by dal 0,85 · 7 · 45 ≈ 268 → CTL by klesla jen na ≈ 44,0 (a dorovnán
 **Zpětná vazba**: každou neděli porovnej skutečnou CTL s trajektorií. Rozdíl se nepřenáší naráz – další týden
 opraví nejvýš polovinu odchylky (aby jeden vynechaný týden nezpůsobil skok).
 
+### 4.3 Výkonnostní cíl bez data (např. 120 km s kopci za 4 h)
+
+Uživatel nemusí mít závod. Cíl může být výkon: „X km s Y m převýšení průměrem Z km/h“. Kód:
+1. Z jízd uživatele (Garmin: rychlost, převýšení, NP / tep) odhadne, jaký výkon (W) a jaká kondice k tomu
+   odpovídá (např. regrese průměrné rychlosti na NP/kg a převýšení na km z jeho jízd delších než 2 h).
+2. Ukáže: „Dnes zvládáš 120 km / 1 200 m průměrem ~27 km/h. Na 30 km/h potřebuješ asi +20 W NP (≈ kondice 55).“
+3. Z toho trajektorie CTL (Zlepšit) a fáze Base → Build bez ladění; jednou za 4–6 týdnů kontrolní jízda / test.
+4. Pokrok se kontroluje na reálných jízdách (podobná délka a převýšení), ne jen na CTL.
+
 ### 4.2 Fáze (bloky)
 
 | Fáze | Délka | Obsah | Klíčové dny / týden |
@@ -143,7 +165,8 @@ Finish), `test`. Šablona podle počtu tréninků (z úrovně a dostupnosti):
 - Přesun kvůli počasí / času jen **v rámci týdne** a jen tak, aby platila pravidla výš. Když to nejde, jednotka se
   zkrátí nebo přesune na trenažér, ne do dalšího týdne.
 - Odpočinkový týden: stejná šablona, objem −35 %, klíčový den nahradí test nebo krátké Speed Play.
-- Hokej a jiné pevné aktivity uživatele jsou v šabloně jako `fixed` (počítá se jejich zátěž, nejsou to klíčové dny).
+- Aktivity mimo plán (cokoli, co uživatel udělá navíc) se jen **započtou do zátěže týdne**. Žádná taková aktivita
+  není klíčový den. Hokej ani jiné hry se neřeší zvlášť – v2 pro ně nemá žádnou logiku.
 
 Rozdělení zátěže týdne: dlouhý den 25–35 %, klíčové dny dohromady 30–40 %, zbytek rovnoměrně do foundation /
 easy. Kontrola 80/20 na odhad časů v zónách (kroky jednotek mají zóny, takže jde spočítat předem).
@@ -159,7 +182,7 @@ Strukturovaný profil v DB (tabulka `athlete_profile` nebo klíč v `settings`):
   "primary": "ride",
   "sports": {
     "ride":   { "enabled": true,  "indoor": true },
-    "run":    { "enabled": true,  "maxPerWeek": 2, "maxMin": 75, "quality": false },
+    "run":    { "enabled": true,  "maxPerWeek": 1, "maxMin": 60, "quality": false },
     "xc_ski": { "enabled": true,  "onlyWhenSnow": true },
     "walk":   { "enabled": false }
   },
@@ -168,9 +191,14 @@ Strukturovaný profil v DB (tabulka `athlete_profile` nebo klíč v `settings`):
     { "months": [11, 12, 1, 2], "run": 0.35, "xc_ski": 0.15 },
     { "months": [3, 4, 5, 6, 7, 8, 9, 10], "run": 0.1 }
   ],
-  "days": { "rest": ["mon"], "long": "sun", "unavailable": [], "fixed": [{ "dow": "thu", "sport": "hockey", "min": 60 }] },
-  "level": 1,              // 0–3, hodiny týdně viz 8020-knihovna.md
-  "weeklyHours": { "min": 5, "max": 9 }
+  // dny, kdy uživatel nejvíc trénuje (dlouhý den se dá na jeden z nich), a dny, kdy nemůže
+  "days": { "preferred": ["fri", "sat", "sun"], "long": "auto", "unavailable": [] },
+  // hodiny týdně podle období – orientační, trenér je bere jako strop, ne cíl
+  "hours": [
+    { "when": "season", "min": 6, "max": 10 },
+    { "when": "winter", "min": 3, "max": 4 },
+    { "when": "winter_snow", "min": 5, "max": 7 }
+  ]
 }
 ```
 
@@ -188,15 +216,20 @@ V Nastavení / Trenér → Cíl pole „Řekni trenérovi, jak chceš trénovat�
    potvrdí. Teprve pak se uloží a přepočítá sezóna / týden.
 4. Vedle toho stejné nastavení **ručně** (přepínače sportů, posuvník mixu po měsících, dny). AI je jen zkratka.
 
-Stejný mechanismus pro cíl: „chci v zimě mírně shodit kondici a od března stavět na Gran Fondo 15. 6.“ → cíl
-Pokles do 28. 2. + Závod 15. 6. (typ Gran Fondo 120–160 km).
+Stejný mechanismus pro cíl: „přes zimu udržet / mírně shodit, od jara zlepšovat; chci dát 120 km s kopci za 4 h,
+aby průměr 30 km/h byl pohodový“ → Pokles / Udržet do konce února, pak Zlepšit s **výkonnostním cílem**
+(kap. 4.3), bez data závodu.
+
+Výchozí profil nového uživatele: primární sport = nejčastější za 90 dní, ostatní sporty z historie nabídnout,
+dny podle historie (kdy nejčastěji trénuje), hodiny = medián týdnů za 12 týdnů, cíl Udržet.
 
 ### 6.3 Výběr sportu dne
 
 Týden má role; sport se přiřadí až potom:
 - `key` a `long` = primární sport (kolo), pokud profil neříká jinak (běh `quality: true`).
 - Mix se plní přes `foundation` / `easy` dny: vyber dny, aby čas běhu ≈ podíl z `seasonMix`, max. `maxPerWeek`.
-- Běh nikdy 2 dny po sobě, pokud uživatel neběhá pravidelně (dnes: 6+ běhů za 60 dní).
+- Běh nikdy 2 dny po sobě, pokud uživatel neběhá pravidelně (6+ běhů za 60 dní). `maxPerWeek` je tvrdý strop
+  (1 = nejvýš jednou týdně; týden bez běhu je v pořádku).
 - Běžky jen když `onlyWhenSnow` a je sníh (počasí / ruční přepínač „je sníh“).
 
 ### 6.4 Zátěž napříč sporty
@@ -243,11 +276,11 @@ Pravidla:
 intervals.icu od 11. 11. 2026 posílá do Garminu workout i s cílem tepu místo wattů. V2:
 - Každý krok má `target: { power?: [lo, hi] W, hr?: [lo, hi] bpm, hrZone?: "Z2", pace?: … }`.
 - **Kolo**: primárně W, tep jako doplněk v popisu kroku (do Garminu jde jeden cíl – W).
-- **Běh, běžky, chůze, MTB bez wattmetru**: cíl tep. Do intervals.icu jako `- 40m 81-90% LTHR` (80/20 pásma
-  přímo v % LTHR) nebo `Z2 HR`. V aplikaci zobrazit **bpm** spočítané ze **zón daného sportu** (intervals.icu má
-  pro běh jiné zóny tepu než pro kolo – načíst `sport-settings` pro Ride, Run, NordicSki zvlášť a uložit).
-- Dnes (v1) už běh a běžky jdou jako `Z2 HR` – intervals.icu si to přeloží podle zón běhu. Chybí jen zobrazení bpm
-  v aplikaci a % LTHR místo zón.
+- **Běh, běžky, chůze, MTB bez wattmetru**: cíl tep v **bpm ze zón uživatele z Garminu** (`settings.hr_zones`),
+  do intervals.icu jako rozsah tepu (např. `- 40m 135-164bpm`; přesnou syntaxi ověřit v dokumentaci intervals.icu),
+  aby v Garminu byl stejný cíl jako v aplikaci.
+- Dnes (v1) jdou běh a běžky jako `Z2 HR` – intervals.icu si to přeloží podle svých zón, které se mohou lišit
+  od Garminu. V2: vždy bpm z Garminu.
 
 ## 8. Denní úpravy (ráno a během týdne)
 
@@ -312,7 +345,8 @@ levný (jen den).
   dnů), **červená** s `--bad`. Řešení: u zelené a červené přepnout proužek a pruh zátěže na neutrální „plán“
   barvu (šedá / modrá), nebo zelenou a červenou nenabízet.
 - Hotovo 11. 11.: kvalita pod datem, ikona sportu místo ⚡, odtrénovaná kvalita tmavší zelenou, prázdné dny
-  tečkou, „Odtrénováno“ tučně, 30denní graf kondice v kartě Stav, AI štítek zúžený na 🤖, zóny tepu z intervals.icu.
+  tečkou, „Odtrénováno“ tučně, 30denní graf kondice v kartě Stav, AI štítek zúžený na 🤖. Čas v zónách tepu z intervals.icu běžel jen krátce
+  11. 11. a uživatel ho nechce – vráceno na Garmin; aktivity 11. 1.–11. 11. 2026 mají čas v zónách z intervals.icu.
 
 ## 12. Prompt pro implementaci (Fable 5.2)
 
@@ -327,17 +361,25 @@ JSON, kód validuje, uživatel potvrdí), knihovna jednotek podle 80/20 jako dat
 zón daného sportu. Postupuj podle kap. 10: nejdřív čisté funkce a akceptační testy z kap. 10 bod 2, teprve
 pak napojení za přepínačem settings.coach_v2. UI nepřestavuj, jen doplň řádky z kap. 10 bod 5.
 
+Trenér je pro kohokoli s loginem – nic natvrdo podle vlastníka. Průběhy, tep, zóny a FTP z Garminu,
+z intervals.icu jen kondice / zátěž / zápis plánu. Zóny uživatele z Garminu, ne stupnice 80/20.
 Pravidla: texty česky, tykání; rozhoduje kód, AI jen překládá text na JSON a píše texty; limity free plánu
 (10 ms CPU v cronu, 50 D1 dotazů); npm run typecheck && npm test před každým commitem; malé commity.
 Když narazíš na rozpor v zadání nebo chybějící číslo, zapiš ho do docs/trener-v2/otazky.md a pokračuj
 rozumnou volbou, kterou tam zdůvodníš.
 ```
 
-## 13. Otevřené otázky pro uživatele
+## 13. Odpovědi uživatele (11. 11.)
 
-1. Dny: který den chceš mít pevné volno a který dlouhý trénink (dnes plán dává víkend)? Hokej každý čtvrtek?
-2. Úroveň: kolik hodin týdně zvládneš udržet většinu týdnů v zimě a v sezóně?
-3. Máš na příští rok závod / cíl s datem? (Bez něj: zima Pokles / Udržování, od jara Base → Build.)
-4. Běh: jak často chceš v zimě běhat a smí mít běh intervaly?
-5. Knihy Joe Friela (*Training Bible*, *Fast After 50*): pokud je dodáš (PDF), doplním fáze a postup zátěže
+Platí pro profil vlastníka, **ne jako výchozí hodnoty pro všechny**:
+- Hokej: jen občas s kamarády – neřešit vůbec.
+- Nejvíc trénuje pá, so, ne. Sezóna 6–10 h týdně, zima bez sněhu 3–4 h, se sněhem (běžky) 5–7 h. Orientační.
+- Závod nemá. Od jara Zlepšit; výkonnostní cíl 120 km s kopci za 4 h (průměr 30 km/h v pohodě) – kap. 4.3.
+- Běh nejvýš 1× týdně, někdy vůbec.
+- Zóny z Garminu, kolo Z2 165–224 W (56–75 % FTP 298 W) – princip 9.
+- Data: průběhy a zóny z Garminu, z intervals.icu jen kondice a zátěž; zpětně nic nepřepočítávat.
+
+Zbývá:
+
+1. Knihy Joe Friela (*Training Bible*, *Fast After 50*): pokud je dodáš (PDF), doplním fáze a postup zátěže
    (kap. 4.2 je zatím odvozená z obecně známého Frielova modelu, ne z textu knihy).

@@ -25,9 +25,9 @@ kroky, zobrazovat součet kroků.
 - RPE (Borg 6–20): 7–9 Z1, 10–11 Z2, 12–13 X, 14–15 Z3, 16–17 Y/Z4, 18 Z4, 19 Z5.
 - Uvnitř zóny platí kterýkoli bod; při únavě spodek, odpočatý vršek. Cardiac drift v Z2 neřešit, dokud výkon /
   tempo nejsou nad Z2.
-- **Pro naši aplikaci**: FTP 298 W → Z2 209–247 W, X 247–271 W, Z3 271–298 W, Z4 304–328 W, Z5 > 328 W.
-  Dnešní pásmo Z2 v aplikaci (170–215 W ≈ 57–72 % FTP) je v 80/20 spíš Z1 / spodek Z2. V2 musí rozhodnout,
-  které pásmo použije (zapsat do `otazky.md`).
+- **Rozhodnuto (README, princip 9)**: v2 používá zóny uživatele z Garminu (klasická stupnice z % FTP, Z2 56–75 %),
+  ne tuto stupnici. Kroky tréninků se přeloží: 80/20 Z1 → Z1, Z2 → Z2, X → Z3, Z3 → Z4 (práh), Z4 → Z5, Z5 → Z6.
+  Pro srovnání při FTP 298 W: 80/20 „Z2“ = 209–247 W, klasická Z2 = 165–224 W.
 
 ### Testy prahu
 - 20 min časovka (po 15 min rozjetí s několika 15s zrychleními): FTP = 95 % průměrného výkonu, LTHR = průměrný tep
