@@ -1110,7 +1110,7 @@ async function pageTrener(el) {
   const r = d.readiness, rec = r.recovery, f = r.fitness, p = r.plan;
   const co = d.coach; // Trenér v2 (uložený plán podle profilu); null = starý trenér
   const hTxt = (x) => String(x).replace(".", ",");
-  const coLine = co ? `<p class="tproj"><b>${esc(co.phaseLabel)}</b>${co.cycle ? ` · týden ${co.cycleIdx} ze 4${co.recoveryWeek ? " (lehčí)" : co.nextRecovery ? ` · lehčí týden od ${dm(co.nextRecovery)}` : ""}` : ""} · nabídka týdne ${hTxt(co.hours)} h${co.habitHours != null ? ` (obvykle jezdíš kolem ${hTxt(co.habitHours)} h)` : ""}</p>` : "";
+  const coLine = co ? `<p class="tproj"><b>${esc(co.phaseLabel)}</b>${co.cycle ? ` · týden ${co.cycleIdx} ze 4${co.recoveryWeek ? " (lehčí)" : co.nextRecovery ? ` · lehčí týden od ${dm(co.nextRecovery)}` : ""}` : ""} · cíl týdne <b>${co.load}</b> zátěže (asi ${hTxt(co.hours)} h) · na udržení kondice ${co.keepLoad} · poslední 4 týdny ${co.recentLoad}</p>` : "";
   const tone = rec.state === "green" ? "good" : rec.state === "yellow" ? "warn" : "bad";
   const paused = d.status && d.status.kind !== "active";
   const skipped = (d.constraints || []).find((c) => c.date === r.date && ["nepojedu", "nemuzu", "dovolena", "nemoc"].includes(c.kind));
@@ -1190,10 +1190,10 @@ async function pageTrener(el) {
   const why = form == null ? "Formu zatím neznám." : form < -30 ? `Jsi hodně unavený (forma ${signed(form, 1)}) → týden výrazně lehčí, víc volna.` : form < -20 ? `Únava je vysoká (forma ${signed(form, 1)}) → týden lehčí.` : form > 15 && goalUp ? `Jsi odpočatý (forma ${signed(form, 1)})${f.ramp != null && f.ramp < 0 ? " a kondice klesá" : ""} → přidávám zátěž.` : form > 15 ? `Jsi odpočatý (forma ${signed(form, 1)}) – při cíli ${esc(d.goalLabel || "")} držím zátěž.` : `Forma ${signed(form, 1)} je v tréninkovém pásmu → plán drží zátěž.`;
   const qn = p.days.filter((x) => x.kind === "quality").length;
   const dist = co && co.distribution;
-  const whyTxt = co ? `Nabídka vychází z toho, co obvykle jezdíš, a z cíle: ${hTxt(co.hours)} h. Když ji odjedeš, kondice bude na konci týdne kolem ${num(co.ctlTarget, 1)}. Nic z toho není povinné – co vynecháš, se nedohání.${form != null && form < -20 ? ` Únava je vysoká (forma ${signed(form, 1)}), proto je týden lehčí.` : ""}` : null;
+  const whyTxt = co ? `Cíl týdne se počítá z kondice (${num(f.ctl, 0)} → na udržení ${co.keepLoad} zátěže týdně) a fáze ${esc(co.phaseLabel)} (${co.ramp > 0 ? "+" : ""}${num(co.ramp, 1)} bodu týdně). Strop je +30 % proti průměru posledních 4 týdnů (${co.recentLoad}), ať se nepřidává skokem. Když týden odjedeš, kondice bude kolem ${num(co.ctlTarget, 1)}. Co vynecháš, se nedohání.${form != null && form < -20 ? ` Únava je vysoká (forma ${signed(form, 1)}), proto je týden lehčí.` : ""}` : null;
   const distTxt = co ? `<p class="tproj">${dist ? `Posledních ${dist.days} dní: lehce <b>${dist.low} %</b> · středně ${dist.mid} % · intenzivně ${dist.high} % času (${num(dist.hours, 1)} h v zónách).` : "Rozdělení intenzity zatím nemám (málo dat o čase v zónách)."} V plánu tohoto týdne je nad Z2 ${co.plannedHard} % času.</p>` : "";
   const rulesTxt = co
-    ? "Trenér nabízí tolik, kolik obvykle jezdíš (bere to z posledních 8 týdnů), cíl to posouvá nahoru nebo dolů. Pořadí důležitosti je kvalita, dlouhý trénink, pak Z2: když týden vyjde jen na dva tréninky, zůstanou ty důležité. Kvality se střídají (práh, sweet spot, tempo, over-under, VO2, krátké VO2, anaerobní, sprinty) a vybírají se z knihovny tak, aby se neopakovaly; po zvládnuté kvalitě je další o stupeň těžší. Pravidla: nejvýš 3 tréninky za sebou, kvalita nikdy den po kvalitě ani po dlouhém tréninku, nad Z2 nejvýš pětina času. Ráno podle zotavení: 🟡 kvalita se přesune, 🔴 volno nebo Z1. Vynechaná kvalita se sama posune na další vhodný den, vynechaná Z2 propadne. Když trénink přetáhneš jinam, zbytek týdne se přeskládá. Plán je uložený – mění se jen, když se změní zotavení, počasí, odjeté tréninky nebo tvoje úpravy."
+    ? "Zátěž týdne = 7 × kondice + 45,6 × růst podle fáze (zimní pokles −1, udržování 0, základ +1, rozvoj +1,5 až +3 body týdně). Strop: nejvýš +30 % proti průměru posledních 4 týdnů. Délky jízd vycházejí ze zátěže a mají strop podle toho, co poslední měsíc jezdíš (dlouhá nejvýš o 15 % delší než tvoje nejdelší). Forma nesmí v plánu spadnout pod −20 (v rozvoji −30). Pořadí důležitosti je kvalita, dlouhý trénink, pak Z2: když týden vyjde jen na dva tréninky, zůstanou ty důležité. Kvality se střídají (práh, sweet spot, tempo, over-under, VO2, krátké VO2, anaerobní, sprinty) a vybírají se z knihovny tak, aby se neopakovaly; po zvládnuté kvalitě je další o stupeň těžší. Pravidla: nejvýš 3 tréninky za sebou, kvalita nikdy den po kvalitě ani po dlouhém tréninku, nad Z2 nejvýš pětina času. Ráno podle zotavení: 🟡 kvalita se přesune, 🔴 volno nebo Z1. Vynechaná kvalita se sama posune na další vhodný den, vynechaná Z2 propadne. Když trénink přetáhneš jinam, zbytek týdne se přeskládá. Plán je uložený – mění se jen, když se změní zotavení, počasí, odjeté tréninky nebo tvoje úpravy."
     : "Týdenní zátěž z kondice a cíle (max. +30 % proti běžnému týdnu). Forma pod −20 → týden o 12 % lehčí, pod −30 o 25 %. Kvalita 1× (zima) / 2× (sezóna) týdně, nikdy dva dny po sobě ani po hokeji; když týden zaplní tvoje volby, dá se na kolový den. Ráno podle zotavení: 🟡 kvalita → Z2 nebo zkrácení, 🔴 volno / Z1. Tvoje úpravy (přesun, délka, sport, vlastní jízda) mají přednost, zbytek týdne se dopočítá.";
   // odhad: kondice (CTL, 42 dní) a únava (ATL, 7 dní) za 7 dní, když odjedeš plán
   const sunday = addDay(r.date, 7 - dow(r.date));
@@ -2865,7 +2865,6 @@ async function coachProfileForm(box) {
   const OTHER = { ride: [["run", "🏃 Občas běhám"], ["xc_ski", "🎿 V zimě běžky"]], run: [["ride", "🚴 Občas jezdím na kole"], ["xc_ski", "🎿 V zimě běžky"]] };
   const hTxt = (x) => String(x).replace(".", ",");
   const draw = (p, v2, msg = "") => {
-    const h = d.habit || {};
     box.innerHTML = `
       <label class="chk"><input type="checkbox" id="cpV2" ${v2 ? "checked" : ""}> <b>Nový trenér</b> – pestré tréninky z knihovny, plán se sám přeskládá (vypnuto = původní trenér)</label>
       <div class="sl" style="margin:14px 0 6px">Hlavní sport</div>
@@ -2875,7 +2874,7 @@ async function coachProfileForm(box) {
       ${p.primary === "ride" ? `<label class="chk"><input type="checkbox" id="cpRunQ" ${p.sports.run.quality ? "checked" : ""}> Běh může mít i intervaly (jinak jen lehce)</label>` : ""}
       <label class="chk"><input type="checkbox" id="cpSnow" ${p.snow ? "checked" : ""}> Teď je sníh (běžky se začnou plánovat)</label>
       <div class="btns"><button class="btn pri" id="cpSave">Uložit</button><span class="note" id="cpMsg">${esc(msg)}</span></div>
-      <p class="note">${h.hours != null ? `Trenér vychází z toho, co opravdu jezdíš: za posledních 8 týdnů obvykle <b>${hTxt(h.hours)} h</b> a <b>${h.sessions} tréninky</b> týdně.` : "Zatím nemám tvou historii, začnu opatrně: kolem 3,5 h a 3 tréninků týdně."} Dny ani hodiny se nenastavují. Zaškrtnutý další sport trenér nabídne nejvýš jednou týdně místo lehké jízdy; kdykoli si ho můžeš zvolit u dne sám. Cíl (Zlepšit / Udržet / Pokles) se přepíná v Trenérovi.</p>`;
+      <p class="note">${"Zátěž týdne počítá trenér z tvé kondice a z posledních 4 týdnů, délky jízd z toho, co poslední měsíc jezdíš."} Dny ani hodiny se nenastavují. Zaškrtnutý další sport trenér nabídne nejvýš jednou týdně místo lehké jízdy; kdykoli si ho můžeš zvolit u dne sám. Cíl (Zlepšit / Udržet / Pokles) se přepíná v Trenérovi.</p>`;
     const read = () => {
       const q = JSON.parse(JSON.stringify(p));
       box.querySelectorAll("[data-sp]").forEach((i) => { q.sports[i.dataset.sp].enabled = i.checked; });

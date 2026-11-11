@@ -1,7 +1,7 @@
 // Profil sportovce pro Trenéra v2 – schválně malý: hlavní sport, další sporty a „je sníh“.
-// Dny ani hodiny se nenastavují: obvyklý objem si trenér bere z toho, co uživatel opravdu jezdí (habitOf).
+// Dny ani hodiny se nenastavují: zátěž týdne se počítá z kondice a z posledních týdnů (target.ts).
 import { PLAN_SPORTS, type PlanSport, type Sport } from "../../datasource/types";
-import { addDays, mondayOf, month } from "../../lib/time";
+import { addDays, mondayOf } from "../../lib/time";
 
 export interface SportPref {
   /** sport se smí plánovat (hlavní sport je zapnutý vždy) */
@@ -49,9 +49,6 @@ export function validateProfile(input: unknown, base: CoachProfile = DEFAULT_PRO
   return { profile: p, errors };
 }
 
-export const WINTER_MONTHS = [11, 12, 1, 2];
-export const isWinter = (date: string) => WINTER_MONTHS.includes(month(date));
-
 const SPORT_CZ: Record<PlanSport, string> = { ride: "kolo", run: "běh", xc_ski: "běžky", walk: "chůze" };
 
 /** Shrnutí profilu lidsky. */
@@ -89,32 +86,4 @@ export function profileFromHistory(acts: HistAct[], today: string): CoachProfile
   if (count[other] >= 4) p.sports[other] = { enabled: true, quality: count[other] >= 12 };
   if (count.xc_ski >= 2) p.sports.xc_ski.enabled = true;
   return p;
-}
-
-export interface Habit {
-  /** obvyklé hodiny týdně (vytrvalostní sporty), null = bez historie */
-  hours: number | null;
-  /** obvyklý počet tréninků týdně */
-  sessions: number | null;
-  /** kolik ukončených týdnů z 8 se trénovalo */
-  weeks: number;
-}
-
-/**
- * Obvyklý objem z posledních 8 ukončených týdnů. Bere se horní čtvrtina (3. kvartil) týdnů, kdy se trénovalo:
- * pár vynechaných týdnů (zkoušky, nemoc, hnusně) tak plán nestáhne dolů.
- */
-export function habitOf(acts: HistAct[], today: string): Habit {
-  const mon = mondayOf(today);
-  const hours: number[] = [], sessions: number[] = [];
-  for (let w = 1; w <= 8; w++) {
-    const from = addDays(mon, -7 * w), to = addDays(from, 6);
-    const a = acts.filter((x) => x.date >= from && x.date <= to && groupOf(x.sport) && groupOf(x.sport) !== "walk" && (x.moving_s ?? 0) >= 20 * 60);
-    if (!a.length) continue;
-    hours.push(a.reduce((t, x) => t + (x.moving_s ?? 0), 0) / 3600);
-    sessions.push(new Set(a.map((x) => x.date)).size);
-  }
-  if (!hours.length) return { hours: null, sessions: null, weeks: 0 };
-  const q3 = (v: number[]) => { const s = [...v].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(s.length * 0.75))]!; };
-  return { hours: Math.round(q3(hours) * 4) / 4, sessions: q3(sessions), weeks: hours.length };
 }

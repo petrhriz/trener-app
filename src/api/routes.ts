@@ -425,14 +425,14 @@ function goalsView(ctx: CtxT, wl: number[]) {
 
 /** Trenér v2: popis cílů; u zvoleného cíle čísla tohoto týdne z rozpočtu. */
 function goalsViewV2(ctx: CtxT, plan: Awaited<ReturnType<typeof planFor>>) {
-  const co = (plan as { coach?: { hours: number; keys: number } }).coach;
+  const co = (plan as { coach?: { hours: number; keys: number; keepLoad: number; recentLoad: number } }).coach;
   const t = plan.weeklyTarget;
   const now = co ? ` Tento týden: ${String(co.hours).replace(".", ",")} h, zátěž ${t.lo}–${t.hi}, kvalita ${co.keys}×.` : "";
   const g = (key: Goal, label: string, text: string) => ({ key, label, lo: t.lo, hi: t.hi, text: text + (ctx.s.goal === key ? now : "") });
   return [
-    g("zvyseni", "Zlepšit", "Trenér nabízí o něco víc, než obvykle jezdíš: 3 týdny přidává a 4. je lehčí. Kvality postupně těžknou, když je zvládáš."),
-    g("udrzeni", "Udržet", "Trenér nabízí tolik, kolik obvykle jezdíš. Kvality zůstávají stejně těžké, jen se střídají."),
-    g("pokles", "Řízený pokles", "Konec sezóny / zima: o trénink míň a kratší jízdy, kondice pomalu klesá. Jedna lehčí kvalita týdně drží intenzitu."),
+    g("zvyseni", "Zlepšit", "Zátěž týdne se počítá z kondice tak, aby rostla asi o bod týdně v zimě a o 1,5–3 body v sezóně. 3 týdny přidává, 4. je lehčí. Kvality těžknou, když je zvládáš."),
+    g("udrzeni", "Udržet", "Zátěž týdne = 7 × kondice, tedy tolik, aby kondice zůstala. Kvality zůstávají stejně těžké, jen se střídají."),
+    g("pokles", "Řízený pokles", "Zima / konec sezóny: zátěž týdne je nastavená tak, aby kondice klesala asi o bod týdně. Jedna lehčí kvalita týdně drží intenzitu."),
     g("zavod", "Závod", `Příprava na ${ctx.s.goal_name || "závod"}${ctx.s.goal_date ? ` (${dm(ctx.s.goal_date)})` : ""}: Základ, pak Rozvoj a posledních 10–14 dní ladění.`),
   ];
 }

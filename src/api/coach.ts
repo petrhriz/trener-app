@@ -15,7 +15,7 @@ import { addConstraint, saveProposal } from "../plan/proposals";
 import { planFor, recoveryFor } from "../report/build";
 import { loadCtx } from "../report/context";
 import { resetCoachWeeks } from "../coach/store";
-import { habitOf, profileFromHistory, profileSummary, validateProfile } from "../core/coach/profile";
+import { profileFromHistory, profileSummary, validateProfile } from "../core/coach/profile";
 import { getSettings, setSetting } from "../lib/settings";
 
 export const coachApi = new Hono<{ Bindings: Env; Variables: { uid: number } }>();
@@ -298,8 +298,7 @@ POKYN UŽIVATELE: ${String(text ?? "").slice(0, 400) || "žádný"}`;
 coachApi.get("/coach/profile", async (c) => {
   const ctx = await loadCtx(c.env);
   const profile = ctx.s.coach_profile ? validateProfile(ctx.s.coach_profile).profile : profileFromHistory(ctx.acts, ctx.T);
-  // obvyklý objem z historie – jen na ukázku, z čeho trenér vychází (nenastavuje se)
-  return c.json({ v2: ctx.s.coach_v2, saved: !!ctx.s.coach_profile, profile, summary: profileSummary(profile), habit: habitOf(ctx.acts, ctx.T) });
+  return c.json({ v2: ctx.s.coach_v2, saved: !!ctx.s.coach_profile, profile, summary: profileSummary(profile) });
 });
 
 /** Uložení profilu (a přepínače nového trenéra). Plán se postaví znovu, změny čekají na „Zapsat“. */

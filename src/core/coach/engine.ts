@@ -15,9 +15,9 @@ import type { QualityType } from "../quality";
 import type { State } from "../recovery";
 import type { DayWeather } from "../weather";
 import { type Workout, SPORT_LABEL, humanSteps, renderIcu } from "../workout";
-import { type Budget, type Fatigue, type Rate, KEY_MIN, NO_FATIGUE, PHASE_LABEL, weekBudget } from "./budget";
+import { type Budget, type Fatigue, type Recent, NO_FATIGUE, PHASE_LABEL, isWinter, weekTarget } from "./target";
 import { type Built, type Cat, type Family, type Zones, CAT_NAME, CAT_PURPOSE, EASY_LOAD_H, START_TIER, buildWorkout, catCandidates, catNeeds, chooseCat, isCat, libById, pickLib } from "./library";
-import { type CoachProfile, habitOf, isWinter } from "./profile";
+import type { CoachProfile } from "./profile";
 import { type Distribution, distribution, nextLevel, outcomeOf } from "./progress";
 import { type Fixed, type PastDay, type Role, type SolvedDay, solveWeek } from "./week";
 
@@ -114,9 +114,13 @@ export interface CoachInfo {
   recoveryWeek: boolean;
   /** pondělí příštího lehčího týdne */
   nextRecovery: string | null;
-  /** nabízené hodiny týdne a obvyklé hodiny z historie */
+  /** cíl zátěže týdne, zátěž na udržení kondice (7 × CTL), průměr posledních 4 týdnů, plánované hodiny */
+  load: number;
+  keepLoad: number;
+  recentLoad: number;
+  ramp: number;
   hours: number;
-  habitHours: number | null;
+  tsbFloor: number | null;
   sessions: number;
   keys: number;
   ctlTarget: number;
@@ -207,11 +211,19 @@ export function runEngine(inp: EngineInput): EngineOutput {
   const progress: Record<string, ProgressRow> = { ...inp.progress };
   const mY = inp.metric(addDays(T, -1)) ?? inp.metric(T) ?? { ctl: 0, atl: 0 };
 
-  // ---- obvyklý objem a zátěž za hodinu z historie (žádné nastavené hodiny) ----
-  const habit = habitOf(inp.acts, T);
+  // ---- co se ví z historie: zátěž za hodinu, poslední 4 týdny, obvyklé a nejdelší délky ----
   const er = easyRate(inp.acts, T, p.primary, p.primary === "ride" && power);
   const calibOf = (s: PlanSport) => (s === p.primary ? er.calib : easyRate(inp.acts, T, s, s === "ride" && power).calib);
-  const rate: Rate = { easy: er.rate, key: er.rate * (KEY_MIN / 60) * 1.45 };
+  const dayMin = new Map<string, number>();
+  for (const a of inp.acts) if (ENDURANCE_SPORTS.includes(a.sport) && a.date > addDays(T, -28) && a.date <= T && (a.moving_s ?? 0) >= 20 * 60) dayMin.set(a.date, (dayMin.get(a.date) ?? 0) + (a.moving_s ?? 0) / 60);
+  const mins = [...dayMin.values()].sort((a, b) => a - b);
+  let provenRamp: number | null = null;
+  for (let i = 0; i <= 12; i++) {
+    const a = inp.metric(addDays(T, -7 * i)), b = inp.metric(addDays(T, -7 * i - 28));
+    if (a && b) provenRamp = Math.max(provenRamp ?? 0, (a.ctl - b.ctl) / 4);
+  }
+  const sessionsIn = (mon: string) => new Set(inp.acts.filter((a) => ENDURANCE_SPORTS.includes(a.sport) && a.date >= mon && a.date < addDays(mon, 7) && (a.moving_s ?? 0) >= 20 * 60).map((a) => a.date)).size;
+  const recentOf = (weekLoads: number[], weekSessions: number[]): Recent => ({ weekLoads, weekSessions, longestMin: Math.round(mins[mins.length - 1] ?? 0), typicalMin: mins.length ? Math.round(mins[Math.floor(mins.length / 2)]!) : null, provenRamp });
   const needs = p.primary === "ride" && power ? catNeeds(inp.power, T) : {};
 
   const pastDay = (d: string): PastDay => {
@@ -254,17 +266,20 @@ export function runEngine(inp: EngineInput): EngineOutput {
     experienced: p.primary === "run" || runActs.filter((a) => a.date >= addDays(T, -60)).length >= 6,
     longest: Math.round(Math.max(0, ...runActs.filter((a) => a.date >= addDays(T, -28)).map((a) => (a.moving_s ?? 0) / 60))) || (p.primary === "run" ? 40 : 0),
   };
-  const longestRide = Math.round(Math.max(0, ...inp.acts.filter((a) => isBike(a.sport) && a.date >= addDays(T, -42)).map((a) => (a.moving_s ?? 0) / 60)));
   const longestOf = (s: PlanSport) => Math.round(Math.max(0, ...inp.acts.filter((a) => planSport(a.sport) === s && a.date >= addDays(T, -42)).map((a) => (a.moving_s ?? 0) / 60)));
   const illness = [...fixedAll.entries()].filter(([, f]) => f.blocked?.startsWith("Nemoc")).map(([d]) => d);
   const afterIllness = (d: string) => illness.some((x) => x < d && x >= addDays(d, -2)) && !illness.includes(d);
   const baseKey = hashOf([p, inp.goal, inp.raceDate]);
 
   /** Postaví (nebo vrátí uložený) týden. `tail` = dny před týdnem, `from` = první plánovaný den, `used` = dřívější kvality. */
-  const buildWeek = (weekStart: string, from: string, ctlStart: number, cycleIdx: number, prevWeeks: number[], fatigue: Fatigue, tail: Map<string, PastDay>, current: boolean, used: KeyUse[]): StoredWeek => {
+  const buildWeek = (weekStart: string, from: string, ctlStart: number, cycleIdx: number, recent: Recent, fatigue: Fatigue, tail: Map<string, PastDay>, current: boolean, used: KeyUse[], state: { ctl: number; atl: number }): StoredWeek => {
     const dates = [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(weekStart, i));
     const stored = inp.stored.get(weekStart) ?? null;
-    const budget = weekBudget({ weekStart, goal: inp.goal, habit, ctl: ctlStart, raceDate: inp.raceDate, prevWeeks, cycleIdx, fatigue, rate });
+    const budget = weekTarget({ weekStart, goal: inp.goal, raceDate: inp.raceDate, ctl: ctlStart, recent, cycleIdx, fatigue, easyRate: er.rate });
+    const doneLoad = dates.filter((d) => d < from).reduce((t, d) => t + (actsBy.get(d) ?? []).reduce((q, a) => q + (a.load ?? 0), 0), 0);
+    // mimo sezónu se kvalita při horším ránu vynechá, neposouvá (specifikace kap. 4)
+    const calm = budget.phase === "offseason" || (budget.phase === "maintain" && isWinter(weekStart));
+    const skipKey = current && from === T && calm && (inp.recovery === "yellow" || inp.recovery === "red") && stored?.days.find((x) => x.date === T)?.role === "key";
     const past = new Map(tail);
     for (const d of dates) if (d < from) past.set(d, pastDay(d));
     const fixed = new Map<string, Fixed>();
@@ -276,17 +291,17 @@ export function runEngine(inp: EngineInput): EngineOutput {
     if (current && from === T && inp.recovery === "red") easyOnly.add(T);
     for (const d of dates) if (d >= from && afterIllness(d)) noKey.add(d);
     const levels = Object.entries(progress).map(([k, v]) => `${k}=${v.level}`).sort();
-    const hash = hashOf([from, current ? inp.recovery : null, [...fixed.entries()], [...past.entries()], baseKey, budget.load, budget.keys, budget.hours, budget.sessions, budget.recoveryWeek, [...weatherBad], inp.weatherOk, inp.zones.ftp, inp.zones.hr?.floors, levels, Math.round(er.calib * 20), used.map((u) => u.wid ?? u.cat)]);
+    const hash = hashOf([from, current ? inp.recovery : null, [...fixed.entries()], [...past.entries()], baseKey, budget.load, budget.keys, budget.sessions, budget.long, budget.caps, budget.recoveryWeek, Math.round(doneLoad / 5), skipKey, [...weatherBad], inp.weatherOk, inp.zones.ftp, inp.zones.hr?.floors, levels, Math.round(er.calib * 20), used.map((u) => u.wid ?? u.cat)]);
     if (stored && stored.hash === hash) return stored;
     const sameBase = !!stored && stored.baseKey === baseKey;
     const prev = sameBase ? new Map(stored!.days.map((d) => [d.date, d.role] as [string, Role])) : null;
-    const solved = solveWeek({ weekStart, from, profile: p, hours: budget.hours, sessions: budget.sessions, keys: budget.keys, past, fixed, weatherBad, prev, noKey, easyOnly, run: runInfo, longestRide });
+    const solved = solveWeek({ weekStart, from, profile: p, load: budget.load, doneLoad, sessions: budget.sessions, keys: Math.max(0, budget.keys - (skipKey ? 1 : 0)), long: budget.long, rate: er.rate, caps: budget.caps, past, fixed, weatherBad, prev, noKey, easyOnly, run: runInfo });
 
-    const T60 = budget.hours * 60;
+    const T60 = solved.reduce((t, x) => t + x.minutes, 0) + dates.filter((d) => d < from).reduce((t, d) => t + (past.get(d)?.minutes ?? 0), 0);
     const doneKeys = dates.filter((d) => d < from && past.get(d)?.key).length;
     const keyCount = solved.filter((x) => x.role === "key").length + doneKeys;
     const maxTiz = keyCount ? ((T60 < 300 ? 0.25 : 0.2) * T60) / keyCount : null;
-    const cands = catCandidates(budget.phase, { recoveryWeek: budget.recoveryWeek, decline: inp.goal === "pokles", winter: isWinter(weekStart) });
+    const cands = catCandidates(budget.phase, { recoveryWeek: budget.recoveryWeek, winter: isWinter(weekStart) });
     const storedDay = (d: string) => (sameBase ? stored!.days.find((x) => x.date === d) ?? null : null);
     /** kvality použité před daným dnem (dřívější týdny + dny tohoto týdne už vybrané) */
     const usedNow: KeyUse[] = [...used];
@@ -305,7 +320,7 @@ export function runEngine(inp: EngineInput): EngineOutput {
       // ráno podle zotavení
       if (isToday && inp.recovery === "red") why.push("🔴 nezotavený: volno, nebo jen Z1 do 45 min");
       if (isToday && inp.recovery === "yellow") {
-        if (was?.role === "key" && role !== "key") why.push("🟡 částečně zotavený: kvalita dnes ne, posouvám ji");
+        if (was?.role === "key" && role !== "key") why.push(skipKey ? "🟡 částečně zotavený: kvalitu dnes vynechávám (mimo sezónu se nedohání)" : "🟡 částečně zotavený: kvalita dnes ne, posouvám ji");
         if (role === "long" && !x.own && !fixed.get(x.date)?.minutes) { minutes = r15(minutes * 0.75); why.push("🟡 částečně zotavený: dlouhý trénink o čtvrtinu kratší"); }
       }
       if (afterIllness(x.date) && !x.own) { minutes = Math.min(minutes, 60); if (role === "long") role = "endurance"; why.push("po nemoci postupný návrat"); }
@@ -334,7 +349,7 @@ export function runEngine(inp: EngineInput): EngineOutput {
         const ch = keepCat ? { cat: keepCat, why: needs[keepCat]?.text ?? "" } : chooseCat({ cands, exclude: [...inWeek, ...(hist.length ? [hist[hist.length - 1]!.cat] : [])], lastUse, date: x.date, needs: libRide ? needs : {} });
         const cat = ch.cat;
         const tier0 = progress[`${x.sport}:${cat}`]?.level ?? START_TIER;
-        level = Math.max(0, inp.goal === "pokles" || budget.recoveryWeek ? tier0 - 1 : tier0);
+        level = Math.max(0, budget.phase === "offseason" || budget.recoveryWeek ? tier0 - 1 : tier0);
         if (libRide) {
           const keepW = keepCat && was?.wid && libById(was.wid) && (maxTiz == null || libById(was.wid)!.t <= maxTiz + 0.01) ? was.wid : null;
           const recent = hist.slice(-10).map((u) => u.wid).filter((v): v is string => !!v);
@@ -344,9 +359,9 @@ export function runEngine(inp: EngineInput): EngineOutput {
         usedNow.push({ date: x.date, sport: x.sport, cat, wid });
         reason = `${CAT_NAME[cat][0]!.toUpperCase() + CAT_NAME[cat].slice(1)}: ${CAT_PURPOSE[cat]}.${ch.why ? ` Proč teď: ${ch.why}.` : ""}`;
       } else if (role === "long") {
-        const ffOk = budget.phase !== "udrzovani" && budget.phase !== "ladeni" && !budget.recoveryWeek && budget.cycleIdx >= 2 && minutes >= 90 && !indoor && x.sport !== "xc_ski";
+        const ffOk = (budget.phase === "base" || budget.phase === "build") && !budget.recoveryWeek && budget.cycleIdx >= 2 && minutes >= 90 && !indoor && x.sport !== "xc_ski";
         family = ffOk ? "ff" : "long";
-        if (ffOk) level = Math.min(3, budget.cycleIdx - 2 + (budget.phase === "rozvoj" ? 1 : 0));
+        if (ffOk) level = Math.min(3, budget.cycleIdx - 2 + (budget.phase === "build" ? 1 : 0));
         const lg = longestOf(x.sport);
         reason = `Dlouhý trénink: základ vytrvalosti${lg ? `. Nejdelší za 6 týdnů ${minHm(lg)}, dnes ${minHm(minutes)}` : ""}${ffOk ? "; závěr v tempu učí držet výkon na unavených nohách" : ""}.`;
       } else { family = "end"; reason = "Lehký objem v Z2: drží vytrvalost a nebere síly na kvalitu."; }
@@ -362,23 +377,21 @@ export function runEngine(inp: EngineInput): EngineOutput {
     };
 
     let days = solved.map(make);
-    // doladění délek na nabízenou zátěž týdne (jen vytrvalostní a dlouhé dny bez tvé úpravy)
-    const doneLoad = dates.filter((d) => d < from).reduce((t, d) => t + (actsBy.get(d) ?? []).reduce((s, a) => s + (a.load ?? 0), 0), 0);
-    const adjustable = (d: CoachDay) => (d.role === "endurance" || d.role === "long") && !d.fixed && !d.indoor && !afterIllness(d.date) && !(current && d.date === T && inp.recovery !== "green" && inp.recovery != null);
-    const planned = days.reduce((t, d) => t + d.load, 0);
-    const adj = days.filter(adjustable);
-    const adjLoad = adj.reduce((t, d) => t + d.load, 0);
-    const diff = budget.load - doneLoad - planned;
-    if (adj.length && adjLoad > 0 && Math.abs(diff) > budget.load * 0.06) {
-      // nic se nedohání: přidává se nejvýš o čtvrtinu a jen u cíle Zlepšit / Závod; ubírá se, když je týden přes
-      const up = inp.goal === "zvyseni" || inp.goal === "zavod";
-      const f = Math.max(0.6, Math.min(up ? 1.25 : 1.1, (adjLoad + diff) / adjLoad));
-      if (Math.abs(f - 1) > 0.04) {
-        const scaled = new Map<string, number>();
-        for (const d of adj) scaled.set(d.date, d.sport === "run" ? Math.max(30, Math.round((d.minutes * f) / 5) * 5) : Math.max(45, r15(d.minutes * f)));
-        usedNow.length = used.length; // kvality se vyberou znovu stejně (stejné vstupy)
-        days = solved.map((x) => make(scaled.has(x.date) ? { ...x, minutes: scaled.get(x.date)! } : x));
-        if (diff < 0 && doneLoad > budget.load * 0.15) for (const d of days) if (scaled.has(d.date) && d.minutes < (solved.find((x) => x.date === d.date)?.minutes ?? 0)) d.why.push("zkráceno – tento týden už máš odjeto hodně");
+    // vyvážení (specifikace 3.3): výhled formy na dny plánu; když některý den spadne pod osobní dno,
+    // 1) zkrátit lehké dny, 2) kvalitu změnit na vytrvalost. Nic se nepřidává.
+    if (budget.tsbFloor != null) {
+      const futureDates = dates.filter((d) => d >= from);
+      const minForm = () => project(state, addDays(from, -1), futureDates.map((d) => days.find((x) => x.date === d)?.load ?? 0)).reduce((m, x) => Math.min(m, x.form), 99);
+      let cur = solved;
+      for (let it = 0; it < 3 && minForm() < budget.tsbFloor; it++) {
+        if (it < 2) cur = cur.map((x) => ((x.role === "endurance" || x.role === "long") && !x.fixed ? { ...x, minutes: Math.max(x.sport === "run" ? 30 : 45, r15(x.minutes * 0.75)) } : x));
+        else {
+          const k = [...cur].reverse().find((x) => x.role === "key" && !x.fixed);
+          if (k) cur = cur.map((x) => (x === k ? { ...x, role: "endurance" as Role, minutes: Math.min(x.minutes, 60) } : x));
+        }
+        usedNow.length = used.length;
+        days = cur.map(make);
+        for (const d of days) if (d.role !== "rest" && !d.fixed && d.minutes < (solved.find((x) => x.date === d.date)?.minutes ?? 0)) d.why.push(`zkráceno – forma by jinak spadla pod ${budget.tsbFloor}`);
       }
     }
     // minulé dny týdne zůstávají, jak byly uložené (historie plánu)
@@ -402,11 +415,12 @@ export function runEngine(inp: EngineInput): EngineOutput {
   const used0: KeyUse[] = [];
   for (const w of inp.stored.values()) for (const d of w.days) if (d.role === "key" && isCat(d.family) && d.date < from0 && trainedOn(d.date)) used0.push({ date: d.date, sport: d.sport, cat: d.family, wid: d.wid ?? null });
   used0.sort((a, b) => a.date.localeCompare(b.date));
-  const week0 = buildWeek(W0, from0 > addDays(W0, 6) ? addDays(W0, 7) : from0, ctl0, cycle0, inp.weekLoads, inp.fatigue, tail0, true, used0);
-
-  // ---- výhled kondice do konce týdne → příští týden ----
   const start = todayDone && inp.metric(T) ? inp.metric(T)! : mY;
   const startDate = todayDone ? T : addDays(T, -1);
+  const sess4 = [4, 3, 2, 1].map((w) => sessionsIn(addDays(W0, -7 * w)));
+  const week0 = buildWeek(W0, from0 > addDays(W0, 6) ? addDays(W0, 7) : from0, ctl0, cycle0, recentOf(inp.weekLoads, sess4), inp.fatigue, tail0, true, used0, start);
+
+  // ---- výhled kondice do konce týdne → příští týden ----
   const loads0: number[] = [];
   for (let d = addDays(startDate, 1); d < W1; d = addDays(d, 1)) loads0.push(week0.days.find((x) => x.date === d)?.load ?? 0);
   const proj0 = project(start, startDate, loads0);
@@ -421,7 +435,9 @@ export function runEngine(inp: EngineInput): EngineOutput {
   }
   const used1: KeyUse[] = [...used0];
   for (const d of week0.days) if (d.role === "key" && isCat(d.family) && d.date >= from0) used1.push({ date: d.date, sport: d.sport, cat: d.family, wid: d.wid ?? null });
-  const week1 = buildWeek(W1, W1, ctlEnd0, cyc ? (week0.cycleIdx % 4) + 1 : 1, [...inp.weekLoads.slice(-3), total0], NO_FATIGUE, tail1, false, used1);
+  const n0 = sessionsIn(W0) + week0.days.filter((d) => d.date >= from0 && d.role !== "rest").length;
+  const end0 = proj0.length ? { ctl: proj0[proj0.length - 1]!.ctl, atl: proj0[proj0.length - 1]!.atl } : start;
+  const week1 = buildWeek(W1, W1, ctlEnd0, cyc ? (week0.cycleIdx % 4) + 1 : 1, recentOf([...inp.weekLoads.slice(-3), total0], [...sess4.slice(-3), n0]), NO_FATIGUE, tail1, false, used1, end0);
   const dayOf = (d: string): CoachDay | null => (d < W1 ? week0 : week1).days.find((x) => x.date === d) ?? null;
 
   // ---- dny plánu: dnešek (když je co jet) + 7 dní ----
@@ -570,11 +586,15 @@ export function runEngine(inp: EngineInput): EngineOutput {
     phase: b0.phase,
     phaseLabel: PHASE_LABEL[b0.phase],
     cycleIdx: b0.cycleIdx,
-    cycle: cyc && b0.phase !== "ladeni",
+    cycle: b0.phase === "base" || b0.phase === "build",
     recoveryWeek: b0.recoveryWeek,
-    nextRecovery: cyc && b0.phase !== "ladeni" && !b0.recoveryWeek ? addDays(W0, 7 * (4 - b0.cycleIdx)) : null,
-    hours: b0.hours,
-    habitHours: b0.habitHours,
+    nextRecovery: (b0.phase === "base" || b0.phase === "build") && !b0.recoveryWeek ? addDays(W0, 7 * (4 - b0.cycleIdx)) : null,
+    load: b0.load,
+    keepLoad: b0.keepLoad,
+    recentLoad: b0.recentLoad,
+    ramp: b0.ramp,
+    hours: Math.round((totalMin0 / 60) * 4) / 4,
+    tsbFloor: b0.tsbFloor,
     sessions: b0.sessions,
     keys: b0.keys,
     ctlTarget: b0.ctlTarget,

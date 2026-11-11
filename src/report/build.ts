@@ -19,7 +19,7 @@ import { dayDm, dm, hmm, num, signed } from "../lib/format";
 import { addDays, dateRange, mondayOf } from "../lib/time";
 import type { Ctx, FullAct, MetricRow } from "./context";
 import { loadCoachState, saveCoachState } from "../coach/store";
-import type { Fatigue } from "../core/coach/budget";
+import type { Fatigue } from "../core/coach/target";
 import { type EngineAct, runEngine } from "../core/coach/engine";
 import { profileFromHistory, validateProfile } from "../core/coach/profile";
 import { norm } from "../core/recovery";

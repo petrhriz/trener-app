@@ -9,7 +9,7 @@ import type { QualityType } from "../quality";
 import type { Format } from "../qualityDesign";
 import { type Block, type Step, type Workout, SPORT_LABEL, totalSeconds, workoutName, z1Workout, z2Workout } from "../workout";
 import { type HrZones, TARGET_PCT, hrZoneRange, pctRange, round5 } from "../zones";
-import type { Phase } from "./budget";
+import type { Phase } from "./target";
 import { type LibWorkout, LIBRARY } from "./workouts.data";
 
 export type Cat = "tempo" | "ss" | "thr" | "ou" | "vo2" | "vo2s" | "ana" | "nm";
@@ -340,11 +340,11 @@ export function buildWorkout(inp: BuildInput): Built {
 // ---------- výběr kategorie klíčového dne ----------
 
 /** Které kategorie připadají v úvahu (v pořadí přednosti). */
-export function catCandidates(phase: Phase, o: { recoveryWeek: boolean; decline: boolean; winter: boolean }): Cat[] {
-  if (o.recoveryWeek || phase === "ladeni") return ["nm", "vo2s"];
-  if (o.decline) return ["ss", "tempo", "nm", "ou"];
-  if (phase === "udrzovani") return o.winter ? ["ss", "thr", "tempo", "ou"] : ["thr", "vo2", "ou", "vo2s", "ss"];
-  if (phase === "zaklad") return ["tempo", "ss", "thr", "ou"];
+export function catCandidates(phase: Phase, o: { recoveryWeek: boolean; winter: boolean }): Cat[] {
+  if (o.recoveryWeek || phase === "taper") return ["nm", "vo2s"];
+  if (phase === "offseason") return ["ss", "tempo", "nm", "ou"];
+  if (phase === "maintain") return o.winter ? ["ss", "thr", "tempo", "ou"] : ["thr", "vo2", "ou", "vo2s", "ss"];
+  if (phase === "base") return ["tempo", "ss", "thr", "ou"];
   return ["thr", "vo2", "vo2s", "ou", "ana"];
 }
 

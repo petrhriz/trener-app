@@ -12,8 +12,8 @@ a přizpůsobená malému objemu bez nastavených hodin a dnů.
 
 ```mermaid
 flowchart TD
-  H[Historie 8 týdnů<br/>kolik a jak často obvykle jezdíš] --> N
-  G[Cíl: Zlepšit / Udržet / Pokles] --> N[Nabídka týdne<br/>hodiny, počet tréninků, počet kvalit]
+  H[Kondice CTL + poslední 4 týdny<br/>zátěž, počet a délky tréninků] --> N
+  G[Cíl a roční období → fáze] --> N[Cíl zátěže týdne<br/>7 × CTL + 45,6 × ramp, stropy]
   F[Únava: forma, horší rána, VST, nemoc] -->|jen ubírá| N
   N --> K[Kostra týdne po–ne<br/>pořadí důležitosti: kvalita → dlouhý → Z2]
   U[Tvoje úpravy: přetažení, volno, sport, délka] --> K
@@ -35,17 +35,40 @@ flowchart TD
 Jen tři věci: **hlavní sport** (kolo / běh), **další sporty** (občas běh, v zimě běžky) a **cíl**. Dny ani
 hodiny se nenastavují – trénovat jde kdykoli a trénink se dá přetáhnout na jiný den.
 
-## 2. Nabídka týdne (`budget.ts`, `profile.ts → habitOf`)
+## 2. Cíl zátěže týdne (`target.ts`)
 
-- **Obvyklý objem** = horní čtvrtina z posledních 8 týdnů, kdy se trénovalo (hodiny a počet tréninků).
-  Pár vynechaných týdnů ho nestáhne dolů. Bez historie 3,5 h a 3 tréninky.
-- **Cíl**: Udržet = obvyklý objem; Zlepšit = +5 / +10 / +15 % ve třech týdnech bloku, čtvrtý lehčí (65 %);
-  Pokles = o trénink míň a 80 % objemu.
-- **Pojistky**: nejvýš +15 % proti běžnému týdnu, zátěž do 1,3násobku dlouhodobého průměru.
-- **Únava jen ubírá**: forma pod −20 / −30, 2–3 horší rána za 5 dní, týdenní VST pod normou, dny po nemoci.
-- Kvalit týdně: 1, při 3 a více trénincích v sezóně a cíli Zlepšit 2, při 5 a více trénincích 2.
+Podle specifikace `screenshoty/AI Endurance Coach SPEC.md` (Banisterův model), s opravami.
 
-Nabídka není limit. Co se vynechá, to se nedohání.
+1. **Z kondice a fáze:** `zátěž = 7 × CTL + 45,6 × ramp`. Ramp (o kolik má kondice za týden růst):
+   Zimní pokles −1 · Udržování 0 · Základ +1 · Rozvoj +1,5 až +3 (podle toho, co sportovec v historii unesl) ·
+   Ladění −2. Fáze plyne z cíle a ročního období (Pokles → zimní pokles, Udržet → udržování,
+   Zlepšit → v zimě základ, v sezóně rozvoj, Závod → podle data).
+2. **Strop podle skutečnosti:** nejvýš +30 % (aspoň +40) proti váženému průměru posledních 4 týdnů
+   (váhy 1–2–3–4, novější víc). Specifikaci tohle chybělo: s kondicí 43 a týdny po 50–150 by chtěla ~300.
+3. **Strop podle délek:** jízdy mají strop (v zimě lehká 75 min, dlouhá 120 min, kvalita 60 min; jinak dlouhá
+   nejvýš o 15 % delší než nejdelší za 4 týdny) a tréninků je nejvýš o jeden víc než obvykle. Co se do toho
+   nevejde, se nenabízí – jízdy se kvůli číslu nenatahují.
+4. **Lehčí týden:** v Základu a Rozvoji každý 4. týden 65 %.
+5. **Únava jen ubírá** (forma, horší rána, VST, nemoc).
+6. **Dno formy:** výhled formy (TSB) nesmí v plánu spadnout pod −20 (v Rozvoji −30). Jinak se zkrátí lehké
+   dny a pak se kvalita změní na vytrvalost.
+
+Trenér vždy napíše, kolik by bylo potřeba na udržení kondice a co nabízený týden s kondicí udělá.
+
+### Co bylo ve specifikaci špatně nebo chybělo
+
+| Specifikace | Problém | Řešení |
+|---|---|---|
+| `weeklyTSS ≈ 7·CTL + r·k`, k „kalibrovat“ | k je přesně 7 / (1 − 0,9765⁷) = 45,6 | použit přesný vzorec, ověřen výpočtem po dnech |
+| Rozvoj +3 až +5 bodů týdně | pro hobby jezdce moc (kondice 43 → +75 % zátěže) | +1,5 až +3, podle prokázané historie |
+| zátěž jen z kondice | po slabších týdnech chce skok na ~300 | strop podle posledních 4 týdnů |
+| „doplnit lehkými jízdami do cíle“ | v zimě z toho vycházejí jízdy na 2–3 h | stropy délek, zbytek se nenabízí |
+| zmeškanou zátěž rozdělit, když to forma dovolí | odporuje zásadě „nedohánět“ | nic se nedohání, jen kvalita se posune |
+| „nejvýš 2 těžké dny za sebou“ a zároveň 48 h mezi kvalitami | protimluv | platí 48 h: kvalita ne den po kvalitě ani po dlouhém |
+| běh × 1,2 do únavy | rozešlo by se s čísly z intervals.icu | jen pravidlo: kvalita ne den po těžkém běhu |
+| VST pod normou nebo tep +5 → jen Z2 | jeden den je šum | používá se zdejší ranní semafor (normy z 60 nocí) |
+| posuvník poměru sportů, posuvník fáze | uživatel nechce nastavování | sporty z profilu, fáze z cíle a období |
+| horší ráno mimo sezónu: kvalitu vynechat | v pořádku | převzato |
 
 ## 3. Kostra týdne (`week.ts`)
 

@@ -6,10 +6,10 @@ import type { State } from "../../src/core/recovery";
 import type { Constraint } from "../../src/core/plan";
 import { validate } from "../../src/core/workout";
 import type { HrZones } from "../../src/core/zones";
-import { NO_FATIGUE, ctlAfterWeek, fatigueFactor, loadForCtl, weekBudget } from "../../src/core/coach/budget";
+import { type Recent, LOAD_PER_RAMP, NO_FATIGUE, ctlAfterWeek, fatigueFactor, loadForRamp, weekTarget } from "../../src/core/coach/target";
 import { type EngineAct, type EngineInput, type ProgressRow, type StoredWeek, fixedFromConstraints, runEngine } from "../../src/core/coach/engine";
 import { type Cat, type Zones, CATS, TIERS, buildWorkout, catCandidates, chooseCat, isCat, libById, pickLib, tierOf } from "../../src/core/coach/library";
-import { type CoachProfile, DEFAULT_PROFILE, habitOf, profileFromHistory, profileSummary, validateProfile } from "../../src/core/coach/profile";
+import { type CoachProfile, DEFAULT_PROFILE, profileFromHistory, profileSummary, validateProfile } from "../../src/core/coach/profile";
 import { distribution, nextLevel, outcomeOf } from "../../src/core/coach/progress";
 import { type PastDay, MAX_STREAK, solveWeek } from "../../src/core/coach/week";
 import { LIBRARY } from "../../src/core/coach/workouts.data";
@@ -33,58 +33,89 @@ describe("profil sportovce", () => {
     expect(profileFromHistory(acts, "2026-11-11").primary).toBe("run");
     expect(profileFromHistory([], "2026-11-11").primary).toBe("ride");
   });
-  it("obvyklý objem: pár vynechaných týdnů plán nestáhne dolů", () => {
-    const acts = [];
-    for (const w of [1, 2, 5, 6, 7, 8]) for (const d of [1, 3, 5, 6]) acts.push({ date: addDays("2026-11-09", -7 * w + d), sport: "ride" as const, moving_s: w === 1 ? 1800 : 5400 });
-    const h = habitOf(acts, "2026-11-11");
-    expect(h.hours).toBe(6);
-    expect(h.sessions).toBe(4);
-    expect(h.weeks).toBe(6);
-    expect(habitOf([], "2026-11-11")).toEqual({ hours: null, sessions: null, weeks: 0 });
-  });
 });
 
-// ---------- návrh týdne ----------
-const budget = (x: Partial<Parameters<typeof weekBudget>[0]>) =>
-  weekBudget({ weekStart: "2026-06-15", goal: "udrzeni", habit: { hours: 6, sessions: 4, weeks: 8 }, ctl: 45, raceDate: null, prevWeeks: [300, 310, 305, 300], cycleIdx: 1, fatigue: NO_FATIGUE, rate: { easy: 45, key: 82 }, ...x });
+// ---------- cíl zátěže týdne (modelové příklady) ----------
+const REC: Recent = { weekLoads: [300, 310, 305, 300], weekSessions: [4, 4, 4, 4], longestMin: 150, typicalMin: 80, provenRamp: 2 };
+const target = (x: Partial<Parameters<typeof weekTarget>[0]>) =>
+  weekTarget({ weekStart: "2026-06-15", goal: "udrzeni", raceDate: null, ctl: 45, recent: REC, cycleIdx: 1, fatigue: NO_FATIGUE, easyRate: 45, ...x });
 
-describe("návrh týdne", () => {
-  it("vzorec zátěže z cílové kondice sedí s výpočtem po dnech", () => {
-    const load = loadForCtl(45, 43);
-    let c = { ctl: 45, atl: 45 };
-    for (let i = 0; i < 7; i++) c = step(c, load / 7);
-    expect(c.ctl).toBeCloseTo(43, 1);
-    expect(ctlAfterWeek(45, load)).toBeCloseTo(43, 5);
+describe("cíl zátěže týdne", () => {
+  it("vzorec: zátěž = 7 × kondice + 45,6 × růst, ověřeno výpočtem po dnech", () => {
+    expect(LOAD_PER_RAMP).toBeCloseTo(45.6, 0);
+    for (const [ctl, ramp] of [[45, 0], [45, -1], [45, 2], [80, 3], [20, 1]]) {
+      const load = loadForRamp(ctl!, ramp!);
+      let c = { ctl: ctl!, atl: ctl! };
+      for (let i = 0; i < 7; i++) c = step(c, load / 7);
+      expect(c.ctl, `${ctl}/${ramp}`).toBeCloseTo(ctl! + ramp!, 1);
+      expect(ctlAfterWeek(ctl!, load)).toBeCloseTo(ctl! + ramp!, 5);
+    }
   });
-  it("vychází z toho, co obvykle jezdíš: Udržet stejně, Zlepšit o kousek víc, Pokles míň", () => {
-    expect(budget({}).hours).toBe(6);
-    expect(budget({}).sessions).toBe(4);
-    expect(budget({ goal: "zvyseni" }).hours).toBeGreaterThan(6);
-    expect(budget({ goal: "zvyseni", cycleIdx: 3 }).hours).toBeGreaterThan(budget({ goal: "zvyseni" }).hours);
-    const p = budget({ goal: "pokles" });
-    expect(p.hours).toBeLessThan(5);
-    expect(p.sessions).toBe(3);
-    expect(p.keys).toBe(1);
+  it("PŘÍKLAD 1 – skutečný stav (listopad, kondice 43, poslední týdny 330 / 52 / 150 / 43): žádných 300+, žádné 2–3h jízdy", () => {
+    const petr: Recent = { weekLoads: [330, 52, 150, 43], weekSessions: [3, 2, 2, 1], longestMin: 98, typicalMin: 67, provenRamp: 2.4 };
+    for (const goal of ["udrzeni", "pokles", "zvyseni"] as Goal[]) {
+      const b = target({ weekStart: "2026-11-16", goal, ctl: 43, recent: petr });
+      expect(b.keepLoad).toBe(301); // tolik by bylo potřeba na udržení kondice 43
+      expect(b.recentLoad).toBe(106); // novější týdny váží víc: (330 + 2×52 + 3×150 + 4×43) / 10
+      expect(b.load, goal).toBe(146); // strop: +40 proti posledním týdnům
+      expect(b.sessions, goal).toBe(2);
+      expect(b.keys, goal).toBe(1);
+      expect(b.caps, goal).toEqual({ easy: 75, long: 120, key: 60 });
+      expect(b.notes.join(" ")).toContain("Na udržení kondice 43 by bylo potřeba asi 301");
+      expect(b.notes.join(" ")).toContain("v zimě je to v pořádku");
+    }
   });
-  it("Zlepšit: 4. týden bloku je lehčí", () => {
-    const b4 = budget({ goal: "zvyseni", cycleIdx: 4 });
+  it("PŘÍKLAD 2 – pravidelný jezdec v sezóně: Udržet = 7 × kondice, Zlepšit o 2 body týdně víc, Pokles míň", () => {
+    const u = target({ ctl: 45 });
+    expect(u.load).toBe(315);
+    expect(u.phase).toBe("maintain");
+    const z = target({ goal: "zvyseni", ctl: 45, recent: { ...REC, weekLoads: [330, 340, 335, 330] } });
+    expect(z.phase).toBe("build");
+    expect(z.load).toBe(Math.round(315 + 2 * LOAD_PER_RAMP));
+    // kdo poslední měsíc jezdil míň, dostane nejvýš +30 % proti svému průměru
+    expect(target({ goal: "zvyseni", ctl: 45 }).load).toBe(Math.round(304 * 1.3));
+    expect(z.keys).toBe(2);
+    expect(z.ctlTarget).toBeCloseTo(47, 0);
+    const p = target({ goal: "pokles", ctl: 45 });
+    expect(p.load).toBe(Math.round(315 - LOAD_PER_RAMP));
+    expect(p.ctlTarget).toBeCloseTo(44, 0);
+  });
+  it("PŘÍKLAD 3 – zima a cíl Zlepšit: jen základ (+1 bod týdně), jedna kvalita, kratší jízdy", () => {
+    const b = target({ weekStart: "2026-12-07", goal: "zvyseni", ctl: 45 });
+    expect(b.phase).toBe("base");
+    expect(b.keys).toBe(1);
+    expect(b.caps.long).toBeLessThanOrEqual(120);
+    expect(b.caps.easy).toBeLessThanOrEqual(75);
+    expect(b.caps.key).toBe(60);
+    expect(b.load).toBeLessThan(Math.round(315 + LOAD_PER_RAMP)); // do krátkých zimních jízd se víc nevejde
+  });
+  it("PŘÍKLAD 4 – lehčí týden: každý 4. týden bloku 65 % zátěže, jedna kvalita", () => {
+    const b3 = target({ goal: "zvyseni", cycleIdx: 3 }), b4 = target({ goal: "zvyseni", cycleIdx: 4 });
     expect(b4.recoveryWeek).toBe(true);
-    expect(b4.hours).toBeCloseTo(4, 0);
+    expect(b4.load / b3.load).toBeCloseTo(0.65, 1);
     expect(b4.keys).toBe(1);
-    expect(budget({ goal: "zvyseni", cycleIdx: 3 }).recoveryWeek).toBe(false);
+    expect(target({ goal: "udrzeni", cycleIdx: 4 }).recoveryWeek).toBe(false); // udržování lehčí týden nepotřebuje
   });
-  it("bez historie opatrný začátek a žádný skok proti běžnému týdnu", () => {
-    const b = budget({ habit: { hours: null, sessions: null, weeks: 0 }, prevWeeks: [], ctl: 0 });
-    expect(b.hours).toBe(3.5);
-    expect(b.sessions).toBe(3);
-    expect(budget({ goal: "zvyseni", cycleIdx: 3, habit: { hours: 12, sessions: 5, weeks: 8 } }).load).toBeLessThanOrEqual(Math.round(305 * 1.15) + 1);
+  it("PŘÍKLAD 5 – návrat po pauze (kondice 50, tři týdny nic): začíná se malým týdnem, ne podle kondice", () => {
+    const b = target({ ctl: 50, recent: { weekLoads: [340, 0, 0, 0], weekSessions: [4, 0, 0, 0], longestMin: 0, typicalMin: null, provenRamp: 2 } });
+    expect(b.load).toBeLessThanOrEqual(100); // poslední týdny skoro nic → začíná se od nejmenšího týdne
+    expect(b.sessions).toBeLessThanOrEqual(3);
+    expect(b.caps.long).toBeLessThanOrEqual(90);
   });
-  it("únava jen ubírá", () => {
+  it("PŘÍKLAD 6 – začátečník bez historie: opatrný první týden", () => {
+    const b = target({ ctl: 0, recent: { weekLoads: [], weekSessions: [], longestMin: 0, typicalMin: null, provenRamp: null } });
+    expect(b.load).toBeLessThanOrEqual(150);
+    expect(b.sessions).toBeLessThanOrEqual(3);
+  });
+  it("PŘÍKLAD 7 – únava jen ubírá; rozvoj je omezený tím, co sportovec v historii unesl", () => {
     expect(fatigueFactor(NO_FATIGUE).factor).toBe(1);
     expect(fatigueFactor({ ...NO_FATIGUE, form: -32 }).factor).toBe(0.8);
-    expect(fatigueFactor({ ...NO_FATIGUE, badMornings: 2 }).factor).toBe(0.9);
     expect(fatigueFactor({ ...NO_FATIGUE, illnessDays: 5 }).keysMax).toBe(0);
-    expect(budget({ fatigue: { ...NO_FATIGUE, form: -32 } }).hours).toBeLessThan(6);
+    expect(target({ fatigue: { ...NO_FATIGUE, form: -32 } }).load).toBe(Math.round(315 * 0.8));
+    expect(target({ goal: "zvyseni", recent: { ...REC, provenRamp: 5 } }).ramp).toBe(3);
+    expect(target({ goal: "zvyseni", recent: { ...REC, provenRamp: 0.4 } }).ramp).toBe(1.5);
+    expect(target({ goal: "zvyseni" }).tsbFloor).toBe(-30);
+    expect(target({}).tsbFloor).toBe(-20);
   });
 });
 
@@ -147,7 +178,7 @@ describe("knihovna tréninků", () => {
     expect(b.load).toBeGreaterThan(30);
   });
   it("kategorie kvality: střídá se, dvakrát totéž po sobě nejde, data mají slovo", () => {
-    const cands = catCandidates("rozvoj", { recoveryWeek: false, decline: false, winter: false });
+    const cands = catCandidates("build", { recoveryWeek: false, winter: false });
     const a = chooseCat({ cands, exclude: [], lastUse: {}, date: "2026-06-02", needs: {} });
     expect(a.cat).toBe("thr");
     const b = chooseCat({ cands, exclude: ["thr"], lastUse: { thr: "2026-06-02" }, date: "2026-06-05", needs: {} });
@@ -156,17 +187,25 @@ describe("knihovna tréninků", () => {
     const c = chooseCat({ cands, exclude: [], lastUse: same, date: "2026-06-02", needs: { vo2: { score: 6, text: "5min výkon za 6 týdnů klesl o 4 %" } } });
     expect(c.cat).toBe("vo2");
     expect(c.why).toContain("klesl o 4 %");
-    expect(catCandidates("rozvoj", { recoveryWeek: true, decline: false, winter: false })[0]).toBe("nm");
+    expect(catCandidates("build", { recoveryWeek: true, winter: false })[0]).toBe("nm");
   });
 });
 
 // ---------- kostra týdne ----------
 const noPast = new Map<string, PastDay>();
 const solve = (x: Partial<Parameters<typeof solveWeek>[0]>) =>
-  solveWeek({ weekStart: "2026-11-16", from: "2026-11-16", profile: RIDER, hours: 6, sessions: 4, keys: 1, past: noPast, fixed: new Map(), weatherBad: new Set(), prev: null, noKey: new Set(), easyOnly: new Set(), run: { experienced: false, longest: 0 }, longestRide: 150, ...x });
+  solveWeek({ weekStart: "2026-11-16", from: "2026-11-16", profile: RIDER, load: 300, doneLoad: 0, sessions: 4, keys: 1, long: true, rate: 45, caps: { easy: 90, long: 150, key: 60 }, past: noPast, fixed: new Map(), weatherBad: new Set(), prev: null, noKey: new Set(), easyOnly: new Set(), run: { experienced: false, longest: 0 }, ...x });
 const shape = (d: ReturnType<typeof solve>) => d.map((x) => x.role[0]).join("");
 
 describe("kostra týdne", () => {
+  it("délky vycházejí ze zátěže týdne a drží stropy: malý týden = krátké jízdy", () => {
+    const small = solve({ load: 187, sessions: 3, caps: { easy: 75, long: 105, key: 60 } });
+    for (const x of small.filter((y) => y.role !== "rest")) expect(x.minutes, x.role).toBeLessThanOrEqual(105);
+    expect(small.reduce((t, x) => t + x.minutes, 0)).toBeLessThanOrEqual(4 * 60);
+    const big = solve({ load: 450, sessions: 5, caps: { easy: 120, long: 240, key: 75 } });
+    expect(big.find((x) => x.role === "long")!.minutes).toBeGreaterThan(small.find((x) => x.role === "long")!.minutes);
+    expect(big.find((x) => x.role === "long")!.minutes).toBeLessThanOrEqual(240);
+  });
   it("bez nastavení dnů: kvalita po volnu, dlouhý o víkendu, pondělí volno", () => {
     const d = solve({});
     expect(d.filter((x) => x.role !== "rest").length).toBe(4);
@@ -177,11 +216,11 @@ describe("kostra týdne", () => {
   });
   it("řada přes hranu týdne: po pá–so–ne tréninku musí být pondělí volno", () => {
     const past = new Map<string, PastDay>(["2026-11-13", "2026-11-14", "2026-11-15"].map((d) => [d, { trained: true, hard: false, key: false, minutes: 90, sport: "ride" as const }]));
-    expect(solve({ past, sessions: 6, hours: 9 })[0]!.role).toBe("rest");
+    expect(solve({ past, sessions: 6, load: 450 })[0]!.role).toBe("rest");
   });
   it("klíčový den nikdy den po klíčovém ani po dlouhém, nejvýš 3 dny za sebou", () => {
     for (const sessions of [2, 3, 4, 5, 6]) for (const keys of [1, 2]) {
-      const d = solve({ sessions, keys, hours: sessions * 1.5 });
+      const d = solve({ sessions, keys, load: sessions * 70 });
       d.forEach((x, i) => { if (x.role === "key" && i > 0) expect(["key", "long"], `${sessions}/${keys}`).not.toContain(d[i - 1]!.role); });
       let run = 0;
       for (const x of d) { run = x.role === "rest" ? 0 : run + 1; expect(run).toBeLessThanOrEqual(MAX_STREAK); }
@@ -218,10 +257,10 @@ describe("kostra týdne", () => {
     expect(d.find((x) => x.role === "key")!.sport).toBe("ride");
     expect(d.find((x) => x.role === "long")!.sport).toBe("ride");
     // tři tréninky týdně: běh nevezme kolu poslední vytrvalostní den
-    expect(solve({ profile: prof({ sports: { run: { enabled: true } } }), sessions: 3, hours: 4 }).filter((x) => x.sport === "run" && x.role !== "rest").length).toBe(0);
+    expect(solve({ profile: prof({ sports: { run: { enabled: true } } }), sessions: 3, load: 200 }).filter((x) => x.sport === "run" && x.role !== "rest").length).toBe(0);
   });
   it("jen běh: vše běh, dlouhý běh nepřeroste 1,1× nejdelšího", () => {
-    const d = solve({ profile: prof({ primary: "run", sports: { ride: { enabled: false } } }), hours: 4, sessions: 4, run: { experienced: true, longest: 70 } });
+    const d = solve({ profile: prof({ primary: "run", sports: { ride: { enabled: false } } }), load: 220, sessions: 4, run: { experienced: true, longest: 70 } });
     expect(d.filter((x) => x.role !== "rest").every((x) => x.sport === "run")).toBe(true);
     expect(d.find((x) => x.role === "long")!.minutes).toBeLessThanOrEqual(77);
   });
@@ -349,7 +388,8 @@ describe("simulace trenéra", () => {
     for (let i = 1; i < byWeek.length; i++) expect(byWeek[i]!).toBeLessThan(byWeek[i - 1]! + 0.05);
     expect(s.ctl).toBeLessThan(41);
     expect(s.ctl).toBeGreaterThan(25);
-    expect(s.weeks[0]!.budget.sessions).toBe(3);
+    expect(s.weeks[0]!.budget.load).toBeLessThan(45 * 7);
+    expect(s.weeks[0]!.budget.phase).toBe("offseason");
   });
   it("udržení: kondice zůstane zhruba stejná", () => {
     const s = simulate({ start: "2026-06-01", days: 56, goal: "udrzeni", ctl: 50 });
