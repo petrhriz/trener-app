@@ -291,7 +291,8 @@ export function runCoach3(inp: Coach3Input): Plan3 {
         }
         let b: Built;
         if (x.role === "key") {
-          if (!qualityOk(x.sport)) {
+          // tvoje výslovná volba „kvalita“ platí i pro sport bez intervalů v profilu
+          if (!qualityOk(x.sport) && f?.type !== "quality") {
             x.role = "endurance";
             x.why.push(`${SPORT_WORD[x.sport]}: bez intervalů (v profilu nebo zatím málo běhání) → Z2`);
           }

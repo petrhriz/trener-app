@@ -111,6 +111,16 @@ describe("souhrn za 4 týdny", () => {
 });
 
 describe("kvalita a tvůj sport dne", () => {
+  it("tvoje volba běžky + kvalita platí (žádná další kvalita v týdnu navíc)", () => {
+    const w1 = runCoach3(input()).coach.horizon[1]!;
+    const d = w1.days.find((x) => x.role === "endurance")!.date;
+    const out = runCoach3(input({ constraints: [{ date: d, kind: "sport", note: "xc_ski" }, { date: d, kind: "typ", note: "quality" }] }));
+    const day = out.days.find((x) => x.date === d) ?? null;
+    const h = out.coach.horizon[1]!.days.find((x) => x.date === d)!;
+    expect(h.role).toBe("key");
+    expect(h.sport).toBe("xc_ski");
+    if (day) expect(day.name).toMatch(/Běžky/);
+  });
   it("den s běžkami (bez intervalů) kvalitu nedostane – přesune se na jiný den, týden ji má", () => {
     const base = runCoach3(input());
     const w1 = base.coach.horizon[1]!;
