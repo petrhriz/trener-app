@@ -106,7 +106,8 @@ describe("souhrn za 4 týdny", () => {
     expect(only).not.toContain("obvykle jezdíš");
   });
   it("pokles a splněné udržení: krátce", () => {
-    expect(horizonSummary([wk(-1, 150, 40), wk(-1, 150, 39), wk(-1, 150, 38), wk(-1, 150, 37)], 41, 200)).toMatch(/řízený pokles, asi 1,0 za týden/);
+    const zw = (c: number) => ({ planned: 150, ctlEnd: c, target: { ramp: -1, done: 0, phase: "offseason", floor: 33.9 } as any });
+    expect(horizonSummary([zw(40), zw(39), zw(38), zw(37)], 41, 200)).toMatch(/zimnímu základu 33,9/);
     expect(horizonSummary([wk(0, 290, 41.7), wk(0, 290, 41.7), wk(0, 290, 41.7), wk(0, 290, 41.7)], 41.8, 290)).toMatch(/drží se/);
   });
 });

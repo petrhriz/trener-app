@@ -151,6 +151,8 @@ export function runCoach3(inp: Coach3Input): Plan3 {
     weekSessions: weekStarts4.map(sessionsIn),
     weekOff: weekStarts4.map((ws) => [0, 1, 2, 3, 4, 5, 6].filter((i) => off.has(addDays(ws, i))).length),
     provenRamp: null,
+    // vrchol sezóny: nejvyšší kondice za posledních 6 měsíců (zimní základ = jeho 57,5 %)
+    seasonPeak: (() => { let mx = 0; for (let i = 1; i <= 183; i++) { const m = inp.metric(addDays(T, -i)); if (m && m.ctl > mx) mx = m.ctl; } return mx || null; })(),
   };
   const rides28 = inp.acts.filter((a) => a.date > addDays(T, -28) && planSport(a.sport) === p.primary && (a.moving_s ?? 0) >= 20 * 60).map((a) => (a.moving_s ?? 0) / 60);
   const longest = Math.round(Math.max(60, ...rides28));
@@ -205,7 +207,8 @@ export function runCoach3(inp: Coach3Input): Plan3 {
     for (let d = tg.from; d < addDays(tg.weekStart, 7); d = addDays(d, 1)) dates.push(d);
     const winter = tg.winter;
     const rate = rateOf(p.primary).rate;
-    const capsOf = (sport: PlanSport, role: Role) => capsFor({ sport, role, winter, longest, typical, runLongest: run.longest });
+    // zimní krátké délky jen pro Zimu a Udržování – Zlepšit v zimě je záměrné budování základu, délky jako v sezóně
+    const capsOf = (sport: PlanSport, role: Role) => capsFor({ sport, role, winter: tg.shortDays, longest, typical, runLongest: run.longest });
 
     // kolik tréninků, kvalit a jestli dlouhý
     const capE = capsOf(p.primary, "endurance");
@@ -449,7 +452,9 @@ export function horizonSummary(weeks: Pick<Week3, "planned" | "ctlEnd" | "target
   const end = weeks[weeks.length - 1]!.ctlEnd;
   const ramp = weeks[0]!.target.ramp;
   const head = `Za ${weeks.length} týdny: kondice ${n1(ctlNow)} → ${n1(end)}`;
-  if (ramp < 0) return `${head} (řízený pokles, asi ${n1((ctlNow - end) / weeks.length)} za týden).`;
+  const floor = weeks[0]!.target.floor;
+  if (weeks[0]!.target.phase === "offseason") return floor != null ? `${head}. Zima: kondice klesá k zimnímu základu ${n1(floor)} (vrchol sezóny − 42,5 %), nejdřív rychleji, u základu se zastaví a drží.` : `${head} (zima).`;
+  if (ramp < 0) return `${head} (ladění, asi ${n1((ctlNow - end) / weeks.length)} za týden).`;
   const goalEnd = ctlNow + ramp * weeks.length;
   if (end >= goalEnd - 0.5) return `${head} – ${ramp === 0 ? "drží se" : "roste podle cíle"}.`;
   // proč ne: jen omezení, která opravdu zasáhla (a ve kterých týdnech)
@@ -462,7 +467,7 @@ export function horizonSummary(weeks: Pick<Week3, "planned" | "ctlEnd" | "target
   if (r.length) why.push(`${r.map(wk).join(" a ")} týden je lehčí (4. týden bloku)`);
   // plán nedá ani cíl po omezeních: tréninky se nevejdou do stropů délek (v zimě Z2 do 75 min, dlouhá do 2 h)
   const short = weeks.filter((w) => !w.target.recoveryWeek && w.planned < w.target.load * 0.93);
-  if (short.length) why.push(weeks[0]!.target.winter ? "do zimních délek (Z2 do 75 min, dlouhá do 2 h, kvalita 1 h) se víc zátěže nevejde" : "do délek tréninků a volných dní se víc zátěže nevejde");
+  if (short.length) why.push(weeks[0]!.target.shortDays ? "do zimních délek (Z2 do 75 min, dlouhá do 2 h, kvalita 1 h) se víc zátěže nevejde" : "do délek tréninků a volných dní se víc zátěže nevejde");
   if (!why.length) why.push("tréninky se do délek a volných dní víc nevejdou");
   const cur = weeks[weeks.length - 1]!.target;
   const settled = cur.limit == null && cur.load >= cur.need - 5;
@@ -593,7 +598,7 @@ function toPlan(inp: Coach3Input, weeks: Week3[], o: { from: string; todayDone: 
     const past = new Map<string, V2Past>();
     for (let i = -3; i < 7; i++) { const d = addDays(w.weekStart, i); if (d < w.target.from) past.set(d, v2Past(d)); }
     const fp = project(o.startState, addDays(o.from, -1), projDates.map((d) => dayOf(d)?.load ?? 0)).filter((x) => x.date >= w.target.from && x.date < addDays(w.weekStart, 7));
-    const caps = { easy: capsFor({ sport: "ride", role: "endurance", winter: w.target.winter, longest: o.longest, typical: o.typical, runLongest: o.runLongest }).max, long: capsFor({ sport: "ride", role: "long", winter: w.target.winter, longest: o.longest, typical: o.typical, runLongest: o.runLongest }).max, key: capsFor({ sport: "ride", role: "key", winter: w.target.winter, longest: o.longest, typical: o.typical, runLongest: o.runLongest }).max - 20 };
+    const caps = { easy: capsFor({ sport: "ride", role: "endurance", winter: w.target.shortDays, longest: o.longest, typical: o.typical, runLongest: o.runLongest }).max, long: capsFor({ sport: "ride", role: "long", winter: w.target.shortDays, longest: o.longest, typical: o.typical, runLongest: o.runLongest }).max, key: capsFor({ sport: "ride", role: "key", winter: w.target.shortDays, longest: o.longest, typical: o.typical, runLongest: o.runLongest }).max - 20 };
     return validateWeek({
       weekStart: w.weekStart,
       from: w.target.from,

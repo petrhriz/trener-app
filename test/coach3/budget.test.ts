@@ -45,7 +45,8 @@ describe("cíl týdne od dnešní kondice (tvůj případ 12. 11.: v pondělí 4
   it("zbývající dny: růst se krátí poměrem dní (pá–ne = 3/7 týdne)", () => {
     const z = weekTargets({ ...base, goal: "zvyseni", history: hist([300, 300, 300, 300]) })[0]!;
     expect(z.days).toBe(3);
-    expect(z.ctlGoal).toBeCloseTo(40.8 + (1 * 3) / 7, 1);
+    // Základ: +3 za týden (TrainingPeaks: do kondice 45 nízké riziko do 3)
+    expect(z.ctlGoal).toBeCloseTo(40.8 + (3 * 3) / 7, 1);
   });
   it("strop podle historie: když se cíl nevejde, poznámka říká potřebu, strop i výsledek", () => {
     const t = weekTargets({ ...base, goal: "udrzeni", history: hist([100, 100, 100, 100]), doneLoad: 0, from: "2026-11-16" })[0]!;
@@ -90,5 +91,22 @@ describe("cíl od kondice na stránce (včera 41,8, dnes bez tréninku 40,8, čt
     expect(p.ctlEnd).toBeLessThan(40.8);
     expect(u.ctlEnd).toBeCloseTo(40.8, 1);
     expect(z.ctlEnd).toBeGreaterThan(40.8 + 0.4);
+  });
+});
+
+import { WINTER_DROP, rampOf } from "../../src/core/coach3/budget";
+describe("zima: k zimnímu základu (vrchol − 42,5 %)", () => {
+  it("vysoko nad základem klesá rychle (nejvýš 5 za týden), blízko pomalu, na základu drží", () => {
+    const peak = 58.9, floor = peak * (1 - WINTER_DROP);
+    expect(floor).toBeCloseTo(33.9, 1);
+    expect(rampOf("offseason", 58.9, peak)).toBeCloseTo(-0.15 * (58.9 - floor), 5);
+    expect(rampOf("offseason", 80, 80)).toBe(-5); // strop 5 za týden
+    expect(rampOf("offseason", 40.8, peak)).toBeCloseTo(-0.15 * (40.8 - floor), 5);
+    expect(rampOf("offseason", 33, peak)).toBe(0);
+  });
+  it("Základ +3, nad kondicí 45 +4; udržet 0", () => {
+    expect(rampOf("base", 40, null)).toBe(3);
+    expect(rampOf("build", 50, null)).toBe(4);
+    expect(rampOf("maintain", 50, null)).toBe(0);
   });
 });

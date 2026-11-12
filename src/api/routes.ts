@@ -438,7 +438,7 @@ function goalsView(ctx: CtxT, wl: number[]) {
   return [
     { key: "zvyseni", label: "Zlepšit", lo: z.lo, hi: z.hi, rides: rpw, quality: lim, maxRun: 3, z2Max: mx("zvyseni"), text: `Kondice (CTL) má růst o 1–3 body týdně: zátěž ${z.lo}–${z.hi} za týden, ${rpw} tréninky, kvalita ${lim}× týdně, Z2 až ${mx("zvyseni")} (všední / víkend). Max. 3 dny tréninku za sebou.${capNote(z)}` },
     { key: "udrzeni", label: "Udržet", lo: u.lo, hi: u.hi, rides: rpw, quality: lim, maxRun: 2, z2Max: mx("udrzeni"), text: `Kondice zůstává: zátěž ${u.lo}–${u.hi} za týden, ${rpw} tréninky, kvalita ${lim}× týdně ve stejné dávce, Z2 až ${mx("udrzeni")}. Max. 2 dny tréninku za sebou.${capNote(u)}` },
-    { key: "pokles", label: "Řízený pokles", lo: p.lo, hi: p.hi, rides: Math.max(2, rpw - 1), quality: 1, maxRun: 2, z2Max: mx("pokles"), text: `Konec sezóny / zima: zátěž ${p.lo}–${p.hi} za týden, o trénink méně (${Math.max(2, rpw - 1)} týdně), jedna kratší kvalita drží intenzitu, Z2 až ${mx("pokles")}. Kondice klesá pomalu, forma roste.${capNote(p)}` },
+    { key: "pokles", label: "Zima", lo: p.lo, hi: p.hi, rides: Math.max(2, rpw - 1), quality: 1, maxRun: 2, z2Max: mx("pokles"), text: `Konec sezóny / zima: zátěž ${p.lo}–${p.hi} za týden, o trénink méně (${Math.max(2, rpw - 1)} týdně), jedna kratší kvalita drží intenzitu, Z2 až ${mx("pokles")}. Kondice klesá pomalu, forma roste.${capNote(p)}` },
     { key: "zavod", label: "Závod", lo: z.lo, hi: z.hi, rides: rpw, quality: lim, maxRun: 3, z2Max: mx("zavod"), text: `Příprava na ${ctx.s.goal_name || "závod"}${ctx.s.goal_date ? ` (${dm(ctx.s.goal_date)})` : ""}: zátěž jako Zlepšit (${z.lo}–${z.hi}).` },
   ];
 }
@@ -450,9 +450,9 @@ function goalsViewV2(ctx: CtxT, plan: Awaited<ReturnType<typeof planFor>>) {
   const now = co ? ` Tento týden: ${String(co.hours).replace(".", ",")} h, zátěž ${t.lo}–${t.hi}, kvalita ${co.keys}×.` : "";
   const g = (key: Goal, label: string, text: string) => ({ key, label, lo: t.lo, hi: t.hi, text: text + (ctx.s.goal === key ? now : "") });
   return [
-    g("zvyseni", "Zlepšit", "Zátěž týdne se počítá z kondice tak, aby rostla asi o bod týdně v zimě a o 1,5–3 body v sezóně. 3 týdny přidává, 4. je lehčí. Kvality těžknou, když je zvládáš."),
+    g("zvyseni", "Zlepšit", "Zátěž týdne se počítá z kondice tak, aby rostla o 3 body týdně (nad kondicí 45 o 4) – bezpečná hrana podle TrainingPeaks a Friela. 3 týdny přidává, 4. je lehčí (o 40–50 % méně). Kvality těžknou, když je zvládáš."),
     g("udrzeni", "Udržet", "Zátěž týdne = 7 × kondice, tedy tolik, aby kondice zůstala. Kvality zůstávají stejně těžké, jen se střídají."),
-    g("pokles", "Řízený pokles", "Zima / konec sezóny: zátěž týdne je nastavená tak, aby kondice klesala asi o bod týdně. Jedna lehčí kvalita týdně drží intenzitu."),
+    g("pokles", "Zima", "Mimo sezónu: kondice klesá k zimnímu základu (vrchol sezóny − 42,5 %, trenéři uvádějí 30–40 %), hned po sezóně rychleji, u základu se zastaví a drží. Zimní délky: Z2 do 75 min, dlouhá do 2 h. Jedna lehčí kvalita týdně drží intenzitu."),
     g("zavod", "Závod", `Příprava na ${ctx.s.goal_name || "závod"}${ctx.s.goal_date ? ` (${dm(ctx.s.goal_date)})` : ""}: Základ, pak Rozvoj a posledních 10–14 dní ladění.`),
   ];
 }

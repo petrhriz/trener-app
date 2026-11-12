@@ -108,7 +108,8 @@ function weeksPrevEnd(days: any[], ws: string) { const p = days.filter((d) => d.
 
 const W = "2026-11-16", S = "2027-04-05";
 const scenarios: Scenario[] = [
-  { id: "zima-pokles", title: "Zima · Řízený pokles", who: "Pravidelný cyklista, ~280 zátěže / 4 tréninky týdně", goal: "pokles", start: W, weeks: 8, histLoad: 280, histSessions: 4 },
+  { id: "zima-po-sezone", title: "Zima hned po sezóně (vrchol ~58)", who: "Silná sezóna, ~400 zátěže / 5 tréninků týdně, od 5. 10. cíl Zima", goal: "pokles", start: "2026-10-05", weeks: 20, histLoad: 400, histSessions: 5 },
+  { id: "zima-pokles", title: "Zima (cíl Zima)", who: "Pravidelný cyklista, ~280 zátěže / 4 tréninky týdně", goal: "pokles", start: W, weeks: 8, histLoad: 280, histSessions: 4 },
   { id: "zima-udrzet", title: "Zima · Udržet", who: "Stejný cyklista", goal: "udrzeni", start: W, weeks: 8, histLoad: 280, histSessions: 4 },
   { id: "zima-zlepsit", title: "Zima · Zlepšit (Základ)", who: "Stejný cyklista", goal: "zvyseni", start: W, weeks: 8, histLoad: 280, histSessions: 4 },
   { id: "sezona-zlepsit", title: "Sezóna · Zlepšit (Rozvoj)", who: "Stejný cyklista na jaře", goal: "zvyseni", start: S, weeks: 8, histLoad: 300, histSessions: 4 },

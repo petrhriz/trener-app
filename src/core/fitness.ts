@@ -98,7 +98,7 @@ export type Goal = "udrzeni" | "zvyseni" | "pokles" | "zavod";
 export const GOAL_LABEL: Record<Goal, string> = {
   zvyseni: "zlepšení kondice",
   udrzeni: "udržení formy",
-  pokles: "řízený pokles (zima / odpočinek)",
+  pokles: "zima (mimo sezónu)",
   zavod: "příprava na závod",
 };
 

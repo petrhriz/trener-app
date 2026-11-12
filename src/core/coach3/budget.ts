@@ -2,7 +2,32 @@
 // a výhled nikdy nejdou proti sobě: pokles kondici snižuje, udržet drží, zlepšit zvedá – pokud to nepustí omezení,
 // a pak to výsledek řekne čísly.
 import { K_CTL, type Goal } from "../fitness";
-import { type Phase, PHASE_LABEL, isWinter, phaseFor, rampFor } from "../coach/target";
+import { type Phase, isWinter, phaseFor } from "../coach/target";
+
+// ---------- pravidla podle zdrojů (docs/trener-v3/zdroje.md) ----------
+/** Zima: kondice klesá k zimnímu základu = vrchol sezóny × (1 − pokles). Trenéři uvádějí pokles 30–40 % od vrcholu
+ *  (TrainRight), uživatel chce 35–50 % (jeho dřívější zimy byly −64 až −88 %) → střed 42,5 %. */
+export const WINTER_DROP = 0.425;
+/** Jak rychle se ke základu klesá: 15 % zbývajícího rozdílu za týden, nejvýš 5 bodů. Zdroje dávají jen „2–4 týdny
+ *  volněji hned po sezóně“ (Roadman), konkrétní rychlost je moje volba: rychle na začátku, u základu se zastaví. */
+export const WINTER_APPROACH = 0.15, WINTER_MAX_DROP = 5;
+/** Růst kondice v Základu a Rozvoji: TrainingPeaks – při kondici do 45 nízké riziko do 3 bodů za týden, nad 45
+ *  4–6 střední; Friel 5–8 pro většinu. Beru spodní, bezpečnou hranu: 3, nad 45 → 4. */
+export const rampUp = (ctl: number) => (ctl <= 45 ? 3 : 4);
+/** Lehčí týden (Friel 3:1): o 40–50 % méně objemu (Roadman, přehled výzkumu taperu) → 55 % běžného týdne. */
+export const RECOVERY_SHARE = 0.55;
+export const PHASE_LABEL3: Record<Phase, string> = { offseason: "Zima", maintain: "Udržování", base: "Základ", build: "Rozvoj", taper: "Ladění" };
+
+/** Růst kondice za týden podle fáze. Zima: k základu (vrchol × 0,575), u základu 0 (drží). */
+export function rampOf(phase: Phase, ctl: number, seasonPeak: number | null): number {
+  if (phase === "offseason") {
+    const floor = (seasonPeak ?? ctl) * (1 - WINTER_DROP);
+    return ctl > floor ? -Math.min(WINTER_MAX_DROP, WINTER_APPROACH * (ctl - floor)) : 0;
+  }
+  if (phase === "maintain") return 0;
+  if (phase === "taper") return -2;
+  return rampUp(ctl);
+}
 import { addDays, daysBetween, mondayOf } from "../../lib/time";
 
 const A = 1 - K_CTL;
@@ -29,6 +54,8 @@ export interface History {
   weekOff: number[];
   /** typický (medián) růst kondice za týden za 4 měsíce; null = neznámý */
   provenRamp: number | null;
+  /** nejvyšší kondice za posledních 6 měsíců (vrchol sezóny) – pro zimní základ */
+  seasonPeak?: number | null;
 }
 
 /**
@@ -59,6 +86,10 @@ export interface WeekTarget {
   cycleIdx: number;
   recoveryWeek: boolean;
   winter: boolean;
+  /** zimní krátké délky (Z2 75 min, dlouhá 2 h) – jen Zima a Udržování; Zlepšit v zimě trénuje normálně */
+  shortDays: boolean;
+  /** zimní základ (jen Zima) */
+  floor: number | null;
   /** kondice na začátku plánovaného úseku (u tohoto týdne dnešní) */
   ctlStart: number;
   /** kam má kondice podle cíle dojít na konci týdne */
@@ -122,7 +153,7 @@ export function weekTarget(inp: BudgetInput, k: number, ctl: number, prevTotal: 
   const cyc = phase === "base" || phase === "build";
   const cycleIdx = cyc ? cycleIndex(weekStart) : 1;
   const recoveryWeek = cyc && cycleIdx === 4;
-  const ramp = rampFor(phase, inp.history.provenRamp);
+  const ramp = Math.round(rampOf(phase, ctl, inp.history.seasonPeak ?? null) * 10) / 10;
   const notes: string[] = [];
   // cíl jen pro plánované dny: růst se krátí poměrem dní (ve čtvrtek zbývají 4 dny → 4/7 týdenního růstu);
   // tento týden se měří od kondice na stránce (dnešek bez dnešního tréninku), ne od včerejška
@@ -141,20 +172,20 @@ export function weekTarget(inp: BudgetInput, k: number, ctl: number, prevTotal: 
     limit = "historie";
   }
   if (recoveryWeek) {
-    const easy = Math.max(0, r0(prevTotal * 0.65) - done);
+    const easy = Math.max(0, r0(prevTotal * RECOVERY_SHARE) - done);
     if (easy < load) { load = easy; limit = "lehčí týden"; }
   }
   const f = k === 0 ? inp.fatigue : k === 1 ? (1 + inp.fatigue) / 2 : 1;
   if (f < 1) { load = load * f; limit = "únava"; }
   load = r0(load);
   const ctlEnd = ctlAfter(ctl, load, days);
-  const goalTxt = ramp < 0 ? `řízený pokles kondice na ${n1(ctlGoal)}` : ramp === 0 ? `udržení kondice ${n1(ref)}` : `růst kondice na ${n1(ctlGoal)}`;
+  const goalTxt = ramp < 0 ? `zimní pokles kondice na ${n1(ctlGoal)}` : ramp === 0 ? `udržení kondice ${n1(ref)}` : `růst kondice na ${n1(ctlGoal)}`;
   const span = k === 0 && days < 7 ? " do neděle" : "";
   if (limit === "historie" && load < need)
     notes.push(`Na ${goalTxt} by bylo potřeba ${need} zátěže${span}. ${hasHistory && k === 0 ? `Poslední týdny jezdíš kolem ${usual} týdně a víc než o 30 % najednou nepřidávám` : k > 0 ? "Přidávám nejvýš o 15 % za týden" : "Bez historie začínám opatrně"}, takže ${load} → kondice ${n1(ctlEnd)}.`);
-  if (limit === "lehčí týden") notes.push(`Lehčí 4. týden bloku: ${load} zátěže (asi 65 % běžného) → kondice ${n1(ctlEnd)}.`);
+  if (limit === "lehčí týden") notes.push(`Lehčí 4. týden bloku: ${load} zátěže (asi 55 % běžného, o 40–50 % méně podle Friela) → kondice ${n1(ctlEnd)}.`);
   if (limit === "únava") notes.push(`Únava: týden o ${r0((1 - f) * 100)} % lehčí → kondice ${n1(ctlEnd)}.`);
-  return { weekStart, from, days, phase, phaseLabel: PHASE_LABEL[phase], ramp, cycleIdx, recoveryWeek, winter: isWinter(weekStart), ctlStart: r1(ref), ctlGoal: r1(ctlGoal), need, load, done: r0(done), ctlEnd: r1(ctlEnd), limit, notes };
+  return { weekStart, from, days, phase, phaseLabel: PHASE_LABEL3[phase], ramp, cycleIdx, recoveryWeek, winter: isWinter(weekStart), shortDays: isWinter(weekStart) && (phase === "offseason" || phase === "maintain"), floor: phase === "offseason" && inp.history.seasonPeak ? r1(inp.history.seasonPeak * (1 - WINTER_DROP)) : null, ctlStart: r1(ref), ctlGoal: r1(ctlGoal), need, load, done: r0(done), ctlEnd: r1(ctlEnd), limit, notes };
 }
 
 /** Cíle všech týdnů s rovnoměrným odhadem kondice (engine místo toho navazuje skutečným výhledem plánu). */

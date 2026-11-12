@@ -18,8 +18,8 @@ Hlášené chyby měly společnou příčinu – v2 míchal různé výchozí bo
 
 ## Princip
 
-1. **Cíl** = kam má kondice dojít. Ze sportovcova cíle a fáze vychází růst za týden (pokles −1, udržet 0,
-   základ +1, rozvoj +1,5 až +3, ladění −2). Pro zbytek týdne se růst krátí poměrem dní.
+1. **Cíl** = kam má kondice dojít. Ze sportovcova cíle a fáze vychází růst za týden (Zima k zimnímu základu, udržet 0,
+   Zlepšit +3, nad 45 +4, ladění −2) – zdroje v `zdroje.md`. Týden se plánuje vždy od pondělí.
 2. **Potřebná zátěž** se spočítá přesně z rovnice kondice (stejná jako intervals.icu): kolik zátěže za zbývající
    dny dovede kondici z dnešní hodnoty na cíl.
 3. **Omezení jen dolů**: poslední 4 týdny (+30 %, aspoň +40), únava, lehčí 4. týden, délky tréninků.

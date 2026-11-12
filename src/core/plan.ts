@@ -194,7 +194,7 @@ export interface PlanResult {
 }
 
 const isBike = (s: Sport) => BIKE_SPORTS.includes(s);
-export const GOAL_SHORT: Record<string, string> = { zvyseni: "Zlepšit", udrzeni: "Udržet", pokles: "Řízený pokles", zavod: "Závod" };
+export const GOAL_SHORT: Record<string, string> = { zvyseni: "Zlepšit", udrzeni: "Udržet", pokles: "Zima", zavod: "Závod" };
 const DOW_QUALITY_PREF = [2, 3, 4, 6, 5, 1, 7];
 
 interface Slot {
