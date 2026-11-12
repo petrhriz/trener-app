@@ -201,6 +201,8 @@ export function runCoach3(inp: Coach3Input): Plan3 {
     const longMin = loadFor(capsOf(p.primary, "long").min, rate, "long");
     const long = sessions >= 2 && hasWeekend && !(k === 0 && doneLong0) && tg.load - keys * keyLoad >= longMin + (sessions - keys - 1) * loadFor(capE.min, rate, "endurance");
 
+    // může mít sport dne intervaly? (hlavní sport ano; další podle profilu, běh jen při pravidelném běhání)
+    const qualityOk = (s: PlanSport) => s === p.primary || (!!p.sports[s]?.quality && (s !== "run" || run.experienced));
     // kostra
     const skDays: SkDay[] = dates.map((d) => {
       const f: Fixed | undefined = fixed.get(d);
@@ -212,7 +214,8 @@ export function runCoach3(inp: Coach3Input): Plan3 {
         type: f?.type,
         must: !!(f?.sport || f?.minutes || f?.own || f?.edit),
         ownLong: !!f?.own && f.own.min >= 120,
-        noKey: d === T && inp.recovery === "yellow",
+        // 🟡 ráno, nebo tvůj sport dne bez intervalů (běžky, chůze…) – kvalita patří jinam
+        noKey: (d === T && inp.recovery === "yellow") || (!!f?.sport && !qualityOk(f.sport)),
         badWeather: !!w?.bad,
       };
     });
@@ -288,8 +291,7 @@ export function runCoach3(inp: Coach3Input): Plan3 {
         }
         let b: Built;
         if (x.role === "key") {
-          const quality = x.sport === p.primary ? true : p.sports[x.sport]?.quality && (x.sport !== "run" || run.experienced);
-          if (!quality) {
+          if (!qualityOk(x.sport)) {
             x.role = "endurance";
             x.why.push(`${SPORT_WORD[x.sport]}: bez intervalů (v profilu nebo zatím málo běhání) → Z2`);
           }

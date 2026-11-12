@@ -109,3 +109,15 @@ describe("souhrn za 4 týdny", () => {
     expect(horizonSummary([wk(0, 290, 41.7), wk(0, 290, 41.7), wk(0, 290, 41.7), wk(0, 290, 41.7)], 41.8, 290)).toMatch(/drží se/);
   });
 });
+
+describe("kvalita a tvůj sport dne", () => {
+  it("den s běžkami (bez intervalů) kvalitu nedostane – přesune se na jiný den, týden ji má", () => {
+    const base = runCoach3(input());
+    const w1 = base.coach.horizon[1]!;
+    const key = w1.days.find((d) => d.role === "key")!;
+    const out = runCoach3(input({ constraints: [{ date: key.date, kind: "bezky", note: null }] }));
+    const h1 = out.coach.horizon[1]!;
+    expect(h1.days.find((d) => d.date === key.date)!.role).not.toBe("key");
+    expect(h1.days.filter((d) => d.role === "key").length).toBe(w1.days.filter((d) => d.role === "key").length);
+  });
+});
