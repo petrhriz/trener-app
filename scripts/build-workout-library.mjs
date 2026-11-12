@@ -26,10 +26,21 @@ const PER_CAT = { tempo: 24, ss: 32, thr: 36, ou: 28, vo2: 32, vo2s: 24, ana: 20
 const HARD = 0.76; // nad vrškem Z2
 
 /**
- * Délka úseku zaokrouhlená na čitelnou hodnotu: od 10 min na celé minuty, od 2 min na půlminuty, kratší na sekundy
- * (zdrojové tréninky mají i úseky typu 17:03 nebo 6:18 – na kole se nedají rozumně odjet).
+ * Délky úseků jako v běžných tréninkových plánech (zdrojové tréninky mají i 17:03 nebo 6:18 – to se nedává).
+ * Práce od 10 min: běžné délky (10, 12, 15, 18, 20, 24, 25, 30 … min – srov. knihovna 80/20 Endurance, kde tempo
+ * má 15–45 min a cruise intervaly 3–15 min po celých minutách); 2–10 min celé minuty, pod 4 min i půlminuty;
+ * 1–2 min po půlminutách; kratší na běžné sekundy. Pauzy od minuty po půlminutách. Konkrétní sada je vlastní volba.
  */
-export const tidy = (s) => (s >= 600 ? Math.round(s / 60) * 60 : s >= 120 ? Math.round(s / 30) * 30 : Math.round(s));
+const LONG_MIN = [10, 12, 15, 18, 20, 24, 25, 30, 35, 40, 45, 50, 55, 60, 70, 80, 90];
+const SHORT_S = [5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 45];
+const nearest = (v, list) => list.reduce((b, x) => (Math.abs(x - v) < Math.abs(b - v) ? x : b));
+export const tidy = (s, work = true) => {
+  if (!work) return s >= 60 ? Math.round(s / 30) * 30 : Math.round(s / 5) * 5 || 5;
+  if (s >= 600) return nearest(s / 60, LONG_MIN) * 60;
+  if (s >= 240) return Math.round(s / 60) * 60;
+  if (s >= 60) return Math.round(s / 30) * 30;
+  return nearest(s, SHORT_S);
+};
 const attr = (tag, k) => { const m = new RegExp(`\\b${k}="([^"]+)"`).exec(tag); return m ? +m[1] : null; };
 
 /** ZWO → plochý seznam úseků [s, podíl FTP] */
@@ -58,7 +69,7 @@ function mainSet(segs, cat) {
   if (a < 0 || b < a) return null;
   // krátké tréninky: první těžký úsek hledat až po rozjetí (aspoň 5 min od začátku)
   if (short) { let t = 0; a = -1; for (let i = 0; i < segs.length; i++) { if (t >= 300 && segs[i][1] >= HARD) { a = i; break; } t += segs[i][0]; } if (a < 0 || b < a) return null; }
-  const m = segs.slice(a, b + 1).map(([d, p]) => [tidy(d), Math.round(p * 100)]);
+  const m = segs.slice(a, b + 1).map(([d, p]) => [tidy(d, p >= HARD), Math.round(p * 100)]);
   // sloučit sousední stejné úseky
   const out = [];
   for (const s of m) { const l = out[out.length - 1]; if (l && l[1] === s[1]) l[0] += s[0]; else out.push([...s]); }
