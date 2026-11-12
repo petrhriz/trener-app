@@ -115,7 +115,7 @@ export interface CoachInfo3 {
   plannedHard: number;
   plannedLoad: number;
   validation: WeekValidation;
-  horizon: { weekStart: string; detail: boolean; load: number; done: number; need: number; ctlStart: number; ctlEnd: number; ctlGoal: number; phaseLabel: string; recoveryWeek: boolean; days: { date: string; role: Role; sport: PlanSport; minutes: number; load: number; name: string | null; blocked: boolean }[] }[];
+  horizon: { weekStart: string; detail: boolean; load: number; done: number; need: number; target: number; ctlStart: number; ctlEnd: number; ctlGoal: number; phaseLabel: string; recoveryWeek: boolean; days: { date: string; role: Role; sport: PlanSport; minutes: number; load: number; name: string | null; blocked: boolean }[] }[];
 }
 
 export type Plan3 = PlanResult & { coach: CoachInfo3 };
@@ -369,16 +369,24 @@ export function runCoach3(inp: Coach3Input): Plan3 {
 /** Jedna věta: kam dojde kondice za 4 týdny a proč (hlavně když cíl nejde splnit hned). */
 export function horizonSummary(weeks: Pick<Week3, "planned" | "ctlEnd" | "target">[], ctlNow: number, usual: number): string {
   const n1 = (x: number) => x.toFixed(1).replace(".", ",");
-  const last = weeks[weeks.length - 1]!;
-  const end = last.ctlEnd;
+  const end = weeks[weeks.length - 1]!.ctlEnd;
   const ramp = weeks[0]!.target.ramp;
-  const keep = Math.round((7 * ctlNow) / 10) * 10;
-  const lastLoad = last.target.done + last.planned;
   const head = `Za ${weeks.length} týdny: kondice ${n1(ctlNow)} → ${n1(end)}`;
   if (ramp < 0) return `${head} (řízený pokles, asi ${n1((ctlNow - end) / weeks.length)} za týden).`;
   const goalEnd = ctlNow + ramp * weeks.length;
   if (end >= goalEnd - 0.5) return `${head} – ${ramp === 0 ? "drží se" : "roste podle cíle"}.`;
-  return `${head}. Na ${ramp === 0 ? "udržení" : "růst"} by bylo potřeba asi ${keep}${ramp > 0 ? " a víc" : ""} zátěže týdně (7 × kondice), teď jezdíš kolem ${usual}. Přidávám nejvýš o 15 % týdně, ve 4. týdnu už ${lastLoad} – kondice se pak usadí a dál ${ramp === 0 ? "drží" : "roste"}.`;
+  // proč ne: jen omezení, která opravdu zasáhla (a ve kterých týdnech)
+  const wk = (i: number) => (i === 0 ? "tento" : i === 1 ? "příští" : `${i + 1}.`);
+  const by = (l: string) => weeks.map((w, i) => (w.target.limit === l ? i : -1)).filter((i) => i >= 0);
+  const why: string[] = [];
+  const h = by("historie"), f = by("únava"), r = by("lehčí týden");
+  if (h.length) why.push(`zátěž přidávám postupně (obvykle jezdíš kolem ${usual} týdně, nejvýš o 30 %, pak o 15 % za týden)`);
+  if (f.length) why.push(`únava ubírá ${f.map(wk).join(" a ")} týden`);
+  if (r.length) why.push(`${r.map(wk).join(" a ")} týden je lehčí (4. týden bloku)`);
+  if (!why.length) why.push("tréninky se do zimních délek a volných dní víc nevejdou");
+  const cur = weeks[weeks.length - 1]!.target;
+  const settled = cur.limit == null && cur.load >= cur.need - 5;
+  return `${head}. Na ${ramp === 0 ? "udržení" : "růst"} by to chtělo víc, ale ${why.join(", ")}.${settled ? ` Od ${weeks.length}. týdne už zátěž cíli odpovídá a kondice ${ramp === 0 ? "drží" : "roste"}.` : ""}`;
 }
 
 function toPlan(inp: Coach3Input, weeks: Week3[], o: { from: string; todayDone: boolean; startState: { ctl: number; atl: number }; history: { weekLoads: number[] }; usual: number; fat: { notes: string[] }; longest: number; typical: number; runLongest: number; runExperienced: boolean }): Plan3 {
@@ -554,7 +562,7 @@ function toPlan(inp: Coach3Input, weeks: Week3[], o: { from: string; todayDone: 
     plannedHard: minutes0 > 0 ? Math.round((w0.days.reduce((t, x) => t + x.tiz, 0) / minutes0) * 100) : 0,
     plannedLoad: total0,
     validation,
-    horizon: weeks.map((w) => ({ weekStart: w.weekStart, detail: w.detail, load: w.planned, done: w.target.done, need: w.target.need, ctlStart: w.target.ctlStart, ctlEnd: w.ctlEnd, ctlGoal: w.target.ctlGoal, phaseLabel: w.target.phaseLabel, recoveryWeek: w.target.recoveryWeek, days: w.days.map((x) => ({ date: x.date, role: x.role, sport: x.sport, minutes: x.minutes, load: x.load, name: x.name, blocked: !!x.blocked })) })),
+    horizon: weeks.map((w) => ({ weekStart: w.weekStart, detail: w.detail, load: w.planned, done: w.target.done, need: w.target.need, target: w.target.load, ctlStart: w.target.ctlStart, ctlEnd: w.ctlEnd, ctlGoal: w.target.ctlGoal, phaseLabel: w.target.phaseLabel, recoveryWeek: w.target.recoveryWeek, days: w.days.map((x) => ({ date: x.date, role: x.role, sport: x.sport, minutes: x.minutes, load: x.load, name: x.name, blocked: !!x.blocked })) })),
   };
   return { from: dates[0]!, to: dates[dates.length - 1]!, days, changes, chart, loadPast7, loadNext7, qualityWeeks, warnings, weeklyTarget: { lo: Math.round(total0 * 0.9), hi: Math.round(total0 * 1.1), mid: total0 }, missed, done, coach };
 }

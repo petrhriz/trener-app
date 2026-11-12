@@ -128,7 +128,10 @@ export function weekTarget(inp: BudgetInput, k: number, ctl: number, prevTotal: 
   let load = need;
   let limit: WeekTarget["limit"] = null;
   // strop podle historie (celý týden včetně odjetého)
-  const cap = k === 0 ? (hasHistory ? Math.max(usual * 1.3, usual + 40) : 150) : Math.max(prevTotal * 1.15, prevTotal + 30);
+  // další týdny: z předchozího plánovaného (+15 %, aspoň +30), ale nikdy pod strop z historie – tento týden
+  // bývá neúplný (část odjetá, část plán), nesmí stáhnout další týdny pod to, co obvykle jezdíš
+  const histCap = hasHistory ? Math.max(usual * 1.3, usual + 40) : 150;
+  const cap = k === 0 ? histCap : Math.max(histCap, prevTotal * 1.15, prevTotal + 30);
   if (done + load > cap) {
     load = Math.max(0, cap - done);
     limit = "historie";

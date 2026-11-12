@@ -94,11 +94,15 @@ describe("Trenér v3 – plán", () => {
 import { horizonSummary } from "../../src/core/coach3/engine";
 describe("souhrn za 4 týdny", () => {
   const wk = (ramp: number, planned: number, ctlEnd: number) => ({ planned, ctlEnd, target: { ramp, done: 0 } as any });
-  it("udržet, ale jezdíš míň: řekne potřebu, obvyklou zátěž a kam se kondice usadí", () => {
-    const s = horizonSummary([wk(0, 181, 38.9), wk(0, 223, 37.8), wk(0, 259, 37.7), wk(0, 259, 37.7)], 41.8, 160);
-    expect(s).toContain("kondice 41,8 → 37,7");
-    expect(s).toContain("udržení by bylo potřeba asi 290");
-    expect(s).toContain("jezdíš kolem 160");
+  it("udržet nejde hned: vyjmenuje jen omezení, která zasáhla, a kdy se kondice usadí", () => {
+    const lim = (limit: string | null, load: number, need: number) => ({ planned: load, ctlEnd: 40, target: { ramp: 0, done: 0, limit, load, need } as any });
+    const s = horizonSummary([lim("únava", 150, 170), lim("historie", 260, 288), lim(null, 284, 284), lim(null, 284, 284)], 41.8, 241);
+    expect(s).toContain("kondice 41,8 → 40,0");
+    expect(s).toContain("únava ubírá tento týden");
+    expect(s).toContain("obvykle jezdíš kolem 241");
+    expect(s).toContain("Od 4. týdne už zátěž cíli odpovídá");
+    const only = horizonSummary([lim("únava", 150, 170), lim(null, 284, 284), lim(null, 284, 284), lim(null, 284, 284)], 41.8, 241);
+    expect(only).not.toContain("obvykle jezdíš");
   });
   it("pokles a splněné udržení: krátce", () => {
     expect(horizonSummary([wk(-1, 150, 40), wk(-1, 150, 39), wk(-1, 150, 38), wk(-1, 150, 37)], 41, 200)).toMatch(/řízený pokles, asi 1,0 za týden/);
