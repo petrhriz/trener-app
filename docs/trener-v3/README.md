@@ -40,3 +40,20 @@ Hlášené chyby měly společnou příčinu – v2 míchal různé výchozí bo
 | 4 | Běžecké zóny (vlastní práh pro běh) | čeká |
 | 5 | Vyhodnocení kvalit a stupně náročnosti, střídání kategorií přes týdny | čeká |
 | 6 | Smazat v1 a v2 | až v3 projde na ostrých datech |
+
+## Jak vyzkoušet
+
+- Zapnout: Nastavení → Trenér → „v3 – nový (zkušební)“ → Uložit. Vypnout stejně (v2 / původní).
+- Bez přepnutí, jen čtení: `GET /admin/coach3?goal=udrzeni` (admin klíč) – plán v3 na ostrých datech
+  i pro jiný cíl. Testy: `test/coach3/`.
+
+## Ostrá data 12. 11. 2026 (kondice 41,8, VST pod normou → únava −10 %)
+
+| Cíl | Za 4 týdny | Týdny (zátěž) |
+|---|---|---|
+| Řízený pokles | 41,8 → 37,2 (−1,1 / týden) | 163 · 215 · 223 · 223 |
+| Udržet | 41,8 → 40,6, od 3. týdne drží | 185 · 260 · 281 · 281 |
+| Zlepšit | 41,8 → 40,8 (3. týden lehčí), pak roste | 209 · 295 · 189 · 328 |
+
+Pokles kondici vždy snižuje, udržet drží, zlepšit zvedá – rozdíl proti cíli jen kvůli únavě a lehčímu týdnu, a to
+souhrn v plánu říká.
