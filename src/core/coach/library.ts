@@ -62,8 +62,12 @@ export interface PickInput {
   seed: string;
 }
 
-/** Výběr tréninku z knihovny: správná kategorie a stupeň, vejde se, a co nejdéle nebyl. */
-export function pickLib(o: PickInput): LibWorkout {
+/**
+ * Výběr tréninku z knihovny: správná kategorie a stupeň, vejde se, a co nejdéle nebyl.
+ * Délka hlavní části a strop minut nad Z2 jsou tvrdé limity: když se nevejde nic, vrací null
+ * (engine pak zkusí jinou kategorii, nebo dá místo kvality Z2) – nikdy trénink nad limit.
+ */
+export function pickLib(o: PickInput): LibWorkout | null {
   const list = byCat.get(o.cat) ?? [];
   const fits = (w: LibWorkout) => w.m <= o.maxMain && (o.maxTiz == null || w.t <= o.maxTiz + 0.01);
   const want = Math.max(0, Math.min(TIERS - 1, Math.round(o.tier)));
@@ -71,11 +75,10 @@ export function pickLib(o: PickInput): LibWorkout {
   list.forEach((w, i) => {
     if (!fits(w)) return;
     const dist = Math.abs(tierOfIdx(i, list.length) - want);
-    const score = dist * 10 + (o.avoidIds.includes(w.id) ? 25 : 0) + (o.avoidShapes.includes(w.n) ? 6 : 0) + (hash(o.seed + w.id) % 1000) / 1000;
+    const score = dist * 10 + (o.avoidIds.includes(w.id) ? 25 : 0) + (o.avoidShapes.includes(w.n) ? 11 : 0) + (hash(o.seed + w.id) % 1000) / 1000;
     if (!best || score < best.score) best = { w, score };
   });
-  // nic se nevejde (velmi krátký den): nejlehčí trénink kategorie
-  return (best as { w: LibWorkout } | null)?.w ?? list[0]!;
+  return (best as { w: LibWorkout } | null)?.w ?? null;
 }
 
 // ---------- kroky podle tepu ----------
@@ -196,9 +199,14 @@ export interface Built {
   family: Family;
   level: number;
   wid: string | null;
-  /** cíl pracovního úseku (pro vyhodnocení okruhů) */
-  plan: { reps: number; work_s: number; lo: number; hi: number; sets?: number } | null;
+  /** cíl pracovních úseků (pro vyhodnocení okruhů): první blok + všechny bloky, když jich je víc druhů */
+  plan: WorkPlan | null;
 }
+
+/** Cíl jednoho druhu pracovních úseků: reps × work_s v pásmu lo–hi W, `sets` = kolikrát se blok opakuje. */
+export interface WorkTarget { reps: number; work_s: number; lo: number; hi: number; sets?: number }
+/** Uložený cíl kvality. Pole první úrovně = první blok (starší uložené plány mají jen to). */
+export interface WorkPlan extends WorkTarget { blocks?: WorkTarget[] }
 
 const bpm = (hr: HrZones | null, z: number) => (hr && hr.floors.length >= z ? hrZoneRange(hr, z).join("–") : null);
 const hrText = (hr: HrZones | null, z: number, extra = "") => (bpm(hr, z) ? `❤️ Z${z} (${bpm(hr, z)} bpm)${extra}` : `❤️ Z${z} tepu${extra}`);
@@ -220,20 +228,28 @@ function fromLibrary(w: LibWorkout, cat: Cat, ftp: number, minutes: number, indo
   };
   const warmupMin = indoor ? 15 : 20;
   const blocks: Block[] = [{ label: "Rozjeti", kind: "warmup", steps: [{ dur_s: warmupMin * 60, lo: wl, hi: wh, lap: true }] }];
-  let plan: Built["plan"] = null;
   let n = 0;
   const works = w.g.filter((x) => typeof x[1] !== "number" || x[1] >= HARD).length;
+  // všechny druhy pracovních úseků v pořadí. Stejný úsek (délka + pásmo) v dalším bloku se přičte – podle
+  // okruhů se stejné úseky stejně rozlišit nedají; jako zvláštní blok se počítá jen jiná délka nebo pásmo.
+  const targets: WorkTarget[] = [];
+  const addTarget = (reps: number, s: Step) => {
+    const same = targets.find((t) => t.work_s === s.dur_s && t.lo === s.lo && t.hi === s.hi);
+    if (same) same.reps += reps;
+    else targets.push({ reps, work_s: s.dur_s, lo: s.lo!, hi: s.hi! });
+  };
   for (const x of w.g) {
     if (typeof x[1] === "number") {
       if (x[1] < HARD) blocks.push({ label: "Pauza", kind: "pause", steps: [{ ...step(x as [number, number]), lap: true }] });
-      else blocks.push({ label: works > 1 ? `${CAT_LABEL[cat]} ${++n}` : CAT_LABEL[cat], kind: "work", steps: [step(x as [number, number])] });
+      else { const s = step(x as [number, number]); blocks.push({ label: works > 1 ? `${CAT_LABEL[cat]} ${++n}` : CAT_LABEL[cat], kind: "work", steps: [s] }); addTarget(1, s); }
       continue;
     }
     const steps = x[1].map(step);
     blocks.push({ label: works > 1 ? `${CAT_LABEL[cat]} ${++n}` : CAT_LABEL[cat], kind: "work", reps: x[0], steps });
-    const first = steps.find((s) => (s.lo ?? 0) > zh);
-    if (!plan && first) plan = { reps: x[0], work_s: first.dur_s, lo: first.lo!, hi: first.hi!, sets: w.g.filter((y) => JSON.stringify(y) === JSON.stringify(x)).length > 1 ? w.g.filter((y) => JSON.stringify(y) === JSON.stringify(x)).length : undefined };
+    for (const s of steps) if ((s.lo ?? 0) > zh) addTarget(x[0], s);
   }
+  const first = targets[0];
+  const plan: Built["plan"] = first ? { ...first, ...(targets.length > 1 ? { blocks: targets.map((t) => ({ ...t })) } : {}) } : null;
   const mainMin = blocks.slice(1).reduce((t, b) => t + ((b.reps ?? 1) * b.steps.reduce((s, y) => s + y.dur_s, 0)) / 60, 0);
   let cooldownMin = Math.max(10, r5(minutes - warmupMin - mainMin));
   cooldownMin += (5 - (Math.round(warmupMin + mainMin + cooldownMin) % 5)) % 5;
@@ -304,10 +320,11 @@ export function buildWorkout(inp: BuildInput): Built {
   // --- klíčové jednotky ---
   const cat = inp.family as Cat;
   const tier = Math.max(0, Math.min(TIERS - 1, Math.round(inp.level)));
-  if (power) {
+  const libW = power ? libById(inp.wid) ?? pickLib({ cat, tier, maxMain: minutes - (indoor ? 15 : 20) - 10, maxTiz: null, avoidIds: [], avoidShapes: [], seed: "" }) : null;
+  // s wattmetrem z knihovny; když se do délky nevejde žádný trénink kategorie, stejně jako bez wattmetru podle tepu
+  if (power && libW) {
     const ftp = zones.ftp!;
-    const warm = indoor ? 15 : 20;
-    const w = libById(inp.wid) ?? pickLib({ cat, tier, maxMain: Math.max(15, minutes - warm - 10), maxTiz: null, avoidIds: [], avoidShapes: [], seed: "" });
+    const w = libW;
     const b = fromLibrary(w, cat, ftp, minutes, indoor);
     const hot = cat === "vo2" || cat === "vo2s" || cat === "ana" || cat === "nm";
     const hz = hr && hr.floors.length >= 5 ? `${hrZoneRange(hr, hot ? 4 : 3)[0]}–${hrZoneRange(hr, hot ? 5 : 4)[1]} bpm` : null;
@@ -327,7 +344,9 @@ export function buildWorkout(inp: BuildInput): Built {
   let lvl = tier;
   // stupeň se musí vejít do délky jednotky
   while (lvl > 0 && (ride ? 30 : 15) + coreMin(lad[lvl]!) > minutes + 5) lvl--;
-  const fmt = lad[lvl]!;
+  // ani nejnižší stupeň se nevejde (krátký den): méně opakování, ať trénink délku dne nepřeroste
+  const base = (ride ? 30 : 15), per = (lad[lvl]!.work_s + lad[lvl]!.rest_s) / 60;
+  const fmt = base + coreMin(lad[lvl]!) > minutes + 5 ? { ...lad[lvl]!, reps: Math.max(1, Math.floor((minutes + 5 - base) / per)) } : lad[lvl]!;
   const z = HR_ZONE[fam];
   const w = hrIntervals(hr, z, fmt, minutes, ride ? 20 : 10, ride);
   const wmin = fmt.work_s / 60;

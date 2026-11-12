@@ -87,7 +87,7 @@ export interface Recent {
   longestMin: number;
   /** obvyklá délka tréninku za 4 týdny (medián, min); null = bez historie */
   typicalMin: number | null;
-  /** největší prokázaný růst kondice za týden (průměr přes 4 týdny) za poslední 4 měsíce */
+  /** typický (medián) růst kondice za týden (průměr přes 4 týdny) za poslední 4 měsíce – ne výjimečný blok */
   provenRamp: number | null;
 }
 

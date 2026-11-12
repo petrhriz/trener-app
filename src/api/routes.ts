@@ -19,6 +19,7 @@ import { STATUS_LABEL, coaching, strainScore, typicalWake, type StatusKind } fro
 import { weeklyLoadTarget } from "../core/fitness";
 import { round6 } from "./round6";
 import { addDays, dow, localNow, mondayOf, tzOffsetMin, daysBetween } from "../lib/time";
+import { constraintNoteOk } from "../core/coach/engine";
 import { addConstraint, applyChanges, claimProposal, finishProposal, getProposal, openProposal, removeConstraint, saveProposal } from "../plan/proposals";
 import { activityReport, eftpOf, ftpCheckOf, fitnessTable, recoveryFor, plannedFor, planFor, readiness, weatherMap, weekLoads, weekly } from "../report/build";
 import { weekTargetAdjusted, z2MaxMinutes } from "../core/plan";
@@ -1160,7 +1161,10 @@ api.post("/proposal/:id/apply", async (c) => {
 api.post("/constraint", async (c) => {
   const { date, kind, note } = (await c.req.json()) as { date: string; kind: string; note?: string };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !["nemuzu", "hokej", "bezky", "nemoc", "dovolena", "nepojedu", "sport", "typ", "jizda", "delka"].includes(kind)) return c.json({ error: "bad input" }, 400);
-  await addConstraint(c.env, date, kind, note ?? null);
+  // neplatný sport nebo nesmyslná délka by rozbily plán (neznámý sport dřív shodil celý plán)
+  const n = note == null ? null : String(note);
+  if (!constraintNoteOk(kind, n)) return c.json({ error: "bad note" }, 400);
+  await addConstraint(c.env, date, kind, n);
   return c.json({ ok: true, label: `${kind} ${dm(date)}` });
 });
 

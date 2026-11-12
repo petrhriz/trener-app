@@ -2,13 +2,22 @@
 // Malý řešič: projde kombinace dnů a rolí, tvrdá pravidla vyřadí, zbytek oboduje. Stejný vstup = stejný výsledek.
 // Žádné nastavené dny: trénovat jde kdykoli. Pořadí důležitosti je kvalita → dlouhý → vytrvalost, takže když
 // v týdnu zbývá málo dnů (něco jsi vynechal), zůstane to důležité a vytrvalost propadne.
-import type { PlanSport } from "../../datasource/types";
+import { PLAN_SPORTS, type PlanSport } from "../../datasource/types";
 import { addDays, dow } from "../../lib/time";
 import type { OwnRide } from "../ownRide";
 import type { CoachProfile } from "./profile";
 
 export type Role = "rest" | "easy" | "endurance" | "key" | "long";
 export const MAX_STREAK = 3;
+/** Těžký den = kvalita nebo dlouhý trénink (jedna definice pro řešič i závěrečnou kontrolu). */
+export const isHardRole = (r: Role | null | undefined): boolean => r === "key" || r === "long";
+/** Nejdelší trénink, který jde zadat ručně (min) – ochrana proti nesmyslným vstupům. */
+export const MAX_DAY_MIN: Record<PlanSport, number> = { ride: 420, run: 240, xc_ski: 300, walk: 300 };
+/** Nejdelší vlastní jízda (min). */
+export const MAX_OWN_MIN = 600;
+/** Strop délky běhu: 1,5× nejdelšího běhu za 4 týdny, aspoň hodina (tvoje volba), nejvýš 3 h. */
+export const runCapOf = (longest: number): number => Math.min(180, Math.max(60, Math.round(longest * 1.5)));
+export const isPlanSport =(s: unknown): s is PlanSport => typeof s === "string" && (PLAN_SPORTS as string[]).includes(s);
 
 /** Úprava dne od uživatele (nebo stav): má přednost před pravidly. */
 export interface Fixed {
@@ -76,6 +85,16 @@ export interface SolvedDay {
   own: OwnRide | null;
 }
 
+/** Co týden chtěl a co se do něj opravdu vešlo. Vyšší vrstva rozhodne, co s tím. */
+export interface SolveReport {
+  requested: { keys: number; long: boolean; sessions: number };
+  fulfilled: { keys: number; long: boolean; sessions: number };
+  /** požadavek, který se nesplnil (není to tvoje volba) */
+  violations: { code: "long_missing" | "keys_short"; text: string }[];
+  /** vědomá výjimka z pravidla – tvoje úprava dne */
+  exceptions: { code: "key_after_hard"; date: string; text: string }[];
+}
+
 const r15 = (x: number) => Math.round(x / 15) * 15;
 const r5 = (x: number) => Math.round(x / 5) * 5;
 const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x));
@@ -90,6 +109,10 @@ function* combos<T>(arr: T[], k: number, start = 0, cur: T[] = []): Generator<T[
 }
 
 export function solveWeek(inp: SolveInput): SolvedDay[] {
+  return solveWeekFull(inp).days;
+}
+
+export function solveWeekFull(inp: SolveInput): { days: SolvedDay[]; report: SolveReport } {
   const { profile: p, weekStart } = inp;
   const dates = [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(weekStart, i));
   const isPast = (d: string) => d < inp.from;
@@ -166,7 +189,10 @@ export function solveWeek(inp: SolveInput): SolvedDay[] {
     if (!cb || s > cb.score + 1e-9 || (Math.abs(s - cb.score) <= 1e-9 && sig < cb.sig)) st.best = { train: trainArr, keys: keyArr, long, score: s, sig };
   };
 
-  const maxFree = Math.max(0, Math.min(free.length, inp.sessions - donePast - forced.length));
+  // dlouhý trénink má přednost před vytrvalostí: když počet tréninků vyčerpaly lehčí dny (počet se během
+  // týdne přepočítává), dlouhý dostane místo navíc – pokud na něj ještě zbývá zátěž (aspoň 75 min lehce)
+  const longRoom = needLong && !forced.length && inp.load - inp.doneLoad >= 75 * Math.max(0.4, inp.rate / 60) ? 1 : 0;
+  const maxFree = Math.max(0, Math.min(free.length, Math.max(inp.sessions - donePast - forced.length, longRoom)));
   for (let nFree = maxFree; nFree >= 0 && !st.best; nFree--) {
     for (const pick of combos(free, nFree)) {
       const trainArr = [...forced, ...pick].sort();
@@ -221,7 +247,7 @@ export function solveWeek(inp: SolveInput): SolvedDay[] {
   // běh v plánu cyklisty (a naopak) dostane délku podle STEJNÉ ZÁTĚŽE, ne podle stejných minut
   const runPerMin = Math.max(0.4, (p.primary === "run" ? inp.rate : inp.runRate) / 60);
   const pm = (x: SolvedDay) => (x.sport === "run" ? runPerMin : perMin);
-  const runCap = Math.min(180, Math.max(60, Math.round(inp.run.longest * 1.5)));
+  const runCap = runCapOf(inp.run.longest);
   const rnd = (x: SolvedDay, m: number) => (x.sport === "run" ? r5(m) : r15(m));
   let left = Math.max(0, inp.load - inp.doneLoad);
   const open: SolvedDay[] = [];
@@ -229,7 +255,7 @@ export function solveWeek(inp: SolveInput): SolvedDay[] {
     if (x.role === "rest") continue;
     const f = fx(x.date);
     if (x.own) { x.minutes = x.own.min; left -= x.minutes * perMin; }
-    else if (f?.minutes) { x.minutes = f.minutes; left -= x.minutes * pm(x) * (x.role === "key" ? 1.45 : 1); }
+    else if (f?.minutes) { x.minutes = Math.min(f.minutes, MAX_DAY_MIN[x.sport]); left -= x.minutes * pm(x) * (x.role === "key" ? 1.45 : 1); }
     else if (x.role === "key") {
       // zátěž kvality v hlavním sportu → tolik minut druhého sportu, aby zátěž vyšla podobně
       const keyLoad = inp.caps.key * perMin * 1.45;
@@ -257,5 +283,23 @@ export function solveWeek(inp: SolveInput): SolvedDay[] {
     x.minutes = rnd(x, clamp(share / pm(x), lo, Math.max(lo, cap)));
     left = Math.max(0, left - x.minutes * pm(x));
   });
-  return out;
+
+  // ---- co se splnilo ----
+  const keysDone = keysPast + out.filter((x) => x.role === "key").length;
+  const longDone = longPast || out.some((x) => x.role === "long");
+  const report: SolveReport = {
+    requested: { keys: inp.keys, long: inp.long, sessions: inp.sessions },
+    fulfilled: { keys: keysDone, long: longDone, sessions: donePast + out.filter((x) => x.role !== "rest").length },
+    violations: [],
+    exceptions: [],
+  };
+  if (inp.long && !longDone) report.violations.push({ code: "long_missing", text: "Dlouhý trénink se do týdne nevešel (málo volných dnů nebo tvoje kratší délky)." });
+  if (keysDone < inp.keys) report.violations.push({ code: "keys_short", text: `Kvalita ${keysDone}× místo ${inp.keys}× – víc se jich do týdne podle pravidel nevešlo.` });
+  for (const x of out) {
+    if (x.role !== "key") continue;
+    const y = addDays(x.date, -1);
+    const yHard = isPast(y) || y < weekStart ? pastHard(y) : isHardRole(day(y)?.role);
+    if (yHard) report.exceptions.push({ code: "key_after_hard", date: x.date, text: "kvalita den po těžkém dni – je to tvoje volba" });
+  }
+  return { days: out, report };
 }

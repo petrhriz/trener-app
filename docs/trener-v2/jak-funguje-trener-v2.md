@@ -118,6 +118,54 @@ uložený plán beze změny. Jinak se přepočítají **jen dny od dneška**.
 | pauza přes 14 dní | blok začíná znovu od 1. týdne |
 | špatné počasí | kvalita na trenažér, Z2 jinde v týdnu nebo trenažér na 2/3 délky |
 | změna profilu / cíle, „Vrátit moje úpravy“ | týden se postaví od nuly |
+| nová verze pravidel (`ALGO_VERSION`) | budoucí dny se jednou přepočítají, minulé zůstanou |
+
+Otisk (`PlanInputsFingerprint`) obsahuje všechno, co plán mění: dny a skutečnost, úpravy, nabídku týdne, zotavení,
+počasí (i okno na kvalitu venku v zimě), FTP, zóny tepu a LTHR, stupně, kalibraci zátěže, data o schopnostech
+(výběr kategorie), kondici a únavu na začátku, připravenost na běh, nemoc kolem týdne a verzi pravidel.
+
+### 5.1 Vyhodnocení klíčových dnů (postup v žebříčcích)
+
+Stav dne: **čeká** → **vyhodnocen** / **vynechán** / **nejasný**. Uzavřený den se už nikdy nepočítá znovu
+(starší uložené plány s `evaluated: true` se berou jako uzavřené).
+
+- Aktivita se páruje podle sportu, příznaku kvality, splnění z intervals.icu (spárovaná s plánem) a délky –
+  ne podle největší zátěže dne.
+- Když aktivita chybí, čeká se **3 dny** (Garmin se může synchronizovat později, např. hodinky nahrají až druhý
+  den). Pak je den vynechaný a stupeň zůstává.
+- Jiný trénink místo kvality = vynechaná kvalita, stupeň se nesnižuje.
+- Dvě stejně možné aktivity = nejasné, stupeň se nemění.
+- Kvalita s víc druhy úseků (např. over-under) se hodnotí po blocích, výsledek je nejhorší blok.
+
+### 5.2 Závěrečná kontrola týdne (`validate.ts`)
+
+Běží až po všech úpravách (řešič, zotavení, počasí, dorovnání zátěže, vyvážení formy). Výsledek je
+v `coach.validation` a chyby a nesplněné požadavky jdou do upozornění.
+
+| Pravidlo | Porušené samo | Porušené tvou volbou |
+|---|---|---|
+| nejvýš 3 dny tréninku za sebou | chyba | výjimka |
+| kvalita ne den po kvalitě ani po dlouhém (dlouhý po kvalitě smí – víkendový blok, jen mírná penalizace) | chyba | výjimka |
+| forma nad hranicí (−20, v rozvoji −30) | chyba | – |
+| délka do stropu (kolo podle posledních týdnů, běh 1,5× nejdelšího, aspoň 1 h) | chyba | výjimka |
+| čas nad Z2 do 20 % (25 % pod 5 h) | upozornění | – |
+| dlouhý trénink a počet kvalit | upozornění | výjimka s důvodem (počasí, nemoc, forma) |
+
+Plán s chybou má `validation.ok = false`. **Akce AI v „Řekni trenérovi“** se po provedení zkontrolují: když
+přinesou novou chybu nebo výjimku, dny se vrátí do původního stavu a AI odpoví, proč (AI nesmí obejít pravidla).
+
+### 5.3 Další pojistky
+
+- Knihovna nikdy nevrátí trénink delší než den nebo nad strop času nad Z2. Když se nevejde nic z kategorie,
+  zkusí se další; když nic, místo kvality Z2 s vysvětlením.
+- Zátěž týdne se počítá ze skutečných tréninků (`coach.plannedLoad`). Když se liší od cíle o víc než 5 %, dorovnají
+  se délky vytrvalostních a dlouhých dnů v rámci stropů.
+- Dlouhý trénink má přednost před vytrvalostí, i když počet tréninků vyčerpaly lehčí dny.
+- Neznámý sport v omezení se ignoruje, délka má strop (kolo 7 h, běh 4 h, vlastní jízda 10 h) v jádře i v API.
+- Běh se posuzuje jen z běžecké historie (`run.ts`): intervaly až při pravidelném běhání (aspoň 6 běhů za 60 dní
+  a 3 za 4 týdny), po pauze přes 3 týdny bez intervalů. Běžec nedostane „VO2“ podle tepu (byl by to práh).
+- Růst kondice v rozvoji podle typického (medián), ne největšího růstu z posledních měsíců.
+- Rozdělení intenzity se ukazuje i zvlášť pro kolo (watty) a běh (tep).
 
 ## 6. Soubory
 
@@ -128,7 +176,10 @@ uložený plán beze změny. Jinak se přepočítají **jen dny od dneška**.
 | `src/coach/store.ts` | čtení a zápis `coach_weeks`, `coach_progress` |
 | `src/report/build.ts` → `planForV2` | napojení na data |
 | `src/api/coach.ts` | `/coach/profile` |
+| `src/core/coach/validate.ts` | závěrečná kontrola týdne |
+| `src/core/coach/run.ts` | připravenost na běh |
 | `test/coach/coach.test.ts` | pravidla a simulace 8–12 týdnů |
+| `test/coach/audit.test.ts` | regresní testy z auditu (listopad 2026) |
 
 ## 7. Co zbývá
 

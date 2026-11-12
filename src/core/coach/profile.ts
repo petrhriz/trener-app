@@ -68,22 +68,33 @@ export interface HistAct {
 
 const groupOf = (s: Sport): PlanSport | null => (s === "ride" || s === "mtb" || s === "indoor" ? "ride" : s === "run" ? "run" : s === "xc_ski" ? "xc_ski" : s === "walk" || s === "hike" ? "walk" : null);
 
-/** Výchozí profil nového uživatele z historie (12 týdnů): hlavní sport = kde je nejvíc času, další sporty, které dělá. */
+/**
+ * Výchozí profil nového uživatele z historie (12 týdnů): hlavní sport = kde je nejvíc času, další sporty, které dělá.
+ * Je to jen návrh – uloží se jednou a v Nastavení se dá změnit. Intervaly ve vedlejším sportu jen při pravidelné
+ * historii (aspoň 12 aktivit, v aspoň 8 z 12 týdnů, průměrně aspoň 30 min, poslední 4 týdny ne prázdné) –
+ * samotný počet aktivit nestačí a kolo běžeckou zkušenost nepřidává (sporty se počítají zvlášť).
+ */
 export function profileFromHistory(acts: HistAct[], today: string): CoachProfile {
   const p: CoachProfile = JSON.parse(JSON.stringify(DEFAULT_PROFILE));
   const from = addDays(mondayOf(today), -84);
+  const recent = addDays(mondayOf(today), -28);
   const time: Record<PlanSport, number> = { ride: 0, run: 0, xc_ski: 0, walk: 0 };
   const count: Record<PlanSport, number> = { ride: 0, run: 0, xc_ski: 0, walk: 0 };
+  const weeks: Record<PlanSport, Set<string>> = { ride: new Set(), run: new Set(), xc_ski: new Set(), walk: new Set() };
+  const last4: Record<PlanSport, number> = { ride: 0, run: 0, xc_ski: 0, walk: 0 };
   for (const x of acts) {
     const g = groupOf(x.sport);
-    if (!g || x.date < from || (x.moving_s ?? 0) < 20 * 60) continue;
+    if (!g || x.date < from || x.date > today || (x.moving_s ?? 0) < 20 * 60) continue;
     time[g] += x.moving_s ?? 0;
     count[g]++;
+    weeks[g].add(mondayOf(x.date));
+    if (x.date >= recent) last4[g]++;
   }
   if (time.run > time.ride) p.primary = "run";
   p.sports[p.primary] = { enabled: true, quality: true };
   const other = p.primary === "ride" ? "run" : "ride";
-  if (count[other] >= 4) p.sports[other] = { enabled: true, quality: count[other] >= 12 };
+  const regular = count[other] >= 12 && weeks[other].size >= 8 && time[other] / count[other] >= 30 * 60 && last4[other] > 0;
+  if (count[other] >= 4) p.sports[other] = { enabled: true, quality: regular };
   if (count.xc_ski >= 2) p.sports.xc_ski.enabled = true;
   return p;
 }

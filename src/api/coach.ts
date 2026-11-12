@@ -16,6 +16,9 @@ import { planFor, recoveryFor } from "../report/build";
 import { loadCtx } from "../report/context";
 import { resetCoachWeeks } from "../coach/store";
 import { profileFromHistory, profileSummary, validateProfile } from "../core/coach/profile";
+import { constraintNoteOk } from "../core/coach/engine";
+import { MAX_OWN_MIN } from "../core/coach/week";
+import type { ValidationItem, WeekValidation } from "../core/coach/validate";
 import { getSettings, setSetting } from "../lib/settings";
 
 export const coachApi = new Hono<{ Bindings: Env; Variables: { uid: number } }>();
@@ -53,6 +56,13 @@ export async function shiftDay(env: Env, days: Day[], from: string, to: string):
   return b ? `${A.name} ⇄ ${B.name}: ${dayDm(from)} ↔ ${dayDm(to)}` : `${A.name}: ${dayDm(from)} → ${dayDm(to)}`;
 }
 
+/** Porušení pravidel v plánu (Trenér v2), která AI nesmí nově způsobit: chyby i výjimky „tvoje volba“. */
+function guardItems(p: unknown): ValidationItem[] {
+  const items = (p as { coach?: { validation?: WeekValidation } }).coach?.validation?.items ?? [];
+  return items.filter((v) => v.level === "error" || v.level === "exception");
+}
+const itemKey = (v: ValidationItem) => `${v.code}|${v.date ?? ""}`;
+
 async function proposalAfter(env: Env) {
   const p = await planFor(await loadCtx(env));
   return { id: await saveProposal(env, "trener", p.changes), changes: p.changes.length };
@@ -73,7 +83,7 @@ coachApi.post("/plan/shift", async (c) => {
 /** Délka tréninku dne v minutách (0 = podle plánu). */
 coachApi.post("/plan/len", async (c) => {
   const { date, min } = (await c.req.json()) as { date: string; min: number };
-  if (!isDate(date) || !(min === 0 || (min >= 20 && min <= 600))) return c.json({ error: "bad input" }, 400);
+  if (!isDate(date) || typeof min !== "number" || !constraintNoteOk("delka", String(Math.round(min)))) return c.json({ error: "bad input" }, 400);
   await addConstraint(c.env, date, "delka", min ? String(Math.round(min)) : null);
   return c.json({ ok: true, ...(await proposalAfter(c.env)) });
 });
@@ -125,7 +135,15 @@ ZPRÁVA: ${q}`;
   if (dry) return c.json({ reply: parsed.reply ?? "", actions: parsed.actions ?? [], raw: raw.slice(0, 800) });
   const applied: string[] = [];
   const moved = new Set<string>();
+  // AI nesmí obejít pravidla trenéra: co bylo před akcemi, se uloží; když akce přinesou nové porušení
+  // (kvalita po těžkém dni, délka nad strop…), dny se vrátí do původního stavu
+  const guard = !!ctx.s.coach_v2;
+  const before = new Set(guardItems(p).map(itemKey));
+  const planDates = p.days.map((d) => d.date).sort();
+  const snap = guard && planDates.length ? await all<{ date: string; kind: string; note: string | null; created_at: string | null }>(c.env.DB, `SELECT date, kind, note, created_at FROM constraints WHERE date >= ? AND date <= ? AND kind IN ('sport', 'typ', 'delka', 'jizda')`, planDates[0], planDates[planDates.length - 1]) : [];
+  const touched = new Set<string>();
   for (const a of (parsed.actions ?? []).slice(0, 6)) {
+    for (const d of [a?.date, a?.from, a?.to]) if (inPlan(d)) touched.add(d as string);
     try {
       if (a?.a === "move" && inPlan(a.from) && inPlan(a.to) && a.from !== a.to) {
         // přesun dny sám prohazuje → opačný přesun (AI ho občas přidá „pro jistotu“) by změnu vrátil
@@ -139,15 +157,29 @@ ZPRÁVA: ${q}`;
         if (!d.name) await addConstraint(c.env, a.date, "sport", d.sport || "ride");
         await addConstraint(c.env, a.date, "typ", a.a);
         applied.push(`${dayDm(a.date)} ${a.a === "z2" ? "Z2" : "kvalita"}`);
-      } else if (a?.a === "len" && inPlan(a.date) && Number(a.min) >= 20 && Number(a.min) <= 600) { await addConstraint(c.env, a.date, "delka", String(Math.round(a.min))); applied.push(`${dayDm(a.date)} ${Math.round(a.min)} min`); }
+      } else if (a?.a === "len" && inPlan(a.date) && Number(a.min) >= 20 && constraintNoteOk("delka", String(Math.round(Number(a.min))))) { await addConstraint(c.env, a.date, "delka", String(Math.round(a.min))); applied.push(`${dayDm(a.date)} ${Math.round(a.min)} min`); }
       else if (a?.a === "sport" && inPlan(a.date) && ["ride", "run", "xc_ski", "walk"].includes(a.sport)) { await addConstraint(c.env, a.date, "sport", a.sport); applied.push(`${dayDm(a.date)} ${a.sport}`); }
-      else if (a?.a === "own" && inPlan(a.date) && Number(a.min) >= 20) { await addConstraint(c.env, a.date, "jizda", ownRideNote({ min: Math.round(a.min), km: null, with: a.with || null })); applied.push(`${dayDm(a.date)} vlastní jízda ${Math.round(a.min)} min`); }
+      else if (a?.a === "own" && inPlan(a.date) && Number(a.min) >= 20 && Number(a.min) <= MAX_OWN_MIN) { await addConstraint(c.env, a.date, "jizda", ownRideNote({ min: Math.round(a.min), km: null, with: a.with || null })); applied.push(`${dayDm(a.date)} vlastní jízda ${Math.round(a.min)} min`); }
     } catch (e) {
       applied.push(`✗ ${(e as Error).message}`);
     }
   }
+  let reply = String(parsed.reply ?? "").slice(0, 600);
+  if (guard && touched.size && applied.some((x) => !x.startsWith("✗"))) {
+    const np = await planFor(await loadCtx(c.env));
+    const bad = guardItems(np).filter((v) => v.date && touched.has(v.date) && !before.has(itemKey(v)));
+    if (bad.length) {
+      for (const d of touched) {
+        await run(c.env.DB, `DELETE FROM constraints WHERE date = ? AND kind IN ('sport', 'typ', 'delka', 'jizda')`, d);
+        for (const r of snap.filter((x) => x.date === d)) await run(c.env.DB, "INSERT INTO constraints (date, kind, note, created_at) VALUES (?, ?, ?, ?)", r.date, r.kind, r.note, r.created_at ?? new Date().toISOString());
+      }
+      applied.length = 0;
+      for (const v of bad) applied.push(`✗ vráceno: ${v.text}`);
+      reply = `Tohle by porušilo pravidla trenéra (${bad.map((v) => v.text.replace(/\.$/, "")).join("; ")}), takže plán nechávám, jak byl. Když to tak opravdu chceš, uprav den sám tlačítky.`;
+    }
+  }
   const after = await proposalAfter(c.env);
-  return c.json({ reply: String(parsed.reply ?? "").slice(0, 600) || (applied.length ? "Upraveno." : "Nic neměním."), applied, ...after });
+  return c.json({ reply: reply || (applied.length ? "Upraveno." : "Nic neměním."), applied, ...after });
 });
 
 /** pro UI: které dny mají moje úpravy (badge „tvoje úprava“) */

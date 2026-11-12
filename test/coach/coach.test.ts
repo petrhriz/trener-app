@@ -153,7 +153,7 @@ describe("knihovna tréninků", () => {
     for (const c of CATS) {
       const avg = (t: number) => { const v = LIBRARY.filter((w) => w.c === c && tierOf(w) === t).map((w) => w.s); return v.reduce((a, b) => a + b, 0) / v.length; };
       for (let t = 1; t < TIERS; t++) expect(avg(t), `${c} ${t}`).toBeGreaterThanOrEqual(avg(t - 1));
-      const w = pickLib({ cat: c, tier: 2, maxMain: 45, maxTiz: null, avoidIds: [], avoidShapes: [], seed: "2026-06-02" });
+      const w = pickLib({ cat: c, tier: 2, maxMain: 45, maxTiz: null, avoidIds: [], avoidShapes: [], seed: "2026-06-02" })!;
       expect(w.m).toBeLessThanOrEqual(45);
       expect(Math.abs(tierOf(w) - 2)).toBeLessThanOrEqual(2);
     }
@@ -161,7 +161,7 @@ describe("knihovna tréninků", () => {
   it("pestrost: nedávno jeté tréninky a tvary se nevyberou znovu", () => {
     const seen: string[] = [];
     for (let i = 0; i < 5; i++) {
-      const w = pickLib({ cat: "thr", tier: 2, maxMain: 50, maxTiz: null, avoidIds: seen, avoidShapes: seen.slice(-4).map((id) => libById(id)!.n), seed: `d${i}` });
+      const w = pickLib({ cat: "thr", tier: 2, maxMain: 50, maxTiz: null, avoidIds: seen, avoidShapes: seen.slice(-4).map((id) => libById(id)!.n), seed: `d${i}` })!;
       expect(seen).not.toContain(w.id);
       seen.push(w.id);
     }
