@@ -41,16 +41,32 @@ async function place(env: Env, date: string, s: Session | null) {
   if (s.min) await addConstraint(env, date, "delka", String(s.min));
 }
 
-/** Přesun tréninku z dne na den; když je cílový den obsazený, dny se prohodí. */
-export async function shiftDay(env: Env, days: Day[], from: string, to: string): Promise<string> {
-  const A = days.find((d) => d.date === from), B = days.find((d) => d.date === to);
-  if (!A || !B) throw new Error("Den není v plánu (jen příštích 7 dní).");
-  const a = sessionOf(A), b = sessionOf(B);
-  if (!a) throw new Error(`${dayDm(from)} není trénink.`);
-  await place(env, to, a);
-  await place(env, from, b);
-  return b ? `${A.name} ⇄ ${B.name}: ${dayDm(from)} ↔ ${dayDm(to)}` : `${A.name}: ${dayDm(from)} → ${dayDm(to)}`;
+/** Den orientačního týdne (trenér zná druh, sport a délku, ne kroky). */
+type HorizonDay = { date: string; role: string; sport: string; minutes: number; name: string | null; blocked: boolean };
+const ROLE_NAME: Record<string, string> = { key: "Kvalita", long: "Dlouhá", endurance: "Z2", easy: "Lehce" };
+/** Trénink dne: nejdřív z podrobného plánu (8 dní), jinak z výhledu trenéra (4 týdny). undefined = den mimo plán. */
+function slotAt(days: Day[], horizon: HorizonDay[], date: string): { name: string; s: Session | null } | undefined {
+  const d = days.find((x) => x.date === date);
+  if (d) return { name: d.name ?? "volno", s: sessionOf(d) };
+  const h = horizon.find((x) => x.date === date);
+  if (!h || h.blocked) return undefined;
+  if (h.role === "rest") return { name: "volno", s: null };
+  return { name: h.name ?? ROLE_NAME[h.role] ?? "trénink", s: { sport: h.sport, type: h.role === "key" ? "quality" : "z2", min: h.minutes, own: null } };
 }
+
+/** Přesun tréninku z dne na den (do 4 týdnů dopředu); když je cílový den obsazený, dny se prohodí. */
+export async function shiftDay(env: Env, days: Day[], from: string, to: string, horizon: HorizonDay[] = []): Promise<string> {
+  const A = slotAt(days, horizon, from), B = slotAt(days, horizon, to);
+  if (!A || !B) throw new Error("Den není v plánu trenéra (jen 4 týdny dopředu).");
+  if (!A.s) throw new Error(`${dayDm(from)} není trénink.`);
+  await place(env, to, A.s);
+  await place(env, from, B.s);
+  return B.s ? `${A.name} ⇄ ${B.name}: ${dayDm(from)} ↔ ${dayDm(to)}` : `${A.name}: ${dayDm(from)} → ${dayDm(to)}`;
+}
+
+/** Budoucí dny výhledu trenéra (od dneška). */
+const horizonOf = (p: unknown, T: string): HorizonDay[] =>
+  ((p as { coach?: { horizon?: { days: HorizonDay[] }[] } }).coach?.horizon ?? []).flatMap((w) => w.days).filter((x) => x.date >= T);
 
 /** Výsledek závěrečné kontroly týdne (Trenér v2); co z toho AI nesmí nově způsobit, řeší `newViolations`. */
 function guardItems(p: unknown): ValidationItem[] {
@@ -66,8 +82,9 @@ coachApi.post("/plan/shift", async (c) => {
   const { from, to } = (await c.req.json()) as { from: string; to: string };
   if (!isDate(from) || !isDate(to) || from === to) return c.json({ error: "bad input" }, 400);
   try {
-    const p = await planFor(await loadCtx(c.env));
-    const msg = await shiftDay(c.env, p.days, from, to);
+    const ctx = await loadCtx(c.env);
+    const p = await planFor(ctx);
+    const msg = await shiftDay(c.env, p.days, from, to, horizonOf(p, ctx.T));
     return c.json({ ok: true, msg, ...(await proposalAfter(c.env)) });
   } catch (e) {
     return c.json({ error: (e as Error).message }, 400);

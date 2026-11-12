@@ -12,3 +12,4 @@ screenshoty/
 dist-test/
 docs/kadence/
 .claude/
+.playwright-mcp/

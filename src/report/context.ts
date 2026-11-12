@@ -126,7 +126,7 @@ export async function loadCtx(env: Env, at?: Date): Promise<Ctx> {
     all<any>(db, "SELECT a.*, (SELECT rpe FROM activity_tags t WHERE t.activity_id = a.id) AS rpe FROM activities a WHERE a.date >= ? ORDER BY a.start_local", addDays(T, -90)),
     all<MetricRow>(db, "SELECT * FROM daily_metrics WHERE date >= ? ORDER BY date", addDays(T, -120)),
     all<CalItem>(db, "SELECT * FROM planned_workouts WHERE date >= ? AND date <= ? ORDER BY date, id", addDays(mondayOf(T), -14), addDays(T, 14)),
-    all<Constraint>(db, "SELECT date, kind, note FROM constraints WHERE date >= ? AND date <= ?", addDays(T, -14), addDays(T, 21)),
+    all<Constraint>(db, "SELECT date, kind, note FROM constraints WHERE date >= ? AND date <= ?", addDays(T, -14), addDays(T, 35)),
     all<Hour>(db, "SELECT * FROM weather_hourly WHERE time >= ? ORDER BY time", addDays(T, -1)),
     getState<number>(db, "weather_at"),
     getState<string>(db, "last_sync_ok"),

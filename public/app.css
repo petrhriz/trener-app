@@ -1975,33 +1975,83 @@ table, .tip, .chip, .astats, .tabbar, .seg, .btn { overflow-wrap: normal; }
 .stepf label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
 .stepf input { width: 76px; }
 
-/* kalendář trenéra na 4 týdny */
-.ccal { display: flex; flex-direction: column; gap: 8px; }
-.cc-h, .cc-r { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
-.cc-h span { font-size: 11px; color: var(--muted); text-align: center; }
-.cc-s { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
-.cc-s em { font-style: normal; font-size: 11px; padding: 0 5px; border-radius: 6px; background: var(--card2); }
-.cc-w.cur .cc-s { color: var(--fg); }
-.cc-d { min-width: 0; min-height: 50px; padding: 3px 2px; border-radius: 8px; background: var(--card2); border: 1px solid transparent; display: flex; flex-direction: column; align-items: center; gap: 1px; font: inherit; color: var(--fg); text-decoration: none; cursor: default; overflow: hidden; }
-.cc-d b { font-size: 10px; font-weight: 500; color: var(--muted); align-self: flex-start; line-height: 1; }
-.cc-d i { font-style: normal; font-size: 13px; line-height: 1.1; font-weight: 600; }
+/* kalendář trenéra na 4 týdny: dlaždice s proužkem podle druhu, pruh zátěže týdne, úprava dne pod týdnem */
+.ccal { display: flex; flex-direction: column; gap: 12px; --cc-q: var(--z5); --cc-l: var(--z2); --cc-e: var(--z3); --cc-z: var(--z1); }
+.cc-h, .cc-r { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.cc-h { padding: 2px 0 0; }
+.cc-h span { font-size: 11px; color: var(--muted); text-align: center; font-weight: 600; letter-spacing: .02em; }
+.cc-h span.now { color: var(--acc); }
+.cc-w { display: flex; flex-direction: column; gap: 6px; }
+.cc-s { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 2px 10px; font-size: 12px; color: var(--muted); }
+.cc-wl { color: var(--fg); font-weight: 600; font-size: 13px; }
+.cc-s em { font-style: normal; font-weight: 500; font-size: 11px; padding: 1px 6px; border-radius: 6px; background: var(--card2); color: var(--muted); margin-left: 2px; }
+.cc-s em.lt { background: var(--accbg); color: var(--acc); }
+.cc-w.cur .cc-s em:first-of-type { background: var(--acc); color: #fff; }
+.cc-num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cc-num b { color: var(--fg); }
+.cc-bar { grid-column: 1 / -1; position: relative; height: 5px; border-radius: 3px; background: var(--card2); overflow: visible; }
+.cc-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: color-mix(in srgb, var(--z3) 45%, transparent); }
+.cc-bar i.warn { background: color-mix(in srgb, var(--warn) 55%, transparent); }
+.cc-bar i.dn { background: var(--z3); }
+.cc-bar u { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--fg); opacity: .55; border-radius: 1px; text-decoration: none; }
+.cc-w.orient .cc-bar i { opacity: .6; }
+
+.cc-d { position: relative; min-width: 0; min-height: 56px; padding: 4px 3px 4px 6px; border-radius: 10px; background: var(--card2); border: 1px solid transparent; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; font: inherit; color: var(--fg); text-decoration: none; cursor: default; overflow: hidden; text-align: left; }
+.cc-d b { font-size: 10.5px; font-weight: 600; color: var(--muted); line-height: 1; display: flex; gap: 3px; width: 100%; }
+.cc-d b .ok { margin-left: auto; color: var(--ok); font-size: 10px; }
+.cc-d i { font-style: normal; font-size: 13px; line-height: 1.15; font-weight: 700; margin-top: 2px; }
 .cc-d i svg { width: 15px; height: 15px; }
-.cc-d span { font-size: 11px; line-height: 1.1; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.cc-d small { font-size: 10px; color: var(--muted); line-height: 1; font-variant-numeric: tabular-nums; }
-.cc-d.rest, .cc-d.past:not(.done) { background: transparent; border-color: var(--line); }
-.cc-d.rest i, .cc-d.past i { color: var(--muted); }
-.cc-d.done { background: var(--okbg); cursor: pointer; }
-.cc-d.done.q { box-shadow: inset 0 -3px 0 var(--z5); }
-.cc-d.miss { border-color: var(--bad); }
-.cc-d.miss i { color: var(--bad); }
-.cc-d.plan { cursor: pointer; border-color: var(--line); }
-.cc-d.plan.q { background: var(--warnbg); }
-.cc-d.plan.q i { color: var(--z5); }
-.cc-d.plan.l i { color: var(--z2); }
-.cc-d.plan.e i { color: var(--z3); }
-.cc-d.or { opacity: .62; border-style: dashed; }
+.cc-d span { font-size: 11.5px; line-height: 1.15; font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 500; }
+.cc-d small { font-size: 10px; color: var(--muted); line-height: 1; font-variant-numeric: tabular-nums; margin-top: auto; }
+/* volný den: jen číslo, bez rámečku; budoucí jde rozkliknout (přidat trénink) */
+.cc-d.e { background: transparent; min-height: 56px; }
+.cc-d.e b { font-weight: 500; opacity: .7; }
+.cc-d.free { cursor: pointer; }
+.cc-d.free:hover { background: var(--card2); }
+/* plánovaný trénink: proužek vlevo podle druhu */
+.cc-d.plan { cursor: pointer; background: var(--card2); box-shadow: inset 3px 0 0 var(--rc, var(--line)); transition: transform .12s, background .12s; }
+.cc-d.plan:hover { background: color-mix(in srgb, var(--rc, var(--line)) 12%, var(--card2)); }
+.cc-d.plan:active { transform: scale(.97); }
+.cc-d.r-q { --rc: var(--cc-q); } .cc-d.r-q i { color: var(--cc-q); }
+.cc-d.r-l { --rc: var(--cc-l); } .cc-d.r-l i { color: var(--cc-l); }
+.cc-d.r-e { --rc: var(--cc-e); } .cc-d.r-e i { color: var(--cc-e); }
+.cc-d.r-z { --rc: var(--cc-z); } .cc-d.r-z i { color: var(--muted); }
+.cc-d.or.plan { background: transparent; border: 1px dashed color-mix(in srgb, var(--rc, var(--line)) 55%, var(--line)); }
+/* odjeto */
+.cc-d.done { background: var(--okbg); cursor: pointer; box-shadow: inset 3px 0 0 var(--z3); }
+.cc-d.done.q { box-shadow: inset 3px 0 0 var(--cc-q); }
+.cc-d.miss { background: transparent; border: 1px dashed color-mix(in srgb, var(--bad) 50%, var(--line)); }
+.cc-d.miss i { color: var(--bad); font-weight: 500; }
 .cc-d.blk { background: var(--badbg); }
-.cc-d.today { outline: 2px solid var(--acc); outline-offset: -2px; }
+.cc-d.today { outline: 2px solid var(--acc); outline-offset: 1px; }
+.cc-d.sel { outline: 2px solid var(--fg); outline-offset: 1px; }
+.cc-d:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+
+.cc-past summary { cursor: pointer; font-size: 12.5px; color: var(--muted); padding: 2px 0; }
+.cc-past[open] summary { margin-bottom: 8px; }
+.cc-past .cc-w + .cc-w { margin-top: 10px; }
+.cc-past .cc-d { min-height: 46px; }
+
+/* úprava dne pod týdnem */
+.cc-det { margin-top: 2px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--card); box-shadow: 0 6px 18px rgba(0, 0, 0, .06); animation: ccIn .16s ease-out; }
+.cc-dh { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.cc-dh .sub { margin-top: 2px; }
+.cc-det .tpanel { margin-top: 8px; border-top: 1px solid var(--line); padding: 10px 0 2px; }
+.cc-det .sw-sport { margin-left: 0; }
+@keyframes ccIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+.cc-leg { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; font-size: 12px; color: var(--muted); margin-top: 10px; }
+.cc-leg span { display: inline-flex; align-items: center; gap: 5px; }
+.cc-leg i { width: 4px; height: 12px; border-radius: 2px; background: var(--line); }
+.cc-leg i.r-q { background: var(--z5); } .cc-leg i.r-l { background: var(--z2); } .cc-leg i.r-e { background: var(--z3); }
+.cc-leg i.dn { width: 12px; background: var(--okbg); box-shadow: inset 3px 0 0 var(--z3); }
+@media (max-width: 600px) {
+  .cc-h, .cc-r { gap: 3px; }
+  .cc-d { min-height: 52px; padding: 3px 2px 3px 5px; border-radius: 8px; }
+  .cc-d small { display: none; }
+  .cc-d span { font-size: 11px; }
+  .cc-s { font-size: 11.5px; }
+}
 
 /* Trenér: z čeho trenér vychází */
 .why3 { grid-template-columns: auto 1fr; }
