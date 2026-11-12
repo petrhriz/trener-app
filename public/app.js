@@ -338,7 +338,8 @@ function barChartW({ W = 760, x, bars, height = 170, fmt = (v) => num(v), xfmt =
   let out = "", xl = "";
   const step = Math.max(1, Math.ceil(n / Math.max(3, Math.min(10, Math.floor(W / 48)))));
   bars.forEach((b, i) => {
-    const x0 = P.l + i * bw + gap / 2, w = Math.max(1, bw - gap), r = Math.min(4, w / 2);
+    // sloupce nejvýš 18 px široké a zaoblení podle šířky – 12 měsíčních sloupců pak nepůsobí hranatě proti 26 týdenním
+    const w = Math.max(1, Math.min(18, bw - gap)), x0 = P.l + i * bw + (bw - w) / 2, r = Math.min(w / 2, Math.max(4, w * 0.3));
     if (mode === "stack") {
       let acc = 0;
       // složený sloupec zaoblený jako ostatní: díly se ořežou tvarem celého sloupce
@@ -2054,8 +2055,8 @@ async function pageAktivita(el, id) {
     ? `<div class="gearsel">${{ bike: "🚲", shoe: "👟", ski: "🎿" }[gk] || "🎒"} <select id="gearSel" title="vybavení (výchozí podle sportu, změníš tady)">${a.gear.list.map((g) => `<option value="${g.id}" ${a.gear.id === g.id ? "selected" : ""}>${esc(g.name)}</option>`).join("")}<option value="none" ${a.gear.id == null ? "selected" : ""}>bez vybavení</option>${a.gear.manual ? `<option value="auto">↺ výchozí podle sportu</option>` : ""}</select><span class="sub" id="gearMsg"></span></div>` : "";
   const endur = ["ride", "mtb", "run", "xc_ski"].includes(a.sport);
   const verb = a.sport === "run" ? ["Běžel", "běžel"] : ["Jel", "jel"];
-  const compSel = endur ? `<div class="gearsel">👥 <select id="compSel"><option value="">${verb[0]} jsem sám</option><option value="skupina" ${a.company === "skupina" ? "selected" : ""}>Ve skupině</option>${a.company && a.company !== "skupina" ? `<option value="${esc(a.company)}" selected>S: ${esc(a.company)}</option>` : ""}<option value="__new">S někým… (jméno)</option></select><span class="sub" id="compMsg">${a.company ? "přetažená Z2 se nebere jako chyba" : ""}</span></div>` : "";
-  const rpeSel = (a.moving || 0) >= 1200 ? `<div class="gearsel">💪 <select id="rpeSel" title="Jak těžký byl trénink (1–10)"><option value="">Náročnost: neohodnoceno</option>${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => `<option value="${n}" ${a.rpe === n ? "selected" : ""}>Náročnost ${n} – ${RPE_TXT[n]}</option>`).join("")}</select><span class="sub" id="rpeMsg"></span></div>` : "";
+  const compSel = endur ? `<div class="gearsel" title="S kým jsi ${esc(verb[1])}${a.company ? " – přetažená Z2 se nebere jako chyba" : ""}">👥 <select id="compSel" aria-label="S kým"><option value="">Sám</option><option value="skupina" ${a.company === "skupina" ? "selected" : ""}>Skupina</option>${a.company && a.company !== "skupina" ? `<option value="${esc(a.company)}" selected>${esc(a.company)}</option>` : ""}<option value="__new">S někým…</option></select><span class="sub" id="compMsg"></span></div>` : "";
+  const rpeSel = (a.moving || 0) >= 1200 ? `<div class="gearsel" title="Jak těžký byl trénink (1–10) – trenér to použije u únavy a stupňů kvalit">💪 <select id="rpeSel" aria-label="Náročnost 1–10"><option value="">Ohodnotit</option>${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => `<option value="${n}" ${a.rpe === n ? "selected" : ""}>${n} · ${RPE_TXT[n]}</option>`).join("")}</select><span class="sub" id="rpeMsg"></span></div>` : "";
   el.innerHTML = `<div class="head"><div><a class="back" href="#/aktivity" data-back>← Zpět</a><h1>${a.emoji} ${esc(a.title)}</h1><div class="sub">${dayDm(a.date)}${a.date.slice(0, 4)} · start ${a.start}${a.unitType ? " · " + esc(a.unitType) : ""}${a.envLabel ? " · " + esc(a.envLabel) : ""}${a.tempText ? " · " + esc(a.tempText) : ""}</div><div class="actsel">${gearSel}${compSel}${rpeSel}</div></div></div>
   <div class="verdict goal" id="actAi"><span class="ai-t">🎯 ${esc(a.goal)}</span>${a.compliance != null ? `<span class="pill ok">splnění ${a.compliance} %</span>` : ""}<small class="ai-m"></small></div>
   <div class="grid">
@@ -2089,8 +2090,8 @@ async function pageAktivita(el, id) {
   if (rs) rs.addEventListener("change", async () => {
     const msg = el.querySelector("#rpeMsg");
     msg.textContent = "Ukládám…";
-    try { await api(`activity/${a.id}/rpe`, { method: "POST", body: JSON.stringify({ rpe: rs.value ? +rs.value : null }) }); cache.clear(); msg.textContent = "Uloženo"; }
-    catch (e) { msg.textContent = `Nepovedlo se: ${e.message}`; }
+    try { await api(`activity/${a.id}/rpe`, { method: "POST", body: JSON.stringify({ rpe: rs.value ? +rs.value : null }) }); cache.clear(); msg.textContent = "Uloženo"; toast(rs.value ? `Náročnost ${rs.value} uložena` : "Hodnocení smazáno"); }
+    catch (e) { msg.textContent = `Nepovedlo se: ${e.message}`; fail(e); }
   });
   const cs = el.querySelector("#compSel");
   if (cs) cs.addEventListener("change", async () => {
@@ -2099,7 +2100,7 @@ async function pageAktivita(el, id) {
     const msg = el.querySelector("#compMsg");
     msg.textContent = "Ukládám…";
     try { await api(`activity/${a.id}/company`, { method: "POST", body: JSON.stringify({ company: v || null }) }); cache.clear(); route(); }
-    catch (e) { msg.textContent = `Nepovedlo se: ${e.message}`; }
+    catch (e) { msg.textContent = `Nepovedlo se: ${e.message}`; fail(e); }
   });
   const gs = el.querySelector("#gearSel");
   if (gs) gs.addEventListener("change", async () => {
@@ -2111,7 +2112,8 @@ async function pageAktivita(el, id) {
       // potvrzení s novým nájezdem → je vidět, že se km přepočítaly
       const list = await api("gear");
       msg.textContent = "✓ Uloženo · " + list.filter((g) => !g.to_date).map((g) => `${g.name} ${thou(g.km)} km`).join(" · ");
-    } catch (e) { msg.textContent = `Nepovedlo se: ${e.message}`; }
+      toast(msg.textContent);
+    } catch (e) { msg.textContent = `Nepovedlo se: ${e.message}`; fail(e); }
   });
   const removeMap = () => { el.querySelector("#mapCol")?.remove(); const zc = el.querySelector("#zoneCol"); if (zc) { zc.className = "c12 col zgrid"; } };
   const bindLaps = (s) => {

@@ -2177,3 +2177,23 @@ table, .tip, .chip, .astats, .tabbar, .seg, .btn { overflow-wrap: normal; }
 .rules3 { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--muted); }
 .rules3 b { color: var(--fg); font-weight: 600; }
 .why3 > span:nth-child(even) { text-align: left; font-weight: 400; }
+
+/* ======================= Jednotné přepínače (12. 11. 2026): všechny skupiny voleb vypadají stejně –
+   zaoblená „pilulka“, vybraná volba oranžová s bílým textem (dřív Trenér / Počasí šedé s bílým výběrem) ======================= */
+.seg, .ioseg { background: var(--card2); border: 1px solid var(--line); border-radius: 999px; padding: 3px; gap: 3px; }
+.seg button, .ioseg button { border: 0; border-radius: 999px; background: transparent; color: var(--fg); font-weight: 650; box-shadow: none; transition: background .15s, color .15s; }
+.seg button.on, .ioseg button.on { background: var(--acc); color: #fff; box-shadow: 0 1px 3px color-mix(in srgb, var(--acc) 35%, transparent); }
+.seg button:not(.on):hover, .ioseg button:not(.on):hover { background: color-mix(in srgb, var(--acc) 10%, transparent); }
+.wxbar .ioseg { border-radius: 999px; }
+.wxbar .ioseg button { border-radius: 999px; }
+.sh-theme button { border-radius: 999px; }
+.sh-theme button.on { background: var(--acc); color: #fff; }
+.chipl.on { background: var(--acc); color: #fff; border-color: var(--acc); }
+
+/* detail aktivity: vybavení, s kým, náročnost v jednom řádku (dřív 2 řádky a posunutý text hodnocení) */
+.actsel { grid-template-columns: repeat(auto-fit, minmax(0, 1fr)) !important; gap: 6px !important; }
+.actsel .gearsel { padding: 0 2px 0 8px !important; gap: 0 2px !important; font-size: 15px; border-radius: 999px !important; }
+.actsel .gearsel select { padding: 8px 4px !important; font-size: 13.5px !important; text-overflow: ellipsis; }
+.actsel .gearsel .sub { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.actsel .gearsel { position: relative; }
+@media (max-width: 760px) { .actsel { grid-template-columns: repeat(auto-fit, minmax(0, 1fr)) !important; } }
