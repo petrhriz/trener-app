@@ -122,7 +122,7 @@ app.get("/admin/coach", async (c) => {
   const g = c.req.query("goal");
   if (g === "pokles" || g === "udrzeni" || g === "zvyseni" || g === "zavod") ctx.s.goal = g;
   const { planForCoach, recoveryFor } = await import("./report/build");
-  const p = (await planForCoach(ctx, recoveryFor(ctx))) as any;
+  const p = (await planForCoach(ctx, recoveryFor(ctx), { dryRun: true })) as any;
   return c.json({ goal: ctx.s.goal, coach: p.coach, warnings: p.warnings, days: p.days.map((d: any) => ({ date: d.date, tag: d.tag, name: d.name, min: d.durationMin, load: d.load, sport: d.sport, indoor: d.indoor, steps: d.steps, note: d.note, form: d.form })), changes: p.changes.length });
 });
 app.get("/admin/ctx", async (c) => {

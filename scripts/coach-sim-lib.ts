@@ -1,6 +1,6 @@
 // Simulace Trenéra v3 (sdílená pro scripts/coach-sim.ts, test/coach/sim.test.ts a test/bench.test.ts):
 // modelový sportovec každý den odjede přesně plán, kondice se přepočítá, trenér plánuje znovu.
-import { type CoachInput, runCoach } from "../src/core/coach/engine";
+import { type CoachInput, type MondayPlan, runCoach } from "../src/core/coach/engine";
 import { computeMetrics, type Goal } from "../src/core/fitness";
 import { DEFAULT_PROFILE, type CoachProfile } from "../src/core/coach/profile";
 import { NO_FATIGUE } from "../src/core/coach/target";
@@ -68,9 +68,14 @@ export function simulate(sc: Scenario) {
   const days: SimDay[] = [];
   const weekPlans: any[] = [];
   const end = addDays(sc.start, 7 * sc.weeks);
+  // pondělní plán týdne se ukládá jednou (stejně jako src/report/build.ts)
+  let stored: MondayPlan | null = null;
   for (let T = sc.start; T < end; T = addDays(T, 1)) {
     const inp = simInput(sc, acts, T);
-    const plan = runCoach(inp);
+    const W0 = mondayOf(T);
+    const plan = runCoach({ ...inp, mondayPlan: stored && stored.weekStart === W0 ? stored : null });
+    const mp = plan.coach.mondayPlan;
+    if (mp && (!stored || stored.weekStart !== mp.weekStart || mp.monday)) stored = mp;
     if (dow(T) === 1) weekPlans.push({ weekStart: T, coach: { phaseLabel: plan.coach.phaseLabel, recoveryWeek: plan.coach.recoveryWeek, notes: plan.coach.notes, horizon: plan.coach.horizon.map((h) => ({ weekStart: h.weekStart, load: h.load, target: h.target, need: h.need, ctlStart: h.ctlStart, ctlEnd: h.ctlEnd })) }, days: plan.days.filter((x) => x.date < addDays(T, 7)).map((x) => ({ date: x.date, kind: x.kind, sport: x.sport, name: x.name, min: x.durationMin, load: x.load, steps: x.steps, indoor: x.indoor, note: x.note })) });
     const today = plan.days.find((x) => x.date === T);
     const ctlBefore = inp.metric(addDays(T, -1))?.ctl ?? 0;

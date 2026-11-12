@@ -21,7 +21,7 @@ import { addDays, dateRange, mondayOf } from "../lib/time";
 import type { Ctx, FullAct, MetricRow } from "./context";
 import type { Fatigue } from "../core/coach/target";
 import type { EngineAct, ProgressRow } from "../core/coach/common";
-import { runCoach } from "../core/coach/engine";
+import { type MondayPlan, runCoach } from "../core/coach/engine";
 import { profileFromHistory, validateProfile } from "../core/coach/profile";
 import { norm } from "../core/recovery";
 import { setSetting } from "../lib/settings";
@@ -239,7 +239,7 @@ export function offDaysOf(ctx: Ctx): string[] {
 }
 
 /** Trenér v3: plán od dnešní kondice, 4 týdny dopředu, bez uložených týdnů (src/core/coach/, docs/trener/). */
-export async function planForCoach(ctx: Ctx, rec: RecoveryResult): Promise<PlanResult> {
+export async function planForCoach(ctx: Ctx, rec: RecoveryResult, opt: { dryRun?: boolean } = {}): Promise<PlanResult> {
   const T = ctx.T;
   let profile = ctx.s.coach_profile ? validateProfile(ctx.s.coach_profile).profile : null;
   if (!profile) {
@@ -259,7 +259,12 @@ export async function planForCoach(ctx: Ctx, rec: RecoveryResult): Promise<PlanR
     await run(ctx.env.DB, "INSERT INTO coach_progress (key, level, last_date, last_outcome) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET level = excluded.level, last_date = excluded.last_date, last_outcome = excluded.last_outcome", u.key, u.level, u.last, u.outcome.slice(0, 200));
     state.progress[u.key] = { level: u.level, last: u.last };
   }
+  // pondělní plán týdne: uloží se jednou (v pondělí před prvním tréninkem se smí přepsat) – únava a nová omezení
+  // pak mění jen dnešek a budoucí dny, ne odjeté dny a ne dvakrát
+  const W0 = mondayOf(T);
+  const mon0 = await getState<MondayPlan>(ctx.env.DB, "coach3_monday");
   const plan = runCoach({
+    mondayPlan: mon0 && mon0.weekStart === W0 ? mon0 : null,
     today: T,
     goal: ctx.s.goal,
     raceDate: ctx.s.goal === "zavod" ? ctx.s.goal_date : null,
@@ -282,6 +287,8 @@ export async function planForCoach(ctx: Ctx, rec: RecoveryResult): Promise<PlanR
   // dnešní (a dřívější) kvality z plánu uložit – po odjetí se vyhodnotí; zápis jen při změně
   const keys1 = recordKeys(ev.records, plan.coach.keyDays, T);
   if (JSON.stringify(keys1) !== JSON.stringify(keys0)) await setState(ctx.env.DB, "coach3_keys", keys1);
+  const mp = plan.coach.mondayPlan;
+  if (!opt.dryRun && mp && (!mon0 || mon0.weekStart !== mp.weekStart || mon0.goal !== mp.goal || (mp.monday && JSON.stringify(mp) !== JSON.stringify(mon0)))) await setState(ctx.env.DB, "coach3_monday", mp);
   (plan.coach as any).lastKeys = keys1.filter((r) => r.state !== "pending").slice(-4).reverse();
   return plan;
 }
