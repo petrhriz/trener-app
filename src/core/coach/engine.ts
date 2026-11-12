@@ -17,11 +17,15 @@ import { type EngineAct, type ProgressRow, easyRate, fixedFromConstraints, runCa
 import { type Built, type Cat, type WorkPlan, type Zones, START_TIER, applyStepEdit, buildWorkout, catCandidates, catNeeds, chooseCat, isCat } from "./library";
 import type { CoachProfile } from "./profile";
 import { type Distribution, distribution } from "./progress";
+
+/** Nejdelší dlouhá jízda na trenažéru (min). Hodina na trenažéru odpovídá 1,25–1,5 h venku (CTS, Roadman: koeficient
+ *  1,3–1,5), takže 2 h uvnitř ≈ 2,5–3 h venku; konkrétní strop je vlastní volba. */
+export const INDOOR_LONG_MAX = 120;
 import { runReadiness } from "./run";
 import { type Fatigue, fatigueFactor } from "./target";
 import { type WeekValidation, validateWeek } from "./validate";
 import type { Fixed, PastDay as V2Past } from "./common";
-import { type WeekTarget, historyBase, nextBlock, weekHistory, weekTarget } from "./budget";
+import { type WeekTarget, TWO_KEYS_MIN_H, historyBase, nextBlock, usualSessions, weekHistory, weekTarget } from "./budget";
 import { type PastDay, type SkDay, solveWeek } from "./skeleton";
 import { type Role, capsFor, loadFor, minutesFor, nameFor, relabel, stepsText } from "./sport";
 
@@ -267,11 +271,19 @@ export function runCoach(inp: CoachInput): CoachPlan {
     // aspoň tolik tréninků, kolik je potřeba, aby se zátěž vešla do stropů délek (v zimě krátké jízdy)
     const capLoad = rate * capsOf(p.primary, "long").max / 60 * 0.5 + rate * capE.max / 60 * 0.5;
     let sessions = tg.load <= 15 ? 0 : Math.max(1, Math.round(tg.load / sessionLoad), Math.ceil(tg.load / capLoad));
-    const maxSess = Math.max(3, Math.max(...history.weekSessions) + 1);
+    // nejvýš o jeden víc, než kolik tréninků obvykle máš (vážený průměr jako u zátěže, ne nejvíc za 4 týdny)
+    const maxSess = Math.max(3, usualSessions(history) + 1);
     sessions = Math.min(sessions, nDays, maxSess, 6);
     // ladění (Bosquet 2007): méně objemu, ale stejně tréninků a intenzita zůstává → kratší tréninky
     if (tg.phase === "taper" && tg.load > 15) sessions = Math.min(nDays, Math.max(sessions, Math.round(history.weekSessions.reduce((t, x) => t + x, 0) / Math.max(1, history.weekSessions.length))));
-    const phaseKeys = tg.phase === "build" && sessions >= 4 ? 2 : 1;
+    // dvě kvality jen v Rozvoji a jen když je na ně objem i zátěž: týden aspoň TWO_KEYS_MIN_H hodin (80/20 podle
+    // času, Seiler) a po dvou kvalitách zbyde na ostatní tréninky aspoň jejich nejkratší délka
+    const keyCap = capsOf(p.primary, "key").max;
+    const kLoad2 = loadFor(keyCap, rate, "key");
+    const weekLoad = tg.done + tg.load;
+    const weekH = (2 * keyCap + (Math.max(0, weekLoad - 2 * kLoad2) / rate) * 60) / 60;
+    const twoKeys = sessions >= 4 && weekH >= TWO_KEYS_MIN_H && weekLoad - 2 * kLoad2 >= (sessions - 2) * loadFor(capE.min, rate, "endurance");
+    const phaseKeys = tg.phase === "build" && twoKeys ? 2 : 1;
     let keys = tg.phase === "post" ? 0 : sessions >= 3 ? phaseKeys : sessions === 2 ? 1 : 0;
     if (k === 0) keys = Math.max(0, Math.min(keys, fat.keysMax) - doneKeys0);
     else if (k === 1) keys = Math.min(keys, Math.max(1, fat.keysMax));
@@ -313,7 +325,15 @@ export function runCoach(inp: CoachInput): CoachPlan {
     });
     const habit: Record<number, number> = {};
     for (let i = 1; i <= 56; i++) { const d = addDays(T, -i); if (trainedOn(d)) habit[dow(d)] = (habit[dow(d)] ?? 0) + 1 / 8; }
-    const sk = solveWeek({ days: skDays, tail, sessions, keys, long, habit });
+    // špatné počasí o víkendu: dlouhý nejdřív na druhý víkendový den; když nejde, zůstane o víkendu a pojede se na
+    // trenažéru (se stropem délky); teprve když se o víkendu nevejde vůbec, řešič vybere sám
+    let sk = solveWeek({ days: skDays, tail, sessions, keys, long, habit });
+    if (long && skDays.some((d) => d.badWeather && dow(d.date) >= 6)) {
+      const wk = (d: SkDay) => dow(d.date) < 6;
+      const a = solveWeek({ days: skDays.map((d) => ({ ...d, noLong: d.badWeather || wk(d) })), tail, sessions, keys, long, habit });
+      const b = a.long ? a : solveWeek({ days: skDays.map((d) => ({ ...d, noLong: wk(d) })), tail, sessions, keys, long, habit });
+      if (b.long) sk = b;
+    }
     // rozběhnutý týden: zbylé dny přesně podle pondělního plánu (dny, druh, zátěž); mění je jen ranní stav
     // (🔴 volno, 🟡 dnes bez kvality) – jinak by každodenní nové rozdělení zbytku týdne tiše ubíralo zátěž
     const pinned = k === 0 && !!monday;
@@ -436,6 +456,8 @@ export function runCoach(inp: CoachInput): CoachPlan {
             const goodOutside = inp.weatherOk && !!w && !w.bad && !!w.window;
             if (!inp.weatherOk || !!w?.bad || (winter && !goodOutside)) { x.indoor = true; if (w?.bad) x.why.push(`${w.text} → trenažér`); }
           } else if (w?.bad && !x.mine) { x.indoor = true; x.why.push(`${w.text} → trenažér`); }
+          // dlouhá na trenažéru nejvýš INDOOR_LONG_MAX (hodina na trenažéru ≈ 1,25–1,5 h venku)
+          if (x.indoor && x.role === "long" && x.minutes > INDOOR_LONG_MAX) { x.minutes = INDOOR_LONG_MAX; if (!x.why.some((s) => s.startsWith("dlouhá na trenažéru"))) x.why.push(`dlouhá na trenažéru nejvýš ${INDOOR_LONG_MAX / 60} h (hodina uvnitř ≈ 1,25–1,5 h venku), zbytek dostanou ostatní dny`); }
         }
         let b: Built;
         if (x.role === "key") {

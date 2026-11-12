@@ -26,6 +26,9 @@ export const LIGHT_SHARE = 0.75;
 /** Pod touto průměrnou zátěží zátěžových týdnů se lehčí týden nedělá: při ~4,5 h Z2 týdně (kondice do ~29) se únava
  *  nenahromadí a ubrání by jen srazilo kondici. Vlastní volba – zdroje 3:1 doporučují pro všechny, hranici nedávají. */
 export const MIN_RECOVERY_LOAD = 200;
+/** Dvě kvality týdně jen při objemu aspoň 5 h: 80/20 podle času (Seiler) – dvě kvality mají ~2 × 30 min nad Z2,
+ *  to je 20 % z 5 h. Odhad 30 min nad Z2 na kvalitu je vlastní volba (knihovna má 20–40 min). */
+export const TWO_KEYS_MIN_H = 5;
 /** Ladění před závodem (Bosquet a kol. 2007, metaanalýza 27 studií): 2 týdny, objem o 41–60 % méně (postupně),
  *  intenzita a počet tréninků beze změny → týden před závodním 70 %, závodní týden 45 % běžného týdne. */
 export const TAPER_SHARE = { before: 0.7, race: 0.45 };
@@ -83,6 +86,15 @@ export interface History {
  * ojedinělý propad (pod čtvrtinu ostatních) taky ne. Když nezbude nic, bere se skutečnost.
  */
 export function usualLoad(h: Pick<History, "weekLoads" | "weekOff" | "skip">): number {
+  return usualOf(h, h.weekLoads);
+}
+
+/** Obvyklý počet tréninků týdně: vážený průměr stejných týdnů jako u obvyklé zátěže (ne maximum). */
+export function usualSessions(h: Pick<History, "weekLoads" | "weekOff" | "skip" | "weekSessions">): number {
+  return usualOf(h, h.weekSessions);
+}
+
+function usualOf(h: Pick<History, "weekLoads" | "weekOff" | "skip">, vals: number[]): number {
   const off = (i: number) => (h.weekOff[i] ?? 0) >= 3 || !!h.skip?.[i];
   const max = (i: number) => Math.max(0, ...h.weekLoads.filter((_x, j) => j !== i && !off(j)));
   const low = h.weekLoads.map((x, i) => !off(i) && x < 0.25 * max(i));
@@ -90,7 +102,7 @@ export function usualLoad(h: Pick<History, "weekLoads" | "weekOff" | "skip">): n
   let idx = h.weekLoads.map((_x, i) => i).filter((i) => i !== outage && !off(i));
   if (!idx.length) idx = h.weekLoads.map((_x, i) => i);
   const w = idx.reduce((t, i) => t + (i + 1), 0);
-  return w ? Math.round(idx.reduce((t, i) => t + h.weekLoads[i]! * (i + 1), 0) / w) : 0;
+  return w ? Math.round(idx.reduce((t, i) => t + (vals[i] ?? 0) * (i + 1), 0) / w) : 0;
 }
 
 export interface WeekTarget {

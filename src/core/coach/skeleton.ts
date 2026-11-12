@@ -19,6 +19,8 @@ export interface SkDay {
   noKey?: boolean;
   /** špatné počasí (déšť, nárazy) – dlouhý ani Z2 venku sem nepatří */
   badWeather?: boolean;
+  /** dlouhý sem nedávat (špatné počasí, když je jiná možnost) */
+  noLong?: boolean;
 }
 
 export interface PastDay {
@@ -90,7 +92,7 @@ export function solveWeek(inp: SkInput): SkResult {
       for (const keys of combos(keyable, Math.min(k, keyable.length))) {
         if (keys.length < k) continue;
         if (!mustKey.every((m) => keys.includes(m))) continue;
-        const longCands = a.l ? set.filter((d) => !keys.includes(d) && d.type !== "quality") : [];
+        const longCands = a.l ? set.filter((d) => !keys.includes(d) && d.type !== "quality" && !d.noLong) : [];
         const ownLong = set.find((d) => d.ownLong && !keys.includes(d));
         const longOpts: (SkDay | null)[] = a.l ? (ownLong ? [ownLong] : longCands) : [null];
         for (const lg of longOpts) {
