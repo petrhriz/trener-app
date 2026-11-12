@@ -2089,3 +2089,34 @@ html[data-rings="glow"] .dn-rings .gring::before { opacity: .85; }
 .tsd.q.done b { color: var(--ok); }
 .dn-head { min-width: 0; }
 .dn-head .ainote.folded .an-show span[hidden] { display: none; }
+
+/* ======================= odolnost vůči datům: dlouhé texty bez mezer, velká čísla, mobil od 360 px ======================= */
+/* dlouhé slovo (název aktivity, poznámka) se zalomí uvnitř buňky místo roztažení karty mimo obrazovku */
+body { overflow-wrap: anywhere; }
+table, .tip, .chip, .astats, .tabbar, .seg, .btn { overflow-wrap: normal; }
+.row .r { min-width: 0; max-width: 50%; white-space: normal; }
+.dn-head .dn-title { flex: 0 1 auto; min-width: 0; }
+.gp-do { white-space: normal; overflow-wrap: anywhere; text-align: left; max-width: 100%; }
+.ctile { grid-template-columns: auto minmax(0, 1fr); }
+.ctile small, .ctile b { max-width: 100%; }
+.form-grid { grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); }
+.form-grid > *, .form-grid input, .form-grid select, .ctile > *, .mtile > *, .dn-body, .dn-head, .sm-r, .gp-h > *, .gp-f > *, .today-act > div, .lastact > div, .tr-m, .ftpbox > * { min-width: 0; }
+.today-act > div, .lastact > div { flex: 1; }
+.gp-h > b { flex: 1; }
+.gp-h > span { flex: none; white-space: nowrap; }
+.mt-v, .ctile b, .stat .sv, .la-grid b, .sg b, .part-km, .gr-v, .bbnums b, .mini-stats b, .abasics b { font-variant-numeric: tabular-nums; }
+/* ikona počasí v horním řádku mobilu nesmí přetéct kolečko */
+.toprow .pb-ico img.wxi { width: 26px; height: 26px; }
+.wi img.wxi { max-width: 100%; height: auto; }
+/* úzká dlaždice (6 vedle sebe na PC): stav pod název, ať se název nezkrátí na „St…“ */
+.mtile { container-type: inline-size; }
+@container (max-width: 210px) {
+  .mt-h { flex-direction: column; align-items: flex-start; gap: 4px; min-height: 40px; }
+  .mt-h > span, .mt-h em { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+}
+/* 360 px: tři kroužky (energie · zotavení · spánek) se musí vejít vedle sebe */
+@media (max-width: 380px) {
+  .dn-rings { gap: 6px; padding-left: 0; padding-right: 0; }
+  .dn-rings .dn-side .gring { --rs: 76px !important; }
+  .dn-rings .dn-ring .gring { --rs: 108px !important; }
+}

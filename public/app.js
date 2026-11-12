@@ -2339,11 +2339,11 @@ async function pageDetail(el, which) {
 }
 
 function powerCurveChart(pc) {
-  if (!pc.curves.some((c) => c.points.length)) return `<div class="empty">Křivku výkonu nemám.</div>`;
+  if (!pc.curves.some((c) => c.points.some((p) => p.w))) return `<div class="empty">Křivku výkonu nemám.</div>`;
   return sized((W) => powerCurveChartW(pc, W));
 }
 function powerCurveChartW(pc, W) {
-  const curves = pc.curves.filter((c) => c.points.length);
+  const curves = pc.curves.filter((c) => c.points.some((p) => p.w)); // okno bez výkonu (jen běh, běžky) se vynechá
   const colors = { "42d": "var(--acc)", "90d": "var(--z2)", "1y": "var(--muted)" };
   const names = { "42d": "42 dní", "90d": "90 dní", "1y": "1 rok" };
   const H = hScale(250, W), P = { l: 10, r: 12, t: 12, b: 28 };
@@ -3298,8 +3298,20 @@ function foldNotes(root) {
     d.appendChild(n);
   }
 }
+/** Číslo a jednotka („198,5 bpm“) ani tisíce („12 485“) se nesmí rozdělit na dva řádky → nezlomitelná mezera. */
+const GLUE_UNIT = /(\d) (?=(?:km\/h|km|kcal|kJ|bpm|ms|min|kg|cm|mm|m|W\/kg|W|h|s|g|l|%|°C|°|ot\/min|kr\/min|\/km)(?![\p{L}\d]))/gu;
+const GLUE_THOU = /(\d) (?=\d{3}(?!\d))/g;
+function glueUnits(root) {
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let n = w.nextNode(); n; n = w.nextNode()) {
+    const v = n.nodeValue;
+    if (v.length < 3 || !/\d /.test(v)) continue;
+    const g = v.replace(GLUE_THOU, "$1 ").replace(GLUE_UNIT, "$1 ");
+    if (g !== v) n.nodeValue = g;
+  }
+}
 let foldQ = false;
-new MutationObserver(() => { if (foldQ) return; foldQ = true; requestAnimationFrame(() => { foldQ = false; const m = document.getElementById("main"); if (m) foldNotes(m); }); }).observe(document.getElementById("main"), { childList: true, subtree: true });
+new MutationObserver(() => { if (foldQ) return; foldQ = true; requestAnimationFrame(() => { foldQ = false; const m = document.getElementById("main"); if (m) { foldNotes(m); glueUnits(m); } }); }).observe(document.getElementById("main"), { childList: true, subtree: true });
 
 /** AI shrnutí na stránce (Přehled, Trenér, Zotavení) – načte se dodatečně, bez AI se blok skryje */
 /** Doplněk v buňce („max 190 bpm“): když se nevejde celý, zkusí se bez jednotky („max 190“), jinak se skryje. */
