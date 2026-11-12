@@ -38,9 +38,55 @@ describe("kvality: vyhodnocení a stupeň", () => {
     expect(m.records[0]!.state).toBe("missed");
     expect(m.updates).toEqual([]);
   });
+  // Oprava 6b: kvalita o stupeň níž (zima, lehčí týden) se dřív nevyhodnotila (stupeň ≠ stupeň kategorie)
+  it("kvalita o stupeň níž: neúspěch stupeň kategorie sníží, úspěch ho nezvýší", () => {
+    const low = recordKeys([], [{ ...key("2026-11-10", 1), base: 2 }], "2026-11-10");
+    const levels = { "ride:thr": { level: 2, last: "2026-11-01" } };
+    const ok = [act("2026-11-10", [1, 2, 3, 4].map((i) => lap(i, 248, 160 + i)))];
+    const z = evaluateKeys(low, ok, "2026-11-11", "zvyseni", levels);
+    expect(z.records[0]).toMatchObject({ state: "done", outcome: "posun", newLevel: 2 });
+    const bad = [act("2026-11-10", [lap(1, 248), lap(2, 245)])];
+    const f = evaluateKeys(low, bad, "2026-11-11", "zvyseni", levels);
+    expect(f.records[0]).toMatchObject({ outcome: "ubrat", newLevel: 1 });
+    expect(f.updates).toEqual([expect.objectContaining({ key: "ride:thr", level: 1 })]);
+  });
+  it("stupeň zůstává v 0 až TIERS − 1", async () => {
+    const { nextLevel } = await import("../../src/core/coach/progress");
+    const { TIERS } = await import("../../src/core/coach/library");
+    expect(nextLevel(TIERS - 1, "posun", "zvyseni")).toBe(TIERS - 1);
+    expect(nextLevel(0, "ubrat", "zvyseni")).toBe(0);
+    expect(nextLevel(TIERS + 3, "zopakovat", "zvyseni")).toBe(TIERS - 1);
+  });
   it("stupeň se mezitím změnil jinou kvalitou → nepřičítá se dvakrát", () => {
     const acts = [act("2026-11-10", [1, 2, 3, 4].map((i) => lap(i, 248)))];
     const z = evaluateKeys(rec, acts, "2026-11-11", "zvyseni", { "ride:thr": { level: 3, last: "2026-11-09" } });
     expect(z.records[0]!.newLevel).toBe(3);
+  });
+});
+
+// Oprava 6c: výběr z knihovny dřív nedostal datum ani posledně použité tréninky → na stejném stupni pořád stejný
+import { buildWorkout, tierOf, libById } from "../../src/core/coach/library";
+import { runCoach } from "../../src/core/coach/engine";
+import { scenario, simHistory, simInput } from "../../scripts/coach-sim-lib";
+describe("střídání tréninků na stejném stupni", () => {
+  const zones = { ftp: 260, hr: null };
+  const b = (o: { seed?: string; avoidIds?: string[] }) => buildWorkout({ sport: "ride", family: "thr", level: 2, minutes: 90, indoor: false, zones, ...o });
+  it("posledně použitý trénink se nevezme znovu, stupeň zůstává; stejné datum = stejná volba", () => {
+    const first = b({ seed: "2027-04-06" });
+    const again = b({ seed: "2027-04-06" });
+    expect(again.wid).toBe(first.wid);
+    const next = b({ seed: "2027-04-13", avoidIds: [first.wid!] });
+    expect(next.wid).not.toBe(first.wid);
+    expect(tierOf(libById(next.wid)!)).toBe(tierOf(libById(first.wid)!));
+  });
+  it("engine: kvalita s uloženým wid v historii dostane jiný trénink téže kategorie", () => {
+    const sc = scenario("sezona-zlepsit");
+    const inp = simInput(sc, simHistory(sc), "2027-04-12");
+    const k0 = runCoach(inp).coach.keyDays[0]!;
+    expect(k0.wid).toBeTruthy();
+    const k1 = runCoach({ ...inp, recentWids: [{ date: "2027-04-05", sport: k0.sport, cat: k0.cat, wid: k0.wid! }] }).coach.keyDays.find((k) => k.date === k0.date && k.cat === k0.cat);
+    expect(k1).toBeTruthy();
+    expect(k1!.wid).not.toBe(k0.wid);
+    expect(k0.base).toBeGreaterThanOrEqual(k0.level);
   });
 });

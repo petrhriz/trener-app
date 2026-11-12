@@ -3,7 +3,7 @@ import { BIKE_SPORTS, type NLap, type Sport } from "../../datasource/types";
 import { addDays } from "../../lib/time";
 import type { Goal } from "../fitness";
 import { type Outcome, evaluatePast } from "../qualityDesign";
-import type { WorkPlan, WorkTarget } from "./library";
+import { TIERS, type WorkPlan, type WorkTarget } from "./library";
 
 export interface DoneKey {
   date: string;
@@ -56,11 +56,12 @@ export function outcomeOf(d: DoneKey): { outcome: Outcome; text: string } {
   return { outcome: "zopakovat", text: "bez okruhů a splnění – stejný stupeň" };
 }
 
-/** Nový stupeň: Udržet a Pokles nahoru neposouvají. */
+/** Nový stupeň (vždy 0 až TIERS − 1): Udržet a Pokles nahoru neposouvají. */
 export function nextLevel(level: number, outcome: Outcome, goal: Goal): number {
-  if (outcome === "posun") return goal === "udrzeni" || goal === "pokles" ? level : level + 1;
-  if (outcome === "ubrat") return Math.max(0, level - 1);
-  return level;
+  const cl = (x: number) => Math.max(0, Math.min(TIERS - 1, x));
+  if (outcome === "posun") return cl(goal === "udrzeni" || goal === "pokles" ? level : level + 1);
+  if (outcome === "ubrat") return cl(level - 1);
+  return cl(level);
 }
 
 export interface ZoneAct {

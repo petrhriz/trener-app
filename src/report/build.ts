@@ -284,6 +284,7 @@ export async function planForCoach(ctx: Ctx, rec: RecoveryResult, opt: { dryRun?
     offDays: offDaysOf(ctx),
     progress: state.progress,
     keyHistory: ev.records.filter((r) => r.state === "done").map((r) => ({ date: r.date, cat: r.cat })),
+    recentWids: ev.records.filter((r) => !!r.wid).map((r) => ({ date: r.date, sport: r.sport, cat: r.cat, wid: r.wid! })),
   });
   // dnešní (a dřívější) kvality z plánu uložit – po odjetí se vyhodnotí; zápis jen při změně
   const keys1 = recordKeys(ev.records, plan.coach.keyDays, T);

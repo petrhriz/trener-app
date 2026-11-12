@@ -181,6 +181,9 @@ export interface BuildInput {
   level: number;
   /** trénink z knihovny (kolo s wattmetrem); null = vybere se podle stupně */
   wid?: string | null;
+  /** výběr z knihovny: stejný den = stejná volba (datum) a nedávno použité tréninky kategorie (střídání na stupni) */
+  seed?: string;
+  avoidIds?: string[];
   minutes: number;
   indoor: boolean;
   zones: Zones;
@@ -320,7 +323,10 @@ export function buildWorkout(inp: BuildInput): Built {
   // --- klíčové jednotky ---
   const cat = inp.family as Cat;
   const tier = Math.max(0, Math.min(TIERS - 1, Math.round(inp.level)));
-  const libW = power ? libById(inp.wid) ?? pickLib({ cat, tier, maxMain: minutes - (indoor ? 15 : 20) - 10, maxTiz: null, avoidIds: [], avoidShapes: [], seed: "" }) : null;
+  // nedávno použité tréninky se vynechají, ale jen na stejném stupni – kvůli střídání se stupeň nemění
+  const pick = (avoidIds: string[]) => pickLib({ cat, tier, maxMain: minutes - (indoor ? 15 : 20) - 10, maxTiz: null, avoidIds, avoidShapes: [], seed: inp.seed ?? "" });
+  const fresh = power && !inp.wid ? pick(inp.avoidIds ?? []) : null, plain = power && !inp.wid ? pick([]) : null;
+  const libW = power ? libById(inp.wid) ?? (fresh && plain && tierOf(fresh) !== tierOf(plain) ? plain : fresh ?? plain) : null;
   // s wattmetrem z knihovny; když se do délky nevejde žádný trénink kategorie, stejně jako bez wattmetru podle tepu
   if (power && libW) {
     const ftp = zones.ftp!;

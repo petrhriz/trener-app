@@ -17,6 +17,10 @@ export interface KeyRecord {
   cat: Cat;
   /** stupeň, na kterém byla kvalita naplánovaná */
   level: number;
+  /** základní stupeň kategorie v den plánu (kvalita bývá o stupeň níž – zima, lehčí týden); starší záznamy ho nemají */
+  base?: number;
+  /** trénink z knihovny (kolo s wattmetrem) – ať se na stejném stupni tréninky střídají */
+  wid?: string | null;
   plan: WorkPlan | null;
   minutes: number;
   name: string | null;
@@ -51,8 +55,12 @@ export function evaluateKeys(records: KeyRecord[], acts: EngineAct[], today: str
     if (m.kind === "one") {
       const o = outcomeOf({ date: r.date, plan: r.plan, laps: m.act.laps, compliance: m.act.compliance });
       const key = `${r.sport}:${r.cat}`;
-      const now = cur[key] ?? r.level;
-      const nl = now === r.level ? nextLevel(r.level, o.outcome, goal) : now;
+      // posun se počítá od základního stupně kategorie: neúspěch ho sníží i na sníženém stupni, úspěch na
+      // sníženém stupni ho nezvýší (byl to lehčí trénink, než kategorie má)
+      const base = r.base ?? r.level;
+      const now = cur[key] ?? base;
+      const reduced = r.level < base;
+      const nl = now !== base ? now : o.outcome === "posun" && reduced ? base : nextLevel(base, o.outcome, goal);
       Object.assign(r, { state: "done", outcome: o.outcome, text: o.text, newLevel: nl });
       if (nl !== now) { cur[key] = nl; updates.push({ key, level: nl, last: r.date, outcome: o.text }); }
       else updates.push({ key, level: now, last: r.date, outcome: o.text });

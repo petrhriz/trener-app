@@ -130,7 +130,8 @@ describe("kvalita a tvůj sport dne", () => {
     // stejná zátěž jako kvalita na kole, ne dvouhodinovka
     expect(h.minutes).toBeLessThanOrEqual(75);
     const rideKey = w1.days.find((x) => x.role === "key")!;
-    expect(Math.abs(h.load - rideKey.load) / rideKey.load).toBeLessThan(0.5);
+    // kvalita na kole se teď z knihovny vybírá podle data a střídá (Oprava 6c) → její zátěž kolísá víc než dřív
+    expect(Math.abs(h.load - rideKey.load) / rideKey.load).toBeLessThan(0.6);
   });
   it("den s běžkami (bez intervalů) kvalitu nedostane – přesune se na jiný den, týden ji má", () => {
     const base = runCoach(input());
