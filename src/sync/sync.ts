@@ -349,7 +349,10 @@ export async function syncTick(env: Env, opts: { force?: boolean; manual?: boole
       await markDirty(env.DB, addDays(T, -3));
       rep.steps.push("icu kondice");
     }
-    const st = (await getState<{ cursor: string; done: boolean }>(env.DB, "icu_fit_bf")) ?? { cursor: T, done: false };
+    // v = verze dočtení: zvýšení projde historii znovu (2: do intervals.icu se doplnila starší léta)
+    const V = 2;
+    const st = (await getState<{ cursor: string; done: boolean; v?: number }>(env.DB, "icu_fit_bf")) ?? { cursor: T, done: false, v: V };
+    if (st.v !== V) Object.assign(st, { cursor: T, done: false, v: V });
     if (st.done || !quarter || !batch) return;
     const from = addDays(st.cursor, -179);
     const w = await icu.wellnessRaw(from, st.cursor);
@@ -361,6 +364,37 @@ export async function syncTick(env: Env, opts: { force?: boolean; manual?: boole
     await setState(env.DB, "icu_fit_bf", st);
     await markDirty(env.DB, from);
     rep.steps.push(`icu kondice backfill (do ${from}${st.done ? ", hotovo" : ""})`);
+  });
+
+  // 3d) zátěž starších aktivit z intervals.icu (doplnění výš sahá jen 400 dní): po 60 dnech dozadu, jen aktivity
+  //     bez icu_load. Vlastní odhad z průměrného tepu je u starých let o 5–13 % výš (dnešní LTHR a klidový tep).
+  await guard("icu zátěž historie", async () => {
+    if (!icu.configured || !quarter || !batch) return;
+    const V = 1;
+    const st = (await getState<{ cursor: string; done: boolean; v: number }>(env.DB, "icu_load_bf")) ?? { cursor: T, done: false, v: V };
+    if (st.v !== V) Object.assign(st, { cursor: T, done: false, v: V });
+    if (st.done) return;
+    const from = addDays(st.cursor, -59);
+    const rows = await all<{ id: string; date: string }>(env.DB, "SELECT id, date FROM activities WHERE icu_load IS NULL AND date >= ? AND date <= ?", from, st.cursor);
+    if (rows.length) {
+      const list = await icu.activitiesRaw(from, st.cursor);
+      const sqls: string[] = [];
+      for (const a of rows) {
+        const sameDay = list.filter((x) => String(x.start_date_local ?? "").slice(0, 10) === a.date);
+        const r = list.find((x) => String(x.external_id ?? "").includes(a.id)) ?? (sameDay.length === 1 ? sameDay[0] : null);
+        if (r?.icu_training_load == null) continue;
+        sqls.push(`UPDATE activities SET icu_id = COALESCE(icu_id, ${lit(String(r.id))}), icu_load = ${lit(r.icu_training_load)}, icu_decoupling = COALESCE(icu_decoupling, ${lit(r.decoupling ?? null)}), icu_intensity = COALESCE(icu_intensity, ${lit(r.icu_intensity ?? null)}) WHERE id = ${lit(a.id)}`);
+      }
+      if (sqls.length) {
+        await execAll(env.DB, [...sqls, ICU_LOAD_SQL]);
+        await markDirty(env.DB, from);
+      }
+      rep.steps.push(`icu zátěž historie (${sqls.length}/${rows.length}, do ${from})`);
+    }
+    const oldestAct = await first<{ d: string }>(env.DB, "SELECT MIN(date) AS d FROM activities");
+    st.cursor = addDays(from, -1);
+    if (!oldestAct?.d || st.cursor < oldestAct.d) st.done = true;
+    await setState(env.DB, "icu_load_bf", st);
   });
 
   // 4) backfill aktivit (celá historie), několik stránek po 20
