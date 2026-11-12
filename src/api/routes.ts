@@ -1043,7 +1043,10 @@ api.get("/plan/fit", async (c) => {
   let w = cal ? JSON.parse(cal.steps_json!) : null;
   let name = cal?.name ?? "";
   if (!w) {
-    const d = (await planFor(ctx)).days.find((x) => x.date === date);
+    const p = await planFor(ctx);
+    // podrobný plán (8 dní), jinak náhled z výhledu trenéra (4 týdny)
+    const hzDays = ((p as { coach?: { horizon?: { days: { date: string; name: string | null; workout: unknown }[] }[] } }).coach?.horizon ?? []).flatMap((x) => x.days);
+    const d = p.days.find((x) => x.date === date && x.workout) ?? hzDays.find((x) => x.date === date && x.workout);
     if (d?.workout) { w = d.workout; name = d.name ?? "Workout"; }
   }
   if (!w) return c.json({ error: "Na tento den žádný workout není." }, 404);

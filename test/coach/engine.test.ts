@@ -52,8 +52,12 @@ describe("Trenér v3 – plán", () => {
     const h = runCoach(input()).coach.horizon;
     expect(h).toHaveLength(4);
     expect(h.map((w) => w.detail)).toEqual([true, true, false, false]);
-    expect(h[2]!.days.every((d) => d.name == null)).toBe(true);
     expect(h[2]!.days.some((d) => d.role !== "rest" && d.minutes > 0 && d.load > 0)).toBe(true);
+    // orientační týdny: náhled tréninku (název, kroky, graf) u každého tréninkového dne, volno bez náhledu
+    for (const d of h[2]!.days) {
+      if (d.role === "rest" || d.blocked) expect(d.workout).toBeNull();
+      else expect(d.name && d.workout).toBeTruthy();
+    }
     for (let i = 1; i < 4; i++) expect(h[i]!.ctlStart).toBeCloseTo(h[i - 1]!.ctlEnd, 0);
   });
   it("pravidla přes celý horizont: nejvýš 3 dny za sebou, kvalita ne po kvalitě ani po dlouhém", () => {

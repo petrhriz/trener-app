@@ -157,7 +157,7 @@ export interface CoachInfo {
   outlook: { days: { date: string; load: number }[]; weeks: { weekStart: string; load: number; ctlEnd: number; recoveryWeek: boolean; phaseLabel: string; exact: boolean }[] };
   /** pondělní plán tohoto týdne k uložení (nebo ten uložený) */
   mondayPlan: MondayPlan | null;
-  horizon: { weekStart: string; detail: boolean; load: number; done: number; need: number; target: number; notes: string[]; limit: WeekTarget["limit"]; ctlStart: number; ctlEnd: number; ctlGoal: number; phaseLabel: string; recoveryWeek: boolean; days: { date: string; role: Role; sport: PlanSport; minutes: number; load: number; name: string | null; blocked: boolean }[] }[];
+  horizon: { weekStart: string; detail: boolean; load: number; done: number; need: number; target: number; notes: string[]; limit: WeekTarget["limit"]; ctlStart: number; ctlEnd: number; ctlGoal: number; phaseLabel: string; recoveryWeek: boolean; days: { date: string; role: Role; sport: PlanSport; minutes: number; load: number; name: string | null; blocked: boolean; workout: Workout | null; steps: string[]; targetText: string | null; why: string[] }[] }[];
 }
 
 export type CoachPlan = PlanResult & { coach: CoachInfo };
@@ -453,14 +453,14 @@ export function runCoach(inp: CoachInput): CoachPlan {
       }
     }
 
-    // obsah: konkrétní tréninky tento a příští týden
-    if (detail) {
-      const build = (x: Day3) => {
+    // obsah: konkrétní tréninky tento a příští týden; další týdny jen náhled (`preview` – délka a zátěž dne
+    // zůstávají z plánu, počasí se nebere, kroky jsou orientační)
+      const build = (x: Day3, preview = false) => {
         const f = fixed.get(x.date);
         const w = inp.weather.get(x.date) ?? null;
         const calib = rateOf(x.sport).calib;
         x.indoor = false;
-        if (x.sport === "ride" && !x.own) {
+        if (x.sport === "ride" && !x.own && !preview) {
           if (x.role === "key") {
             const goodOutside = inp.weatherOk && !!w && !w.bad && !!w.window;
             if (!inp.weatherOk || !!w?.bad || (winter && !goodOutside)) { x.indoor = true; if (w?.bad) x.why.push(`${w.text} → trenažér`); }
@@ -509,8 +509,9 @@ export function runCoach(inp: CoachInput): CoachPlan {
         x.targetText = b.targetText;
         x.qualityType = x.role === "key" ? b.qualityType : null;
         x.tiz = b.tizMin;
-        if (!x.own) { x.minutes = b.minutes; x.load = b.load; }
+        if (!x.own && !preview) { x.minutes = b.minutes; x.load = b.load; }
       };
+    if (detail) {
       for (const x of train.filter((y) => y.role === "key")) build(x);
       // zbylá zátěž po skutečných kvalitách → znovu délky Z2 a dlouhého
       if (!pinned) spread();
@@ -558,6 +559,11 @@ export function runCoach(inp: CoachInput): CoachPlan {
         const b = buildWorkout({ sport: x.sport, family: x.role === "long" ? "long" : "end", level: 0, wid: null, minutes: x.minutes, indoor: x.indoor, zones: inp.zones, calib });
         x.workout = relabel(b.workout, x.sport); x.steps = stepsText(x.workout, x.sport); x.name = nameFor(b.name, x.sport); x.targetText = b.targetText; x.load = b.load; x.tiz = 0; x.qualityType = null; x.cat = null;
       }
+    }
+    // orientační týdny: náhled tréninků (kvality napřed kvůli střídání kategorií)
+    if (!detail) {
+      for (const x of train.filter((y) => y.role === "key")) build(x, true);
+      for (const x of train.filter((y) => y.role !== "key")) build(x, true);
     }
     const pr = proj();
     const end = pr.length ? pr[pr.length - 1]! : { ctl: state.ctl, atl: state.atl };
@@ -801,7 +807,7 @@ function toPlan(inp: CoachInput, weeks: Week3[], o: { outlook: CoachInfo["outloo
     keyDays: weeks.filter((w) => w.detail).flatMap((w) => w.days).filter((x) => x.role === "key" && x.cat && x.level != null).map((x) => ({ date: x.date, sport: x.sport, cat: x.cat!, level: x.level!, base: x.base ?? x.level!, wid: x.wid ?? null, plan: x.wplan ?? null, minutes: x.minutes, name: x.name })),
     mondayPlan: null,
     outlook: o.outlook,
-    horizon: weeks.map((w) => ({ weekStart: w.weekStart, detail: w.detail, load: w.planned, done: w.target.done, need: w.target.need, target: w.target.load, notes: w.target.notes, limit: w.target.limit, ctlStart: w.target.ctlStart, ctlEnd: w.ctlEnd, ctlGoal: w.target.ctlGoal, phaseLabel: w.target.phaseLabel, recoveryWeek: w.target.recoveryWeek, days: w.days.map((x) => ({ date: x.date, role: x.role, sport: x.sport, minutes: x.minutes, load: x.load, name: x.name, blocked: !!x.blocked })) })),
+    horizon: weeks.map((w) => ({ weekStart: w.weekStart, detail: w.detail, load: w.planned, done: w.target.done, need: w.target.need, target: w.target.load, notes: w.target.notes, limit: w.target.limit, ctlStart: w.target.ctlStart, ctlEnd: w.ctlEnd, ctlGoal: w.target.ctlGoal, phaseLabel: w.target.phaseLabel, recoveryWeek: w.target.recoveryWeek, days: w.days.map((x) => ({ date: x.date, role: x.role, sport: x.sport, minutes: x.minutes, load: x.load, name: x.name, blocked: !!x.blocked, workout: x.role !== "rest" && !x.blocked ? x.workout : null, steps: x.role !== "rest" && !x.blocked ? x.steps : [], targetText: x.role !== "rest" && !x.blocked ? x.targetText : null, why: x.why })) })),
   };
   coach.mondayPlan = o.mondayPlan && !o.mondayPlan.week ? { ...o.mondayPlan, week: coach.horizon[0]! } : o.mondayPlan;
   return { from: dates[0]!, to: dates[dates.length - 1]!, days, changes, chart, loadPast7, loadNext7, qualityWeeks, warnings, weeklyTarget: { lo: Math.round(total0 * 0.9), hi: Math.round(total0 * 1.1), mid: total0 }, missed, done, coach };

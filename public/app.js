@@ -1074,7 +1074,7 @@ function weekBar(w, label) {
 }
 let tTab = (() => { try { return localStorage.getItem("tTab") || "tyden"; } catch { return "tyden"; } })(), tMoreOpen = false;
 /** kalendář trenéra: otevřený den (úprava pod jeho týdnem) a rozbalené minulé týdny */
-let ccOpen = null, ccPastOpen = false;
+let ccOpen = null, ccEdit = false, ccPastOpen = false;
 // ---------- graf tréninku ----------
 /** výška kroků podle tepu (Z1–Z5), když krok nemá watty */
 const WZ_PCT = [0.5, 0.65, 0.82, 0.97, 1.1];
@@ -1191,16 +1191,16 @@ async function pageTrener(el) {
   // --- dny: podrobný plán (8 dní) + výhled trenéra (4 týdny, jen druh / sport / délka) ---
   const HZ_KIND = { key: "quality", long: "long", endurance: "z2", easy: "z2", rest: "rest" };
   const HZ_NAME = { key: "Kvalita", long: "Dlouhá jízda", endurance: "Z2 vytrvalost", easy: "Lehce" };
-  const hzDays = hz ? hz.flatMap((w) => w.days) : [];
-  /** den pro úpravy: z podrobného plánu, jinak z výhledu (orient = bez kroků, doplní se 2 týdny předem) */
+  const hzDays = hz ? hz.flatMap((w) => w.days.map((x) => ({ ...x, orient: !w.detail }))) : [];
+  /** den pro úpravy: z podrobného plánu, jinak z výhledu trenéra (orient = náhled, kroky se upřesní 2 týdny předem) */
   const dayAt = (date) => {
     const x = p.days.find((y) => y.date === date);
     if (x) return x;
     const h = hzDays.find((y) => y.date === date);
     if (!h || date < r.date) return null;
-    if (h.blocked) return { date, kind: "blocked", tag: "nelze", orient: true };
+    if (h.blocked) return { date, kind: "blocked", tag: "nelze", orient: h.orient };
     const rest = h.role === "rest";
-    return { date, orient: true, kind: HZ_KIND[h.role] || "z2", name: rest ? null : h.name || HZ_NAME[h.role] || "Trénink", sport: h.sport, durationMin: rest ? null : h.minutes, load: rest ? 0 : h.load, workout: null, steps: null };
+    return { date, orient: h.orient, kind: HZ_KIND[h.role] || "z2", name: rest ? null : h.name || HZ_NAME[h.role] || "Trénink", sport: h.sport, durationMin: rest ? null : h.minutes, load: rest ? 0 : h.load, workout: rest ? null : h.workout || null, steps: rest ? [] : h.steps || [], targetText: rest ? null : h.targetText || null, why: h.why || [] };
   };
   /** kam jde trénink přesunout: všechny budoucí dny plánu i výhledu */
   const shiftTargets = (x) => [...new Set([...p.days.map((y) => y.date), ...hzDays.map((y) => y.date)])].filter((dt) => dt >= r.date && dt !== x.date).sort().map(dayAt).filter((y) => y && y.kind !== "blocked");
@@ -1216,7 +1216,6 @@ async function pageTrener(el) {
       ${ride && x.workout ? `<div class="btns"><a class="btn sm" href="/api/plan/fit?date=${x.date}" download="${x.date}-workout.fit">📥 FIT soubor</a><span class="note">bez intervals.icu: nahraj kabelem do složky Garmin/NewFiles</span></div>` : ""}
       ${stepEditor(x, mine)}
       ${x.steps && x.steps.length ? `<details class="stepsd"><summary>Kroky tréninku (${x.steps.length})</summary><ol class="steps">${x.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol></details>` : ""}
-      ${x.orient && ride ? `<p class="note">Konkrétní tréninkové kroky trenér doplní 2 týdny předem – teď jde nastavit druh, sport, délku a den.</p>` : ""}
       ${x.note ? `<p class="note">${esc(x.note)}</p>` : ""}`;
   };
   const dayRow = (x) => {
@@ -1237,9 +1236,21 @@ async function pageTrener(el) {
   // detail dne z kalendáře (pod jeho týdnem)
   const ccX = ccOpen ? dayAt(ccOpen) : null;
   if (ccOpen && (!ccX || ccX.kind === "blocked")) ccOpen = null;
+  // klik = popis tréninku (rozpis úseků, graf průběhu); úpravy až po „Upravit“
+  const ccView = (x) => {
+    if (!x.name) return `<p class="sub">Volný den.</p><div class="btns"><button type="button" class="btn sm" data-ccedit>＋ Přidat trénink</button></div>`;
+    const why = x.note || (x.why || []).map((s) => s[0].toUpperCase() + s.slice(1)).join(". ");
+    return `${x.targetText ? `<p class="cc-tg">${esc(x.targetText)}</p>` : ""}
+      ${x.workout ? workoutSvg(x.workout, d.ftp) : ""}
+      ${x.steps && x.steps.length ? `<ol class="steps">${x.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>` : x.workout ? "" : `<p class="sub">Rozpis tréninku zatím nemám.</p>`}
+      ${why ? `<p class="note">${esc(why)}</p>` : ""}
+      ${x.orient ? `<p class="note">Orientační náhled – konkrétní kvalitu, délky a watty trenér upřesní 2 týdny předem podle kondice, únavy a počasí.</p>` : ""}
+      <div class="btns"><button type="button" class="btn sm pri" data-ccedit>✏️ Upravit</button>${x.workout ? `<a class="btn sm" href="/api/plan/fit?date=${x.date}" download="${x.date}-workout.fit">📥 FIT soubor</a>` : ""}</div>`;
+  };
   const ccDetail = ccOpen ? `<div class="cc-det" id="ccDet"><div class="cc-dh"><div><b>${dayDm(ccX.date)}</b> · ${esc(ccX.name || "Volno")}${ccX.orient ? ' <span class="ttag">orientačně</span>' : ""}
-      <div class="sub">${ccX.name ? `${tSportIco(ccX.sport)} ${dur((ccX.durationMin || 0) * 60)} · zátěž ${num(ccX.load)}${ccX.targetText ? ` · ${esc(ccX.targetText)}` : ""}` : "Volný den – můžeš sem dát trénink."}</div></div>
-      <button type="button" class="btn sm" data-ccclose aria-label="Zavřít">✕</button></div><div class="tpanel">${panelHtml(ccX)}</div></div>` : "";
+      ${ccX.name ? `<div class="sub">${tSportIco(ccX.sport)} ${dur((ccX.durationMin || 0) * 60)} · zátěž ${num(ccX.load)}</div>` : ""}</div>
+      <div class="btns cc-dbt">${ccEdit ? '<button type="button" class="btn sm" data-ccview>Hotovo</button>' : ""}<button type="button" class="btn sm" data-ccclose aria-label="Zavřít">✕</button></div></div>
+      ${ccEdit ? `<div class="tpanel">${panelHtml(ccX)}</div>` : `<div class="cc-view">${ccView(ccX)}</div>`}</div>` : "";
   const RS = { done: ["✅", "splněno", "good"], partial: ["🟡", "částečně", "warn"], missed: ["❌", "vynecháno", "bad"], skipped: ["⏸️", "volno (tvoje volba)", ""], extra: ["➕", "navíc mimo plán", ""] };
   const nPlan = rc.filter((x) => x.plan && x.status !== "skipped").length, nOk = rc.filter((x) => x.status === "done").length;
   const recentRows = rc.map((x) => { const [ic, lab, tn] = RS[x.status] || ["•", x.status, ""]; return `<div class="tr-row"><span class="tr-d"><b>${DAYS[dow(x.date) - 1]}</b> ${dm(x.date)}</span><span class="tr-m"><span class="tr-p">${x.plan ? `plán: ${esc(x.plan.name)}${x.plan.min ? ` · ${dur(x.plan.min * 60)}` : ""}${x.plan.load ? ` · zátěž ${num(x.plan.load)}` : ""}` : "bez plánu"}</span>${x.acts.length ? x.acts.map((a) => `<a href="#/aktivita/${a.id}" class="tr-a">${SPORT_ICON[a.sport] || "🏅"} ${esc(a.name || SPORT_NAME[a.sport] || "")} · ${hUt(a.moving_s)} · zátěž ${num(a.load)}</a>`).join("") : `<span class="sub">nic odjeto</span>`}</span><span class="tr-s ${tn}">${ic} ${lab}${x.compliance != null ? `<small>${x.compliance} %</small>` : ""}</span></div>`; }).join("");
@@ -1354,10 +1365,13 @@ async function pageTrener(el) {
   const ccRender = () => pageTrener(el).then(() => el.querySelector("#ccDet")?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
   el.querySelectorAll("[data-ccday]").forEach((b) => b.addEventListener("click", () => {
     ccOpen = ccOpen === b.dataset.ccday ? null : b.dataset.ccday;
+    ccEdit = false;
     tOpen = null;
     ccRender();
   }));
-  el.querySelector("[data-ccclose]")?.addEventListener("click", () => { ccOpen = null; pageTrener(el); });
+  el.querySelector("[data-ccclose]")?.addEventListener("click", () => { ccOpen = null; ccEdit = false; pageTrener(el); });
+  el.querySelector("[data-ccedit]")?.addEventListener("click", () => { ccEdit = true; ccRender(); });
+  el.querySelector("[data-ccview]")?.addEventListener("click", () => { ccEdit = false; ccRender(); });
   el.querySelector(".cc-past")?.addEventListener("toggle", (e) => { ccPastOpen = e.currentTarget.open; });
   el.querySelectorAll(".stepf").forEach((f2) => f2.addEventListener("submit", (e) => {
     e.preventDefault();

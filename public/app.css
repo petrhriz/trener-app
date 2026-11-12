@@ -2087,3 +2087,10 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 .actsel .gearsel .sub { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .actsel .gearsel { position: relative; }
 @media (max-width: 760px) { .actsel { grid-template-columns: repeat(auto-fit, minmax(0, 1fr)) !important; } }
+
+/* kalendář: popis dne (bez úprav) */
+.cc-dbt { margin: 0; flex-wrap: nowrap; }
+.cc-view { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.cc-view .steps { margin: 0; }
+.cc-view .btns { margin-top: 2px; }
+.cc-tg { margin: 0; font-size: 13px; color: var(--muted); }
