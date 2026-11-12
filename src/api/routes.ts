@@ -39,6 +39,7 @@ import { OWNER_ID, sessionUser } from "./session";
 /** uid = přihlášený uživatel (zatím vždy 1 = vlastník; příprava na víc uživatelů, viz docs/multi-user.md) */
 export const api = new Hono<{ Bindings: Env; Variables: { uid: number } }>();
 import { gearApi, loadGear, resolveGear } from "./gear";
+import { zones28 } from "../core/coach3/zones28";
 import { loadZoneHistory, recordZones, zonesFor } from "../lib/zoneHistory";
 import { applySecrets, encryptSecret, invalidateSecrets, secretInfo, secretsFor } from "../lib/secrets";
 const isBike = (s: string) => BIKE_SPORTS.includes(s as any);
@@ -385,6 +386,8 @@ api.get("/coach", async (c) => {
     recent,
     past,
     pastWeeks,
+    // čas v zónách za 28 dní (součet aktivit) – graf v „Z čeho trenér vychází“
+    zones28: zones28(ctx.acts as any, T),
     readiness: r,
     // graf tréninku: % FTP kroků (watty) a zóny tepu (kroky podle tepu)
     ftp: ctx.s.ftp,

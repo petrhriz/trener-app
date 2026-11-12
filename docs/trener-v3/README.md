@@ -36,7 +36,7 @@ Hlášené chyby měly společnou příčinu – v2 míchal různé výchozí bo
 |---|---|---|
 | 1 | Cíl a výhled od dnešní kondice, kostra, délky ze zátěže, texty podle sportu, dnešek z plánu | hotovo |
 | 2 | Kalendář 4 týdny dopředu a 2 týdny zpětně, cíl zvlášť pro tento a příští týden | hotovo |
-| 3 | Kratší „z čeho trenér vychází“, graf času v zónách za 28 dní | čeká |
+| 3 | Kratší „z čeho trenér vychází“ (3 řádky + souhrn), graf času v zónách za 28 dní, pravidla se zdroji | hotovo |
 | 4 | Běžecké zóny (vlastní práh pro běh) | čeká |
 | 5 | Vyhodnocení kvalit a stupně náročnosti, střídání kategorií přes týdny | čeká |
 | 6 | Smazat v1 a v2 | až v3 projde na ostrých datech |

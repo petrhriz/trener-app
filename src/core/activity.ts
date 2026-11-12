@@ -110,10 +110,10 @@ export interface ActivityAnalysis {
 }
 
 // barvy musí existovat v app.css (dřív odkazy na neexistující proměnné → Z4/Z5 se nevykreslily)
-const HR_COLORS = ["var(--z1)", "var(--z2)", "var(--z3)", "var(--z4)", "var(--z6)"];
-const PWR_COLORS = ["var(--z1)", "var(--z2)", "var(--z3)", "var(--z4)", "var(--z5)", "var(--z6)", "var(--z7)"];
+export const HR_COLORS = ["var(--z1)", "var(--z2)", "var(--z3)", "var(--z4)", "var(--z6)"];
+export const PWR_COLORS = ["var(--z1)", "var(--z2)", "var(--z3)", "var(--z4)", "var(--z5)", "var(--z6)", "var(--z7)"];
 
-function zoneRows(secs: number[], moving: number, colors: string[]): ZoneRow[] {
+export function zoneRows(secs: number[], moving: number, colors: string[]): ZoneRow[] {
   return secs.map((s, i) => {
     const pct = moving > 0 ? (s / moving) * 100 : 0;
     return {

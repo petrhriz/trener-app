@@ -112,6 +112,8 @@ export interface CoachInfo3 {
   /** dnešní kondice (jako na stránce), kondice na začátku týdne (pondělí) a kam dojde na konci týdne */
   ctlNow: number;
   ctlWeekStart: number;
+  /** Zima: zimní základ (vrchol sezóny − 42,5 %) */
+  floor: number | null;
   ctlTarget: number;
   notes: string[];
   distribution: Distribution | null;
@@ -643,6 +645,7 @@ function toPlan(inp: Coach3Input, weeks: Week3[], o: { from: string; todayDone: 
     ctlNow: Math.round(o.ctlRef * 10) / 10,
     ctlTarget: w0.ctlEnd,
     ctlWeekStart: w0.target.ctlStart,
+    floor: w0.target.floor,
     notes: [summary, ...w0.notes],
     distribution: distribution(inp.acts, T),
     plannedHard: minutes0 > 0 ? Math.round((w0.days.reduce((t, x) => t + x.tiz, 0) / minutes0) * 100) : 0,

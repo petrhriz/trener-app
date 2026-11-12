@@ -1186,6 +1186,35 @@ function stepEditor(x, mine) {
       <p class="note">Mění hlavní část (zvýrazněná v grafu). Pracovní čas jde zvednout nejvýš o polovinu, intenzita ±10 %. Trenér přepočítá zátěž a den bere jako tvoji volbu.</p>`;
 }
 
+/** Pravidla Trenéra v3 – krátce, se zdroji (docs/trener-v3/zdroje.md). */
+const RULES3 = `<ul class="rules3">
+  <li><b>Cíl týdne</b> = 7 × kondice + 45,6 × růst. Zlepšit +3 za týden (nad kondicí 45 +4), Udržet 0, Zima k zimnímu základu (vrchol sezóny − 42,5 %), ladění −2. <small>TrainingPeaks, Friel</small></li>
+  <li><b>Přidávání</b> nejvýš +30 % proti obvyklým 4 týdnům, pak +15 % za týden. Každý 4. týden lehčí, o 40–50 % méně. <small>Friel 3:1</small></li>
+  <li><b>Týden od pondělí.</b> Vynechané se nedohání, odjeté navíc se odečte od zbytku týdne.</li>
+  <li><b>Kostra:</b> nejvýš 3 dny tréninku za sebou, kvalita ne den po kvalitě ani po dlouhém, dlouhý o víkendu.</li>
+  <li><b>Délky ze zátěže</b> podle sportu – změna sportu drží zátěž. Zima a Udržet v zimě: Z2 do 75 min, dlouhá do 2 h.</li>
+  <li><b>Ráno:</b> 🟡 dnes bez kvality, 🔴 volno nebo Z1. Únava (forma pod −20, horší rána, VST pod normou) ubírá týden.</li>
+  <li><b>Intenzita 80/20:</b> lehce = Z1–Z2, středně = Z3, intenzivně = Z4 a výš. <small>Seiler</small></li>
+</ul>`;
+
+/** „Z čeho trenér vychází“ pro v3: tři řádky čísel, jedna věta souhrnu, čas v zónách za 28 dní. */
+function why3(d, co, p, f) {
+  const h0 = co.horizon[0];
+  const goalTxt = co.floor != null ? `zimní základ <b>${num(co.floor, 1)}</b>` : co.ramp > 0 ? `růst <b>+${num(co.ramp, 0)}</b> za týden` : co.ramp < 0 ? `${num(co.ramp, 0)} za týden` : "kondici držet";
+  const nTr = h0.days.filter((x) => x.role !== "rest" && !x.blocked).length;
+  const nK = h0.days.filter((x) => x.role === "key").length;
+  const rows = [
+    ["Cíl", `${esc(d.goalLabel || "")} · ${esc(co.phaseLabel)} · ${goalTxt}${co.recoveryWeek ? " · lehčí týden" : ""}`],
+    ["Kondice", `začátek týdne ${num(co.ctlWeekStart, 1)} · dnes ${num(f.ctl, 1)} · neděle <b>${num(co.ctlTarget, 1)}</b>`],
+    ["Tento týden", `zátěž <b>${thou(co.load)}</b>${h0.done ? ` (odjeto ${thou(h0.done)})` : ""} · zbývá ${nTr} tréninků${nK ? ` · ${nK}× kvalita` : ""} · ${num(co.hours, 2).replace(/,?0+$/, "")} h`],
+  ];
+  const sum = co.notes && co.notes[0] ? `<p class="tproj">${esc(co.notes[0])}</p>` : "";
+  const more = (co.notes || []).slice(1);
+  const z = d.zones28 || [];
+  const zHtml = z.length ? `<div class="sl" style="margin-top:12px">Čas v zónách · posledních 28 dní</div>${z.map((g) => `<div class="z28"><div class="z28-h"><b>${esc(g.label)}</b><span>${num(g.hours, 1)} h · lehce <b>${g.low} %</b> · středně ${g.mid} % · intenzivně ${g.high} %</span></div>${zonesHtml(g.rows)}</div>`).join("")}<p class="note">80/20: lehce (Z1–Z2) by mělo být kolem 80 % času. V plánu tohoto týdne je nad Z2 ${co.plannedHard} %.</p>` : `<p class="note">Čas v zónách za 28 dní zatím nemám.</p>`;
+  return `<div class="twhy"><div class="kv why3">${rows.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join("")}</div>${sum}${more.length ? `<details class="gcmp"><summary>Podrobnosti k cíli (${more.length})</summary><ul class="rules3">${more.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></details>` : ""}${zHtml}</div>`;
+}
+
 async function pageTrener(el) {
   const [d, mine] = await Promise.all([api("coach"), api("plan/mine").catch(() => [])]);
   const r = d.readiness, rec = r.recovery, f = r.fitness, p = r.plan;
@@ -1295,7 +1324,15 @@ async function pageTrener(el) {
   if (ctl7 != null && atl7 != null) for (const ld of [todayLoad, ...fut.map((c) => c.load || 0)]) { ctl7 += (ld - ctl7) / 42; atl7 += (ld - atl7) / 7; }
   const lastDay = fut.length ? fut[fut.length - 1].date : null;
   const proj = ctl7 != null && lastDay ? `<p class="tproj">Když odjedeš plán do neděle (zátěž ${thou(plan7 + todayLoad)} od dneška): kondice <b>${num(f.ctl, 1)} → ${num(ctl7, 1)}</b> (${signed(ctl7 - f.ctl, 1)}), forma <b>${signed(ctl7 - atl7, 0)}</b>.</p>` : "";
-  const stateCard = card("t-state", "Z čeho trenér vychází", "intervals.icu · Garmin", `<div class="twhy"><b>Jak je týden postavený</b><p>${whyTxt || why} Cíl zátěže ${p.weeklyTarget.lo}–${p.weeklyTarget.hi}, ${qn ? `${qn}× kvalita` : "bez kvality"}, ${p.days.filter((x) => x.name).length} tréninků.</p>${proj}${distTxt}</div>
+  const v3 = co && co.version === 3;
+  const stateCard = card("t-state", "Z čeho trenér vychází", "intervals.icu · Garmin", v3 ? why3(d, co, p, f) + `
+    <div class="tstate">
+      <div><span>Kondice (CTL)</span><b class="num">${num(f.ctl, 1)}</b><small class="${f.ramp != null && f.ramp < -1 ? "warn" : ""}">${f.ramp != null ? `${signed(f.ramp, 1)} za týden` : ""}</small></div>
+      <div><span>Únava (ATL)</span><b class="num">${num(f.atl, 1)}</b><small>zátěž 7 dní ${thou(f.load7)}</small></div>
+      <div><span>Forma (TSB)</span><b class="num">${signed(form, 1)}</b><small class="${form == null ? "" : form < -20 || form > 20 ? "warn" : "good"}">${esc(formZoneName(form))}</small></div>
+      <div><span>Zotavení</span><b class="tst-word ${tone}">${rec.score != null ? `${num(rec.score)} %` : esc(({ green: "Dobré", yellow: "Částečné", red: "Nízké" })[rec.state] || rec.stateLabel)}</b></div></div>
+    <div class="sl" style="margin-top:12px">Kondice a forma · 90 dní + výhled</div><div id="tKond" class="loading sm">Načítám…</div>
+    <details class="gcmp"><summary>Pravidla trenéra a zdroje</summary>${RULES3}</details>` : `<div class="twhy"><b>Jak je týden postavený</b><p>${whyTxt || why} Cíl zátěže ${p.weeklyTarget.lo}–${p.weeklyTarget.hi}, ${qn ? `${qn}× kvalita` : "bez kvality"}, ${p.days.filter((x) => x.name).length} tréninků.</p>${proj}${distTxt}</div>
     <div class="tstate">
       <div><span>Kondice (CTL)</span><b class="num">${num(f.ctl, 1)}</b><small class="${f.ramp != null && f.ramp < -1 ? "warn" : ""}">${f.ramp != null ? `${signed(f.ramp, 1)} za týden` : ""}</small></div>
       <div><span>Únava (ATL)</span><b class="num">${num(f.atl, 1)}</b><small>zátěž 7 dní ${thou(f.load7)}</small></div>

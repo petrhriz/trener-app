@@ -15,3 +15,4 @@ označené jako vlastní volba.
 | Zimní délky (Zima, Udržet) | Z2 75 min, dlouhá 2 h, kvalita 1 h | tvoje zadání (schéma trenéra) |
 | Kostra: max 3 dny za sebou, kvalita ne po kvalitě ani po dlouhém | – | převzato z v2 – **ověřit zdroj** (etapa 5) |
 | Únava (VST pod normou, forma pod −20) | VST: 7denní průměr pod průměr − 1 SD (stejně jako stránka) | normální rozsah ± 1 SD jako v aplikaci; procenta ubrání z v2 – **ověřit zdroj** |
+| Rozdělení intenzity (graf zón za 28 dní) | lehce = Z1–Z2, středně = Z3, intenzivně = Z4+; cíl ~80 % lehce | tříbodový model Seilera (prahy LT1/LT2), 80/20 – Seiler & Kjerland 2006, Seiler 2010 (IJSPP); přehled [Fast Talk Labs: The science behind polarized training](https://fasttalklabs.com/articles/the-science-behind-polarized-training) |
