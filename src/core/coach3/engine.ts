@@ -249,7 +249,11 @@ export function runCoach3(inp: Coach3Input): Plan3 {
       else if (f?.minutes) setMinutes(x, f.minutes);
     }
     // kvalita: typická délka dne kvality
-    for (const x of train) if (x.role === "key" && !x.own && !fixed.get(x.date)?.minutes) { setMinutes(x, capsOf(x.sport, "key").max); x.want = loadFor(capsOf(p.primary, "key").max, rate, "key"); }
+    // kvalita: délka hlavního sportu; na jiném sportu stejná zátěž (délka podle jeho sazby, v jeho stropech)
+    for (const x of train) if (x.role === "key" && !x.own && !fixed.get(x.date)?.minutes) {
+      x.want = loadFor(capsOf(p.primary, "key").max, rate, "key");
+      setMinutes(x, x.sport === p.primary ? capsOf(x.sport, "key").max : minutesFor(x.want, rOf(x), "key", x.sport, capsOf(x.sport, "key")));
+    }
     const spread = () => {
       const flex = train.filter((x) => (x.role === "endurance" || x.role === "long" || x.role === "easy") && !x.own && !fixed.get(x.date)?.minutes);
       const fixedLoad = train.filter((x) => !flex.includes(x)).reduce((t, x) => t + x.load, 0);
@@ -332,8 +336,8 @@ export function runCoach3(inp: Coach3Input): Plan3 {
       for (const x of train.filter((y) => y.role !== "key")) build(x);
     }
     for (const x of train) if (fixed.get(x.date)?.sport && x.sport !== p.primary && !x.own) {
-      const capped = x.want > 0 && x.load < x.want * 0.9;
-      x.why.push(capped ? `${SPORT_WORD[x.sport]} místo ${SPORT_GEN[p.primary]}: ${x.minutes} min je strop ${SPORT_GEN[x.sport]} podle toho, kolik teď běháš – zátěž ${x.load} místo ${x.want}, zbytek dostanou ostatní dny` : `${SPORT_WORD[x.sport]} místo ${SPORT_GEN[p.primary]}: stejná zátěž (${x.load}), délka podle sportu`);
+      const capped = x.want > 0 && Math.abs(x.load - x.want) > x.want * 0.15;
+      x.why.push(capped ? (x.load < x.want ? `${SPORT_WORD[x.sport]} místo ${SPORT_GEN[p.primary]}: ${x.minutes} min je strop ${SPORT_GEN[x.sport]}${x.sport === "run" ? " podle toho, kolik teď běháš" : ""} – zátěž ${x.load} místo ${x.want}, zbytek dostanou ostatní dny` : `${SPORT_WORD[x.sport]} místo ${SPORT_GEN[p.primary]}: zátěž ${x.load} místo ${x.want} (kratší už to nejde), ostatní dny jsou o to lehčí`) : `${SPORT_WORD[x.sport]} místo ${SPORT_GEN[p.primary]}: stejná zátěž (${x.load}), délka podle sportu`);
     }
 
     // kontrola formy: výhled po dnech; pod dnem se zkracují Z2 a dlouhý, pak poslední kvalita → Z2

@@ -25,8 +25,8 @@ export function capsFor(o: { sport: PlanSport; role: Role; winter: boolean; long
     const top = Math.max(30, Math.min(90, Math.round((o.runLongest || 30) * 1.5)));
     return role === "easy" ? { min: 20, max: Math.min(40, top) } : role === "long" ? { min: 40, max: top } : { min: 30, max: Math.min(top, 60) };
   }
-  if (sport === "walk") return { min: 30, max: role === "long" ? 180 : 120 };
-  if (sport === "xc_ski") return { min: 45, max: role === "long" ? 180 : 120 };
+  if (sport === "walk") return role === "key" ? { min: 30, max: 60 } : { min: 30, max: role === "long" ? 180 : 120 };
+  if (sport === "xc_ski") return role === "key" ? { min: 40, max: 75 } : { min: 45, max: role === "long" ? 180 : 120 };
   if (role === "easy") return { min: 30, max: 45 };
   if (role === "key") return { min: 45, max: o.winter ? 60 : 90 };
   if (role === "long") return o.winter ? { min: 75, max: 120 } : { min: 90, max: Math.min(300, Math.max(120, Math.round(o.longest * 1.15))) };
