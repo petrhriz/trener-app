@@ -1,0 +1,63 @@
+// Trenér v3 – vyhodnocení kvalit a stupně náročnosti. Trenér si u kvality v den tréninku uloží, co naplánoval
+// (kategorie, stupeň, cílové úseky). Po odjetí se jednotka vyhodnotí z okruhů (výkon proti pásmu, dokončené úseky;
+// logika z v2 – progress.ts / qualityDesign.ts) a stupeň kategorie se posune: zvládnutá → o stupeň těžší,
+// nezvládnutá → o stupeň lehčí, jinak stejný. Princip jako Progression Levels v TrainerRoad (posun jen po splnění
+// tréninku tak, jak byl předepsaný). Udržet a Zima stupeň po splnění nezvyšují (cílem není růst).
+import type { PlanSport } from "../../datasource/types";
+import { daysBetween } from "../../lib/time";
+import type { Goal } from "../fitness";
+import type { Outcome } from "../qualityDesign";
+import { type EngineAct, EVAL_WAIT_DAYS, type ProgressRow, matchKey } from "../coach/engine";
+import type { Cat, WorkPlan } from "../coach/library";
+import { nextLevel, outcomeOf } from "../coach/progress";
+
+export interface KeyRecord {
+  date: string;
+  sport: PlanSport;
+  cat: Cat;
+  /** stupeň, na kterém byla kvalita naplánovaná */
+  level: number;
+  plan: WorkPlan | null;
+  minutes: number;
+  name: string | null;
+  /** pending = čeká na aktivitu; done = vyhodnoceno; missed = neodjeto; ambiguous = víc kandidátů; other = jiný trénink */
+  state: "pending" | "done" | "missed" | "ambiguous" | "other";
+  outcome?: Outcome;
+  text?: string;
+  newLevel?: number;
+}
+
+/** Kolik záznamů si pamatovat (asi 3 měsíce kvalit). */
+const KEEP = 40;
+
+/** Uloží / přepíše dnešní a dřívější kvality z plánu (nevyhodnocené se smí přepsat – plán dne se ještě mohl změnit). */
+export function recordKeys(records: KeyRecord[], planned: Omit<KeyRecord, "state">[], today: string): KeyRecord[] {
+  const out = records.filter((r) => !(r.state === "pending" && planned.some((p) => p.date === r.date && p.date <= today)));
+  for (const p of planned) if (p.date <= today && !out.some((r) => r.date === p.date)) out.push({ ...p, state: "pending" });
+  return out.sort((a, b) => a.date.localeCompare(b.date)).slice(-KEEP);
+}
+
+/**
+ * Vyhodnotí kvality, které už proběhly. Stupeň kategorie se změní jen jednou za kvalitu a jen když platí ten,
+ * na kterém byla naplánovaná (dvě rychle po sobě se nesečtou).
+ */
+export function evaluateKeys(records: KeyRecord[], acts: EngineAct[], today: string, goal: Goal, levels: Record<string, ProgressRow>): { records: KeyRecord[]; updates: { key: string; level: number; last: string; outcome: string }[] } {
+  const updates: { key: string; level: number; last: string; outcome: string }[] = [];
+  const cur: Record<string, number> = Object.fromEntries(Object.entries(levels).map(([k, v]) => [k, v.level]));
+  const recs = records.map((r) => ({ ...r }));
+  for (const r of recs) {
+    if (r.state !== "pending" || r.date >= today) continue;
+    const m = matchKey({ sport: r.sport, minutes: r.minutes, plan: r.plan }, acts.filter((a) => a.date === r.date));
+    if (m.kind === "one") {
+      const o = outcomeOf({ date: r.date, plan: r.plan, laps: m.act.laps, compliance: m.act.compliance });
+      const key = `${r.sport}:${r.cat}`;
+      const now = cur[key] ?? r.level;
+      const nl = now === r.level ? nextLevel(r.level, o.outcome, goal) : now;
+      Object.assign(r, { state: "done", outcome: o.outcome, text: o.text, newLevel: nl });
+      if (nl !== now) { cur[key] = nl; updates.push({ key, level: nl, last: r.date, outcome: o.text }); }
+      else updates.push({ key, level: now, last: r.date, outcome: o.text });
+    } else if (m.kind === "many") r.state = "ambiguous";
+    else if (daysBetween(r.date, today) >= EVAL_WAIT_DAYS) r.state = m.kind === "other" ? "other" : "missed";
+  }
+  return { records: recs, updates };
+}

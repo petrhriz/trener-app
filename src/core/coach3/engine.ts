@@ -14,7 +14,7 @@ import type { State } from "../recovery";
 import type { DayWeather } from "../weather";
 import { type Workout, renderIcu } from "../workout";
 import { type EngineAct, type ProgressRow, easyRate, fixedFromConstraints } from "../coach/engine";
-import { type Built, type Cat, type Zones, START_TIER, applyStepEdit, buildWorkout, catCandidates, catNeeds, chooseCat, isCat } from "../coach/library";
+import { type Built, type Cat, type WorkPlan, type Zones, START_TIER, applyStepEdit, buildWorkout, catCandidates, catNeeds, chooseCat, isCat } from "../coach/library";
 import type { CoachProfile } from "../coach/profile";
 import { type Distribution, distribution } from "../coach/progress";
 import { runReadiness } from "../coach/run";
@@ -45,6 +45,8 @@ export interface Coach3Input {
   weekLoads: number[];
   offDays?: string[];
   progress: Record<string, ProgressRow>;
+  /** odjeté kvality (kategorie) – střídání kategorií přes týdny */
+  keyHistory?: { date: string; cat: Cat }[];
   /** interní: plán týdne tak, jak by vypadal v pondělí (bez rekurze) */
   mondayMode?: boolean;
 }
@@ -66,6 +68,9 @@ export interface Day3 {
   cat: Cat | null;
   /** minuty nad Z2 */
   tiz: number;
+  /** kvalita: stupeň náročnosti a cílové úseky (pro vyhodnocení po odjetí) */
+  level?: number;
+  wplan?: WorkPlan | null;
   /** zátěž, kterou by den měl podle cíle týdne (před stropy délek) */
   want: number;
   why: string[];
@@ -120,6 +125,8 @@ export interface CoachInfo3 {
   plannedHard: number;
   plannedLoad: number;
   validation: WeekValidation;
+  /** kvality v plánu (tento a příští týden) – uloží se v den tréninku a po odjetí vyhodnotí */
+  keyDays: { date: string; sport: PlanSport; cat: Cat; level: number; plan: WorkPlan | null; minutes: number; name: string | null }[];
   horizon: { weekStart: string; detail: boolean; load: number; done: number; need: number; target: number; notes: string[]; limit: WeekTarget["limit"]; ctlStart: number; ctlEnd: number; ctlGoal: number; phaseLabel: string; recoveryWeek: boolean; days: { date: string; role: Role; sport: PlanSport; minutes: number; load: number; name: string | null; blocked: boolean }[] }[];
 }
 
@@ -171,7 +178,7 @@ export function runCoach3(inp: Coach3Input): Plan3 {
   const fixed = fixedFromConstraints(inp.constraints);
   const needs = catNeeds(inp.power, T);
   // kategorie kvalit v horizontu → střídání (odjeté kvality zatím kategorii nemají – etapa 5)
-  const usedCats: { date: string; cat: Cat }[] = [];
+  const usedCats: { date: string; cat: Cat }[] = (inp.keyHistory ?? []).filter((k) => k.date < from).map((k) => ({ date: k.date, cat: k.cat }));
 
   // Týden je vždy od pondělí. Když už běží, spočítá se nejdřív plán celého týdne tak, jak by vypadal v pondělí
   // (stejná logika, kondice z neděle). Zbylé dny dostanou zátěž, která na ně v pondělním plánu připadá:
@@ -221,6 +228,8 @@ export function runCoach3(inp: Coach3Input): Plan3 {
     let sessions = tg.load <= 15 ? 0 : Math.max(1, Math.round(tg.load / sessionLoad), Math.ceil(tg.load / capLoad));
     const maxSess = Math.max(3, Math.max(...history.weekSessions) + 1);
     sessions = Math.min(sessions, nDays, maxSess, 6);
+    // ladění (Bosquet 2007): méně objemu, ale stejně tréninků a intenzita zůstává → kratší tréninky
+    if (tg.phase === "taper" && tg.load > 15) sessions = Math.min(nDays, Math.max(sessions, Math.round(history.weekSessions.reduce((t, x) => t + x, 0) / Math.max(1, history.weekSessions.length))));
     const phaseKeys = tg.phase === "build" && sessions >= 4 ? 2 : 1;
     let keys = sessions >= 3 ? phaseKeys : sessions === 2 ? 1 : 0;
     if (k === 0) keys = Math.max(0, Math.min(keys, fat.keysMax) - doneKeys0);
@@ -239,7 +248,8 @@ export function runCoach3(inp: Coach3Input): Plan3 {
       const w = inp.weather.get(d) ?? null;
       return {
         date: d,
-        blocked: !!f?.blocked || (d === T && inp.recovery === "red"),
+        // den závodu je rezervovaný pro závod
+        blocked: !!f?.blocked || (d === T && inp.recovery === "red") || d === inp.raceDate,
         rest: !!f?.rest,
         type: f?.type,
         must: !!(f?.sport || f?.minutes || f?.own || f?.edit),
@@ -281,7 +291,7 @@ export function runCoach3(inp: Coach3Input): Plan3 {
       const f = fixed.get(d);
       const role = sk.roles.get(d) ?? "rest";
       const sport: PlanSport = role === "rest" ? p.primary : (f?.sport ?? p.primary);
-      return { date: d, role, sport, minutes: 0, load: 0, want: 0, name: null, workout: null, steps: [], targetText: null, indoor: false, qualityType: null, cat: null, tiz: 0, why: [], blocked: f?.blocked ?? (d === T && inp.recovery === "red" ? "🔴 ráno: volno, nebo Z1 do 45 min / procházka." : null), own: f?.own ?? null, mine: !!(f && (f.sport || f.type || f.minutes || f.own || f.edit)), userRest: !!f?.rest };
+      return { date: d, role, sport, minutes: 0, load: 0, want: 0, name: null, workout: null, steps: [], targetText: null, indoor: false, qualityType: null, cat: null, tiz: 0, why: [], blocked: f?.blocked ?? (d === inp.raceDate ? "🏁 Závod – den D." : d === T && inp.recovery === "red" ? "🔴 ráno: volno, nebo Z1 do 45 min / procházka." : null), own: f?.own ?? null, mine: !!(f && (f.sport || f.type || f.minutes || f.own || f.edit)), userRest: !!f?.rest };
     });
     const train = days.filter((x) => x.role !== "rest");
     const rOf = (x: Day3) => rateOf(x.sport).rate;
@@ -373,6 +383,8 @@ export function runCoach3(inp: Coach3Input): Plan3 {
           b = buildWorkout({ sport: x.sport, family: ch.cat, level, wid: null, minutes: x.minutes, indoor: x.indoor, zones: inp.zones, calib });
           if (f?.edit) { b = applyStepEdit(b, f.edit, x.sport === "ride" ? inp.zones.ftp : null, calib, x.sport === "run"); x.why.push("tvoje úprava kroků"); }
           x.cat = isCat(b.family) ? b.family : ch.cat;
+          x.level = level;
+          x.wplan = b.plan;
           usedCats.push({ date: x.date, cat: x.cat });
           if (ch.why) x.why.push(ch.why);
         } else {
@@ -438,7 +450,7 @@ export function runCoach3(inp: Coach3Input): Plan3 {
     const planned = days.reduce((t, x) => t + x.load, 0);
     weeks.push({ weekStart: tg.weekStart, detail, target: tg, sessions: sk.sessions, keys: sk.keys, long: sk.long, planned, ctlEnd: Math.round(end.ctl * 10) / 10, days, notes });
     state = { ctl: end.ctl, atl: end.atl };
-    if (!tg.recoveryWeek) prevTotal = tg.done + planned;
+    if (!tg.recoveryWeek && tg.phase !== "taper") prevTotal = tg.done + planned;
     stateDate = dates[dates.length - 1]!;
     prevDays = days;
   }
@@ -651,6 +663,7 @@ function toPlan(inp: Coach3Input, weeks: Week3[], o: { from: string; todayDone: 
     plannedHard: minutes0 > 0 ? Math.round((w0.days.reduce((t, x) => t + x.tiz, 0) / minutes0) * 100) : 0,
     plannedLoad: total0,
     validation,
+    keyDays: weeks.filter((w) => w.detail).flatMap((w) => w.days).filter((x) => x.role === "key" && x.cat && x.level != null).map((x) => ({ date: x.date, sport: x.sport, cat: x.cat!, level: x.level!, plan: x.wplan ?? null, minutes: x.minutes, name: x.name })),
     horizon: weeks.map((w) => ({ weekStart: w.weekStart, detail: w.detail, load: w.planned, done: w.target.done, need: w.target.need, target: w.target.load, notes: w.target.notes, limit: w.target.limit, ctlStart: w.target.ctlStart, ctlEnd: w.ctlEnd, ctlGoal: w.target.ctlGoal, phaseLabel: w.target.phaseLabel, recoveryWeek: w.target.recoveryWeek, days: w.days.map((x) => ({ date: x.date, role: x.role, sport: x.sport, minutes: x.minutes, load: x.load, name: x.name, blocked: !!x.blocked })) })),
   };
   return { from: dates[0]!, to: dates[dates.length - 1]!, days, changes, chart, loadPast7, loadNext7, qualityWeeks, warnings, weeklyTarget: { lo: Math.round(total0 * 0.9), hi: Math.round(total0 * 1.1), mid: total0 }, missed, done, coach };

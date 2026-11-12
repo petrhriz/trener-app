@@ -1210,9 +1210,14 @@ function why3(d, co, p, f) {
   ];
   const sum = co.notes && co.notes[0] ? `<p class="tproj">${esc(co.notes[0])}</p>` : "";
   const more = (co.notes || []).slice(1);
+  const CATN = { tempo: "tempo", ss: "sweet spot", thr: "práh", ou: "over-under", vo2: "VO2max", vo2s: "VO2 krátké", ana: "anaerobní", nm: "sprinty" };
+  const OUT = { posun: ["good", "zvládnuto → příště těžší"], zopakovat: ["", "napůl → stejný stupeň"], ubrat: ["warn", "nezvládnuto → příště lehčí"], nove: ["", "první měření"] };
+  const ST = { missed: "neodjeto – stupeň beze změny", other: "jiný trénink – stupeň beze změny", ambiguous: "víc tréninků, nejasné – beze změny" };
+  const lk = co.lastKeys || [];
+  const kHtml = lk.length ? `<div class="sl" style="margin-top:12px">Poslední kvality</div><ul class="rules3">${lk.map((k) => { const o = k.state === "done" ? OUT[k.outcome] || ["", k.outcome] : ["", ST[k.state] || k.state]; return `<li><b>${dm(k.date)} ${esc(CATN[k.cat] || k.cat)}</b> (stupeň ${k.level + 1}${k.newLevel != null && k.newLevel !== k.level ? ` → ${k.newLevel + 1}` : ""}): <span class="${o[0]}">${esc(o[1])}</span>${k.text ? ` <small>${esc(k.text)}</small>` : ""}</li>`; }).join("")}</ul>` : "";
   const z = d.zones28 || [];
   const zHtml = z.length ? `<div class="sl" style="margin-top:12px">Čas v zónách · posledních 28 dní</div>${z.map((g) => `<div class="z28"><div class="z28-h"><b>${esc(g.label)}</b><span>${num(g.hours, 1)} h · lehce <b>${g.low} %</b> · středně ${g.mid} % · intenzivně ${g.high} %</span></div>${zonesHtml(g.rows)}</div>`).join("")}<p class="note">80/20: lehce (Z1–Z2) by mělo být kolem 80 % času. V plánu tohoto týdne je nad Z2 ${co.plannedHard} %.</p>` : `<p class="note">Čas v zónách za 28 dní zatím nemám.</p>`;
-  return `<div class="twhy"><div class="kv why3">${rows.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join("")}</div>${sum}${more.length ? `<details class="gcmp"><summary>Podrobnosti k cíli (${more.length})</summary><ul class="rules3">${more.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></details>` : ""}${zHtml}</div>`;
+  return `<div class="twhy"><div class="kv why3">${rows.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join("")}</div>${sum}${kHtml}${more.length ? `<details class="gcmp"><summary>Podrobnosti k cíli (${more.length})</summary><ul class="rules3">${more.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></details>` : ""}${zHtml}</div>`;
 }
 
 async function pageTrener(el) {

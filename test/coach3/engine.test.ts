@@ -148,3 +148,13 @@ describe("rozběhnutý týden: plán z pondělí, nedohání se", () => {
     expect(Math.abs(thu.load - planRest)).toBeLessThanOrEqual(planRest * 0.1);
   });
 });
+
+describe("závod", () => {
+  it("den závodu je rezervovaný, žádný trénink", () => {
+    const race = addDays(T, 4);
+    const p = runCoach3(input({ goal: "zavod", raceDate: race }));
+    const d = p.days.find((x) => x.date === race)!;
+    expect(d.kind).toBe("blocked");
+    expect(d.note).toMatch(/Závod/);
+  });
+});

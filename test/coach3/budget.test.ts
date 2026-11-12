@@ -110,3 +110,13 @@ describe("zima: k zimnímu základu (vrchol − 42,5 %)", () => {
     expect(rampOf("maintain", 50, null)).toBe(0);
   });
 });
+
+describe("ladění před závodem (Bosquet 2007: −41 až −60 % objemu, intenzita a frekvence beze změny)", () => {
+  it("týden před závodním 70 %, závodní týden 45 % běžného týdne", () => {
+    const w = weekTargets({ goal: "zavod", raceDate: "2027-05-23", from: "2027-05-03", ctlNow: 47, doneLoad: 0, history: hist([380, 390, 380, 390]), fatigue: 1, weeks: 3 });
+    const normal = w[0]!.done + w[0]!.load;
+    expect(w[1]!.phase).toBe("taper");
+    expect(w[1]!.load).toBe(Math.round(normal * 0.7));
+    expect(w[2]!.load).toBe(Math.round(normal * 0.45));
+  });
+});

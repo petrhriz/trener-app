@@ -14,7 +14,8 @@ import { type RecoveryResult, decisionFor, evaluateRecovery } from "../core/reco
 import { recoveryScore } from "../core/readinessScore";
 import { type DayWeather, dayWeather } from "../core/weather";
 import type { Workout } from "../core/workout";
-import { all } from "../lib/db";
+import { all, getState, run, setState } from "../lib/db";
+import { type KeyRecord, evaluateKeys, recordKeys } from "../core/coach3/progress3";
 import { dayDm, dm, hmm, num, signed } from "../lib/format";
 import { addDays, dateRange, mondayOf } from "../lib/time";
 import type { Ctx, FullAct, MetricRow } from "./context";
@@ -290,7 +291,14 @@ export async function planForV3(ctx: Ctx, rec: RecoveryResult): Promise<PlanResu
   const acts: EngineAct[] = ctx.acts.map((a) => ({ id: a.id, date: a.date, sport: a.sport, load: a.load, moving_s: a.moving_s, quality: !!a.is_quality && a.sport !== "skate" && a.sport !== "padel", hr_z: a.hr_z, pwr_z: a.pwr_z, laps: a.laps ?? null, compliance: (a as any).icu_compliance ?? null }));
   const power = ctx.acts.filter((a) => isBike(a.sport)).map((a) => ({ id: a.id, date: a.date, mmp: a.mmp, max20: a.max20, pwr_z: a.pwr_z }));
   const state = await loadCoachState(ctx.env.DB, T);
-  return runCoach3({
+  // kvality: vyhodnotit odjeté (stupeň náročnosti nahoru / dolů), pak plánovat s aktuálními stupni a historií kategorií
+  const keys0 = (await getState<KeyRecord[]>(ctx.env.DB, "coach3_keys")) ?? [];
+  const ev = evaluateKeys(keys0, acts, T, ctx.s.goal, state.progress);
+  for (const u of ev.updates) {
+    await run(ctx.env.DB, "INSERT INTO coach_progress (key, level, last_date, last_outcome) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET level = excluded.level, last_date = excluded.last_date, last_outcome = excluded.last_outcome", u.key, u.level, u.last, u.outcome.slice(0, 200));
+    state.progress[u.key] = { level: u.level, last: u.last };
+  }
+  const plan = runCoach3({
     today: T,
     goal: ctx.s.goal,
     raceDate: ctx.s.goal === "zavod" ? ctx.s.goal_date : null,
@@ -308,7 +316,13 @@ export async function planForV3(ctx: Ctx, rec: RecoveryResult): Promise<PlanResu
     weekLoads: await weekLoads(ctx),
     offDays: offDaysOf(ctx),
     progress: state.progress,
+    keyHistory: ev.records.filter((r) => r.state === "done").map((r) => ({ date: r.date, cat: r.cat })),
   });
+  // dnešní (a dřívější) kvality z plánu uložit – po odjetí se vyhodnotí; zápis jen při změně
+  const keys1 = recordKeys(ev.records, plan.coach.keyDays, T);
+  if (JSON.stringify(keys1) !== JSON.stringify(keys0)) await setState(ctx.env.DB, "coach3_keys", keys1);
+  (plan.coach as any).lastKeys = keys1.filter((r) => r.state !== "pending").slice(-4).reverse();
+  return plan;
 }
 
 export async function planFor(ctx: Ctx, rec?: RecoveryResult): Promise<PlanResult> {

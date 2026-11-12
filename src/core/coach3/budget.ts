@@ -16,6 +16,9 @@ export const WINTER_APPROACH = 0.15, WINTER_MAX_DROP = 5;
 export const rampUp = (ctl: number) => (ctl <= 45 ? 3 : 4);
 /** Lehčí týden (Friel 3:1): o 40–50 % méně objemu (Roadman, přehled výzkumu taperu) → 55 % běžného týdne. */
 export const RECOVERY_SHARE = 0.55;
+/** Ladění před závodem (Bosquet a kol. 2007, metaanalýza 27 studií): 2 týdny, objem o 41–60 % méně (postupně),
+ *  intenzita a počet tréninků beze změny → týden před závodním 70 %, závodní týden 45 % běžného týdne. */
+export const TAPER_SHARE = { before: 0.7, race: 0.45 };
 export const PHASE_LABEL3: Record<Phase, string> = { offseason: "Zima", maintain: "Udržování", base: "Základ", build: "Rozvoj", taper: "Ladění" };
 
 /** Růst kondice za týden podle fáze. Zima: k základu (vrchol × 0,575), u základu 0 (drží). */
@@ -103,7 +106,7 @@ export interface WeekTarget {
   /** odhad kondice na konci týdne s `load` */
   ctlEnd: number;
   /** co cíl omezilo (null = nic) */
-  limit: "historie" | "únava" | "lehčí týden" | null;
+  limit: "historie" | "únava" | "lehčí týden" | "ladění" | null;
   notes: string[];
 }
 
@@ -171,6 +174,11 @@ export function weekTarget(inp: BudgetInput, k: number, ctl: number, prevTotal: 
     load = Math.max(0, cap - done);
     limit = "historie";
   }
+  if (phase === "taper" && inp.raceDate) {
+    const raceWeek = daysBetween(weekStart, inp.raceDate) < 7;
+    load = Math.max(0, r0(prevTotal * (raceWeek ? TAPER_SHARE.race : TAPER_SHARE.before)) - done);
+    limit = "ladění";
+  }
   if (recoveryWeek) {
     const easy = Math.max(0, r0(prevTotal * RECOVERY_SHARE) - done);
     if (easy < load) { load = easy; limit = "lehčí týden"; }
@@ -183,6 +191,7 @@ export function weekTarget(inp: BudgetInput, k: number, ctl: number, prevTotal: 
   const span = k === 0 && days < 7 ? " do neděle" : "";
   if (limit === "historie" && load < need)
     notes.push(`Na ${goalTxt} by bylo potřeba ${need} zátěže${span}. ${hasHistory && k === 0 ? `Poslední týdny jezdíš kolem ${usual} týdně a víc než o 30 % najednou nepřidávám` : k > 0 ? "Přidávám nejvýš o 15 % za týden" : "Bez historie začínám opatrně"}, takže ${load} → kondice ${n1(ctlEnd)}.`);
+  if (limit === "ladění") notes.push(`Ladění před závodem: ${load} zátěže (${daysBetween(weekStart, inp.raceDate!) < 7 ? "45" : "70"} % běžného týdne), intenzita a počet tréninků zůstávají → forma do závodu stoupá.`);
   if (limit === "lehčí týden") notes.push(`Lehčí 4. týden bloku: ${load} zátěže (asi 55 % běžného, o 40–50 % méně podle Friela) → kondice ${n1(ctlEnd)}.`);
   if (limit === "únava") notes.push(`Únava: týden o ${r0((1 - f) * 100)} % lehčí → kondice ${n1(ctlEnd)}.`);
   return { weekStart, from, days, phase, phaseLabel: PHASE_LABEL3[phase], ramp, cycleIdx, recoveryWeek, winter: isWinter(weekStart), shortDays: isWinter(weekStart) && (phase === "offseason" || phase === "maintain"), floor: phase === "offseason" && inp.history.seasonPeak ? r1(inp.history.seasonPeak * (1 - WINTER_DROP)) : null, ctlStart: r1(ref), ctlGoal: r1(ctlGoal), need, load, done: r0(done), ctlEnd: r1(ctlEnd), limit, notes };
@@ -198,7 +207,7 @@ export function weekTargets(inp: BudgetInput): WeekTarget[] {
     out.push(t);
     ctl = ctlAfter(ctl, t.load, t.days);
     // po lehčím týdnu se pokračuje z úrovně před ním (lehčí týden strop dalších nesnižuje)
-    if (!t.recoveryWeek) prev = t.done + t.load;
+    if (!t.recoveryWeek && t.phase !== "taper") prev = t.done + t.load;
   }
   return out;
 }
