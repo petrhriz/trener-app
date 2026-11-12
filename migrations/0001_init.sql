@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS activities (
   start_local TEXT NOT NULL,        -- 'YYYY-MM-DD HH:MM:SS'
   date TEXT NOT NULL,               -- 'YYYY-MM-DD' (místní)
   type_key TEXT,
-  sport TEXT NOT NULL,              -- ride | mtb | indoor | run | hockey | skate | xc_ski | walk | hike | strength | mobility | padel | other
+  sport TEXT NOT NULL,              -- ride | mtb | indoor | run | skate | xc_ski | walk | hike | strength | mobility | padel | other
   name TEXT,
   distance_m REAL, duration_s REAL, moving_s REAL, elev_gain REAL,
   avg_hr REAL, max_hr REAL,
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS activities (
   icu_load REAL,                    -- icu_training_load (srovnání)
   icu_decoupling REAL,
   laps TEXT,                        -- JSON lapy (z intervals.icu)
-  quality_type TEXT,                -- vo2 | vo2short | prah | sweetspot | tempo | hockey | xc_ski | null
+  quality_type TEXT,                -- vo2 | vo2short | prah | sweetspot | tempo | xc_ski | null
   is_quality INTEGER DEFAULT 0,
   enrich_state INTEGER DEFAULT 0,   -- 0 čeká, 1 hotovo, 2+ počet neúspěchů
   analyzed_sent INTEGER DEFAULT 0,
@@ -92,7 +92,7 @@ CREATE INDEX IF NOT EXISTS ix_pw_date ON planned_workouts(date);
 CREATE TABLE IF NOT EXISTS constraints (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   date TEXT NOT NULL,
-  kind TEXT NOT NULL,               -- nemuzu | hokej | bezky | nemoc | dovolena | nepojedu
+  kind TEXT NOT NULL,               -- nemuzu | bezky | nemoc | dovolena | nepojedu
   note TEXT,
   icu_event_id TEXT,
   created_at TEXT

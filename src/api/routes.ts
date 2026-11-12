@@ -1094,6 +1094,12 @@ api.get("/profile", async (c) => {
   return c.json(athleteProfile(ctx));
 });
 /** FTP a zóny s datem platnosti (Nastavení) */
+/** Verze plánu (nejnovější první): kdy, proč a které dny se změnily – src/core/coach/versions.ts. */
+api.get("/plan/versions", async (c) => {
+  const rows = await all<{ id: number; created_at: string; week_start: string; reason: string; changes: string }>(c.env.DB, "SELECT id, created_at, week_start, reason, changes FROM plan_versions ORDER BY id DESC LIMIT 20").catch(() => []);
+  return c.json(rows.map((r) => ({ id: r.id, at: r.created_at, week: r.week_start, reason: r.reason, changes: (() => { try { return JSON.parse(r.changes) as string[]; } catch { return []; } })() })));
+});
+
 api.get("/zones/history", async (c) => {
   const rows = await all<{ date: string; ftp: number | null; hr_zones: string | null; source: string | null }>(c.env.DB, "SELECT date, ftp, hr_zones, source FROM zone_history ORDER BY date").catch(() => []);
   return c.json(rows.map((r) => { let lthr: number | null = null; try { lthr = r.hr_zones ? JSON.parse(r.hr_zones).lthr ?? null : null; } catch { lthr = null; } return { date: r.date, ftp: r.ftp, lthr, source: r.source }; }));
@@ -1213,7 +1219,7 @@ api.post("/proposal/:id/apply", async (c) => {
 
 api.post("/constraint", async (c) => {
   const { date, kind, note } = (await c.req.json()) as { date: string; kind: string; note?: string };
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !["nemuzu", "hokej", "bezky", "nemoc", "dovolena", "nepojedu", "sport", "typ", "jizda", "delka"].includes(kind)) return c.json({ error: "bad input" }, 400);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !["nemuzu", "bezky", "nemoc", "dovolena", "nepojedu", "sport", "typ", "jizda", "delka"].includes(kind)) return c.json({ error: "bad input" }, 400);
   // neplatný sport nebo nesmyslná délka by rozbily plán (neznámý sport dřív shodil celý plán)
   const n = note == null ? null : String(note);
   if (!constraintNoteOk(kind, n)) return c.json({ error: "bad note" }, 400);

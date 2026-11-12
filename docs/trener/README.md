@@ -17,6 +17,11 @@ kondice (`coach/target.ts`), únava, pravidla kontroly týdne (`coach/validate.t
 5. **Délky** ze zátěže dne a sazby sportu (zátěž za hodinu Z2 z historie uživatele). Změna sportu drží zátěž.
 6. **Obsah** (jen tento a příští týden): kvalita z knihovny, Z2 a dlouhý ze zbylé zátěže, texty podle sportu.
 7. **Kontrola formy**: výhled forma po dnech; pod −30 (konec pásma „Optimální“ v intervals.icu) se ubírá.
+8. **Přizpůsobení**: ráno 🟡 → dnešek o stupeň lehčí a o čtvrtinu kratší, 🔴 → volno; minulý týden hodně vynechaný →
+   tento týden ×0,85; vysoký strain (Foster) ×0,9; po pauze 7+ dní strop intenzity (Z1–Z2, pak tempo a sweet spot).
+   Každá změna budoucích dnů se uloží jako verze s důvodem (Trenér → Plnění a změny plánu).
+9. **AI**: testy v `test/ai.test.ts` – čísla jen z dat (druhý pokus, příznak „nekontrolováno“), soukromí, žádné
+   klíče v promptu, bezpečnostní pravidla promptů; změna promptu musí projít revizí (hash v testu).
 
 ## Jak vyzkoušet
 

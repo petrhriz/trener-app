@@ -36,7 +36,7 @@ export function hrQuality(hr_z: number[] | null | undefined): "vo2" | "prah" | n
 
 export interface QualityInfo {
   isQuality: boolean;
-  type: QualityType | "hockey" | "xc_ski" | "skate" | null;
+  type: QualityType | "xc_ski" | "skate" | null;
   /** počítá se do týdenního limitu kvality */
   counts: boolean;
 }
@@ -62,11 +62,6 @@ export function classify(a: ActLike, plannedQuality?: QualityType | null): Quali
   if (a.sport === "run") {
     const h = hrQuality(a.hr_z);
     return h ? { isQuality: true, type: h, counts: true } : { isQuality: false, type: null, counts: false };
-  }
-  if (a.sport === "hockey") {
-    const match = /z[aá]pas|match/i.test(a.name ?? "");
-    const q = match || (a.load ?? 0) > 80;
-    return { isQuality: q, type: q ? "hockey" : null, counts: q };
   }
   if (a.sport === "xc_ski") {
     const q = (a.moving_s ?? 0) > 2 * 3600 || (a.load ?? 0) > 120;

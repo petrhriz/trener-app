@@ -7,7 +7,7 @@ import { llmAvailable, numbersOk, runChat, lastModel } from "./llm";
 import { stripHealth } from "../core/privacy";
 import { getSettings } from "../lib/settings";
 
-const SYS = `Jsi osobní trenér vytrvalostních sportů (kolo, běh, běžky). Píšeš krátké zhodnocení jedné aktivity svému svěřenci.
+export const ACTIVITY_SYS = `Jsi osobní trenér vytrvalostních sportů (kolo, běh, běžky). Píšeš krátké zhodnocení jedné aktivity svému svěřenci.
 Česky, tykej, 2–3 krátké věty, max. 60 slov. Žádné nadpisy, odrážky ani emoji.
 NEOPISUJ čísla, která uživatel vidí v tabulce (čas, vzdálenost, tep, zátěž, procenta) – max. jedno číslo, jen když je klíčové.
 Řekni: 1) co trénink přinesl (jaký podnět pro kondici), 2) jestli intenzita odpovídala záměru / plánu a proč, 3) jednu konkrétní radu na příště nebo na regeneraci.
@@ -42,7 +42,7 @@ export async function activityComment(env: Env, rep: ActivityAnalysis, extra: Re
   };
   // soukromí: bez dopadu na Body Battery a dalších zdravotních údajů (src/core/privacy.ts)
   const priv = !!(await getSettings(env.DB)).ai_private;
-  const out = await runChat(env, [{ role: "system", content: SYS }, { role: "user", content: `KONTEXT (JSON):\n${JSON.stringify(priv ? stripHealth(ctx) : ctx)}\n\nNapiš zhodnocení.` }], 260, 0.3);
+  const out = await runChat(env, [{ role: "system", content: ACTIVITY_SYS }, { role: "user", content: `KONTEXT (JSON):\n${JSON.stringify(priv ? stripHealth(ctx) : ctx)}\n\nNapiš zhodnocení.` }], 260, 0.3);
   if (!out) return null;
   const text = out.replace(/^\s*(zhodnocení|hodnocení)\s*:\s*/i, "").trim();
   if (!text || !numbersOk(text, ctx)) return null;

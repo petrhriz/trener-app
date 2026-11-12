@@ -14,10 +14,12 @@ import m0010 from "../../migrations/0010_vo2_fit.sql";
 import m0011 from "../../migrations/0011_coach_v2.sql";
 import m0012 from "../../migrations/0012_zone_history.sql";
 import m0013 from "../../migrations/0013_rpe.sql";
+import m0015 from "../../migrations/0015_plan_versions.sql";
+import m0016 from "../../migrations/0016_no_hockey.sql";
 
 export const OWNER_ID = 1;
 
-/** Migrace pro tabulky uživatele (0005 = tabulka users, ta je společná; 0008 = účty, taky společné). */
+/** Migrace pro tabulky uživatele (0005, 0008 a 0014 = tabulka users a účty, ty jsou společné). */
 export const TENANT_MIGRATIONS: { name: string; sql: string }[] = [
   { name: "0001", sql: m0001 },
   { name: "0002", sql: m0002 },
@@ -30,6 +32,8 @@ export const TENANT_MIGRATIONS: { name: string; sql: string }[] = [
   { name: "0011", sql: m0011 },
   { name: "0012", sql: m0012 },
   { name: "0013", sql: m0013 },
+  { name: "0015", sql: m0015 },
+  { name: "0016", sql: m0016 },
 ];
 
 /** Tabulky s daty uživatele (vše kromě users). */
@@ -37,7 +41,7 @@ export const TENANT_TABLES = [
   "settings", "sync_state", "activities", "activity_laps", "wellness", "weekly_reviews", "daily_metrics", "planned_workouts",
   "constraints", "proposals", "weather_hourly", "sent_messages", "training_log", "events_log", "gear", "activity_gear",
   "app_secrets", "gear_parts", "gear_service", "activity_tags", "energy_day", "coach_weeks", "coach_progress",
-  "zone_history",
+  "zone_history", "plan_versions",
 ] as const;
 
 const TBL = TENANT_TABLES.join("|");

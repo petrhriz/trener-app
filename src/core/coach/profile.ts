@@ -3,6 +3,10 @@
 import { PLAN_SPORTS, type PlanSport, type Sport } from "../../datasource/types";
 import { addDays, mondayOf } from "../../lib/time";
 import { blockWeeksFor } from "./budget";
+import { RAMP_WEEKS, type RiderLevel } from "./reentry";
+
+export const LEVELS: RiderLevel[] = ["beginner", "intermediate", "advanced"];
+export const LEVEL_CZ: Record<RiderLevel, string> = { beginner: "začátečník", intermediate: "středně pokročilý", advanced: "pokročilý / závodník" };
 
 export interface SportPref {
   /** sport se smí plánovat (hlavní sport je zapnutý vždy) */
@@ -19,6 +23,8 @@ export interface CoachProfile {
   snow: boolean;
   /** rok narození – od 40 let lehčí týden po 2 zátěžových (2+1 místo 3+1); null = nevyplněno */
   birthYear?: number | null;
+  /** úroveň jezdce – délka náběhu intenzity po pauze (src/core/coach/reentry.ts); chybí = středně pokročilý */
+  level?: RiderLevel;
 }
 
 export const DEFAULT_PROFILE: CoachProfile = {
@@ -27,6 +33,7 @@ export const DEFAULT_PROFILE: CoachProfile = {
   sports: { ride: { enabled: true, quality: true }, run: { enabled: false, quality: false }, xc_ski: { enabled: false, quality: false }, walk: { enabled: false, quality: false } },
   snow: false,
   birthYear: null,
+  level: "intermediate",
 };
 
 const isObj = (x: unknown): x is Record<string, any> => !!x && typeof x === "object" && !Array.isArray(x);
@@ -34,7 +41,7 @@ const isObj = (x: unknown): x is Record<string, any> => !!x && typeof x === "obj
 /** Kontrola a doplnění profilu (i starší podoby s hodinami a dny – ty se zahodí). Profil je vždy použitelný. */
 export function validateProfile(input: unknown, base: CoachProfile = DEFAULT_PROFILE): { profile: CoachProfile; errors: string[] } {
   const errors: string[] = [];
-  const p: CoachProfile = { v: 2, primary: base.primary, sports: JSON.parse(JSON.stringify(base.sports)), snow: base.snow, birthYear: base.birthYear ?? null };
+  const p: CoachProfile = { v: 2, primary: base.primary, sports: JSON.parse(JSON.stringify(base.sports)), snow: base.snow, birthYear: base.birthYear ?? null, level: base.level ?? "intermediate" };
   if (!isObj(input)) return { profile: p, errors: ["profil není objekt"] };
   if (input.primary != null) {
     if (input.primary === "ride" || input.primary === "run") p.primary = input.primary;
@@ -54,6 +61,10 @@ export function validateProfile(input: unknown, base: CoachProfile = DEFAULT_PRO
     if (Number.isInteger(y) && y >= 1920 && y <= 2015) p.birthYear = y;
     else errors.push("rok narození musí být celé číslo 1920–2015");
   }
+  if (input.level !== undefined) {
+    if (LEVELS.includes(input.level)) p.level = input.level;
+    else errors.push("úroveň musí být beginner, intermediate nebo advanced");
+  }
   p.sports[p.primary] = { enabled: true, quality: true };
   p.sports.walk.quality = false;
   return { profile: p, errors };
@@ -70,6 +81,8 @@ export function profileSummary(p: CoachProfile, today?: string): string[] {
   if (p.sports.xc_ski.enabled) out.push(p.snow ? "Je sníh – jeden vytrvalostní den týdně na běžkách." : "Běžky se plánují, až zapneš „Je sníh“ (pak jeden vytrvalostní den týdně).");
   if (p.birthYear) out.push(`Rok narození ${p.birthYear}: lehčí týden po ${blockWeeksFor(p.birthYear, today ?? `${new Date().getFullYear()}-01-01`)} zátěžových.`);
   if (!p.sports[other].enabled && !p.sports.xc_ski.enabled) out.push("Jiné sporty trenér sám neplánuje (u dne si je můžeš zvolit).");
+  const lv = p.level ?? "intermediate";
+  out.push(`Úroveň: ${LEVEL_CZ[lv]} – po pauze (7+ dní) první týden jen Z1–Z2, plné kvality po ${RAMP_WEEKS[lv]} ${RAMP_WEEKS[lv] === 1 ? "týdnu" : "týdnech"} (po 3+ týdnech pauzy o týden později).`);
   return out;
 }
 

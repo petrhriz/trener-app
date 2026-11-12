@@ -13,14 +13,18 @@ import { type RecoveryResult, evaluateRecovery } from "../core/recovery";
 import { recoveryScore } from "../core/readinessScore";
 import { type DayWeather, dayWeather } from "../core/weather";
 import type { Workout } from "../core/workout";
-import { all, getState, run, setState } from "../lib/db";
+import { all, first, getState, run, setState } from "../lib/db";
 import { type KeyRecord, evaluateKeys, recordKeys } from "../core/coach/keys";
 import { dayDm, dm, hmm, num, signed } from "../lib/format";
 import { addDays, dateRange, mondayOf } from "../lib/time";
 import type { Ctx, FullAct, MetricRow } from "./context";
-import type { Fatigue } from "../core/coach/target";
+import { type Fatigue, fatigueFactor } from "../core/coach/target";
+import { type Adherence, type AdherenceDay, weekAdherence } from "../core/coach/adherence";
+import { reentryOf } from "../core/coach/reentry";
+import { type Drivers, KEEP_VERSIONS, diffDays, reasonOf, versionDays } from "../core/coach/versions";
+import { fosterOf } from "../core/foster";
 import type { EngineAct, ProgressRow } from "../core/coach/common";
-import { type MondayPlan, runCoach } from "../core/coach/engine";
+import { type CoachPlan, type MondayPlan, runCoach } from "../core/coach/engine";
 import { profileFromHistory, validateProfile } from "../core/coach/profile";
 import { norm } from "../core/recovery";
 import { setSetting } from "../lib/settings";
@@ -40,7 +44,6 @@ export function todayActs(ctx: Ctx): FullAct[] {
 
 export function dayAfterReason(ctx: Ctx): string | null {
   const y = ctx.acts.filter((a) => a.date === addDays(ctx.T, -1));
-  if (y.some((a) => a.sport === "hockey")) return "hokeji";
   if (y.some((a) => a.sport === "xc_ski" && ((a.moving_s ?? 0) > 7200 || (a.load ?? 0) > 120))) return "dlouhých běžkách";
   const big = y.find((a) => (a.load ?? 0) > 120);
   return big ? `jízdě se zátěží ${Math.round(big.load!)}` : null;
@@ -206,6 +209,33 @@ export function fatigueOf(ctx: Ctx, rec: RecoveryResult, cons: { date: string; k
   return { form: y ? y.ctl - y.atl : null, badMornings: bad, hrvLow, illnessDays, hardEasy };
 }
 
+/**
+ * Plnění minulého týdne proti jeho pondělnímu plánu (bez dnů nemoci, volna od trenéra 🔴 a tvých „nemůžu“).
+ * Bez uloženého plánu (první týden) se bere kalendář zapsaných tréninků. null = nebylo co hodnotit.
+ */
+export function adherenceOf(ctx: Ctx, prev: MondayPlan | null, cons: { date: string; kind: string }[]): Adherence | null {
+  const ws = addDays(mondayOf(ctx.T), -7), we = addDays(ws, 6);
+  const plan: AdherenceDay[] = prev?.week && prev.weekStart === ws
+    ? prev.week.days.map((x) => ({ date: x.date, training: x.role !== "rest" && !x.blocked, load: x.load }))
+    : ctx.calendar.filter((c) => c.date >= ws && c.date <= we && c.kind !== "rest" && !!c.name).map((c) => ({ date: c.date, training: true, load: c.target_load ?? 0 }));
+  if (!plan.some((d) => d.training)) return null;
+  const skip = new Set([...offDaysOf(ctx), ...cons.filter((c) => ["nemoc", "nepojedu", "nemuzu", "dovolena"].includes(c.kind)).map((c) => c.date)]);
+  for (const d of dateRange(ws, we)) if (recoveryStateOn(ctx, d) === "red") skip.add(d);
+  return weekAdherence(ws, plan, ctx.acts.map((a) => ({ date: a.date, load: a.load, moving_s: a.moving_s })), skip);
+}
+
+/** Uloží novou verzi plánu, když se změnily budoucí dny (nebo začal nový týden). Bez tabulky (stará migrace) nic. */
+async function saveVersion(ctx: Ctx, plan: CoachPlan, drivers: Drivers): Promise<void> {
+  const days = versionDays(plan.coach.horizon.slice(0, 2).flatMap((w) => w.days));
+  const last = await first<{ id: number; week_start: string; days: string; drivers: string }>(ctx.env.DB, "SELECT id, week_start, days, drivers FROM plan_versions ORDER BY id DESC LIMIT 1");
+  const from = plan.days[0]?.date ?? ctx.T;
+  const changes = last ? diffDays(JSON.parse(last.days), days, from) : [];
+  if (last && last.week_start === drivers.week && !changes.length) return;
+  const reason = reasonOf(last ? (JSON.parse(last.drivers) as Drivers) : null, drivers);
+  await run(ctx.env.DB, "INSERT INTO plan_versions (created_at, week_start, reason, drivers, days, changes) VALUES (?, ?, ?, ?, ?, ?)", new Date().toISOString(), drivers.week, reason.join(" · "), JSON.stringify(drivers), JSON.stringify(days), JSON.stringify(changes));
+  if (last && last.id % 20 === 0) await run(ctx.env.DB, "DELETE FROM plan_versions WHERE id <= ?", last.id - KEEP_VERSIONS);
+}
+
 /** Dny za posledních 5 týdnů se stavem Nemocný / Zraněný / Dovolená (ukončená období + právě běžící stav). */
 export function offDaysOf(ctx: Ctx): string[] {
   const T = ctx.T, from = addDays(T, -35);
@@ -243,6 +273,13 @@ export async function planForCoach(ctx: Ctx, rec: RecoveryResult, opt: { dryRun?
   // pak mění jen dnešek a budoucí dny, ne odjeté dny a ne dvakrát
   const W0 = mondayOf(T);
   const mon0 = await getState<MondayPlan>(ctx.env.DB, "coach3_monday");
+  // nedělní vyhodnocení: pondělní plán minulého týdne (uložený při přechodu na nový týden, nebo ještě ten aktuální)
+  const prevMon = mon0 && mon0.weekStart === addDays(W0, -7) ? mon0 : await getState<MondayPlan>(ctx.env.DB, "coach3_monday_prev");
+  const adherence = adherenceOf(ctx, prevMon, constraints);
+  const foster = fosterOf(ctx.acts, T);
+  const fatigue: Fatigue = { ...fatigueOf(ctx, rec, constraints), adherence, strain: foster.strainHigh ? foster.note : null };
+  const reentry = reentryOf(ctx.acts, T, profile.level ?? "intermediate");
+  const weather = weatherMap(ctx, T, 35);
   const plan = runCoach({
     mondayPlan: mon0 && mon0.weekStart === W0 ? mon0 : null,
     today: T,
@@ -255,10 +292,11 @@ export async function planForCoach(ctx: Ctx, rec: RecoveryResult, opt: { dryRun?
     metric: (d) => metricOn(ctx, d),
     calendar: ctx.calendar,
     constraints,
-    weather: weatherMap(ctx, T, 35),
+    weather,
     weatherOk: ctx.weatherOk,
     recovery: rec.state,
-    fatigue: fatigueOf(ctx, rec, constraints),
+    fatigue,
+    reentry,
     weekLoads: await weekLoads(ctx),
     offDays: offDaysOf(ctx),
     progress: state.progress,
@@ -269,7 +307,29 @@ export async function planForCoach(ctx: Ctx, rec: RecoveryResult, opt: { dryRun?
   const keys1 = recordKeys(ev.records, plan.coach.keyDays, T);
   if (JSON.stringify(keys1) !== JSON.stringify(keys0)) await setState(ctx.env.DB, "coach3_keys", keys1);
   const mp = plan.coach.mondayPlan;
-  if (!opt.dryRun && mp && (!mon0 || mon0.weekStart !== mp.weekStart || mon0.goal !== mp.goal || (mp.monday && JSON.stringify(mp) !== JSON.stringify(mon0)))) await setState(ctx.env.DB, "coach3_monday", mp);
+  if (!opt.dryRun && mp && (!mon0 || mon0.weekStart !== mp.weekStart || mon0.goal !== mp.goal || (mp.monday && JSON.stringify(mp) !== JSON.stringify(mon0)))) {
+    // nový týden: pondělní plán minulého týdne si nechat pro nedělní vyhodnocení plnění
+    if (mon0 && mon0.weekStart < mp.weekStart) await setState(ctx.env.DB, "coach3_monday_prev", mon0);
+    await setState(ctx.env.DB, "coach3_monday", mp);
+  }
+  (plan.coach as any).adherence = adherence;
+  (plan.coach as any).foster = { monotony: foster.monotony, strain: foster.strain, usual: foster.usual, note: foster.note };
+  if (!opt.dryRun) {
+    const fi = fatigueFactor(fatigue);
+    const drivers: Drivers = {
+      week: W0,
+      goal: ctx.s.goal,
+      recovery: rec.state,
+      fatigue: Math.round(fi.factor * 100) / 100,
+      notes: fi.notes,
+      reentry: reentry.note,
+      mine: JSON.stringify(constraints.filter((c) => c.date >= T).map((c) => `${c.date}|${c.kind}|${c.note ?? ""}`).sort()),
+      weatherBad: [...weather.entries()].filter(([d, w]) => d <= addDays(T, 8) && !!w?.bad).map(([d]) => d).sort(),
+      trained: [...new Set(ctx.acts.filter((a) => a.date >= W0 && (a.moving_s ?? 0) >= 20 * 60).map((a) => a.date))].sort(),
+      profile: JSON.stringify(profile),
+    };
+    await saveVersion(ctx, plan, drivers).catch(() => {});
+  }
   (plan.coach as any).lastKeys = keys1.filter((r) => r.state !== "pending").slice(-4).reverse();
   return plan;
 }
@@ -388,6 +448,9 @@ export function alertsFrom(ctx: Ctx, rec: RecoveryResult, fit: FitnessTable): st
   if (fit.ramp != null && fit.ramp > 5) w.push(`Ramp rate ${signed(fit.ramp, 1)} za 7 dní je nad +5.`);
   if (fit.acwr.level === "high") w.push(`Poměr zátěže 7/28 dní ${num(fit.acwr.ratio, 2)} je nad 1,5 – riziko přetížení.`);
   else if (fit.acwr.level === "warn") w.push(`Poměr zátěže 7/28 dní ${num(fit.acwr.ratio, 2)} je nad 1,3.`);
+  // Foster: jednotvárná zátěž / strain nad obvyklým (src/core/foster.ts)
+  const fo = fosterOf(ctx.acts, ctx.T);
+  if (fo.note) w.push(`${fo.note[0]!.toUpperCase()}${fo.note.slice(1)}.`);
   if (ctx.lastSyncOk && Date.now() - Date.parse(ctx.lastSyncOk) > 6 * 3600_000) w.push("Synchronizace s Garminem neproběhla přes 6 h.");
   return w;
 }

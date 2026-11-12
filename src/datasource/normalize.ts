@@ -11,7 +11,6 @@ const pos = (v: unknown): number | null => {
 export function sportFromGarmin(typeKey: string | null | undefined, name?: string | null): Sport {
   const k = (typeKey ?? "").toLowerCase();
   const nm = (name ?? "").toLowerCase();
-  if (/hockey|hokej/.test(k) || /hokej|hockey/.test(nm)) return "hockey";
   if (/indoor_cycling|virtual_ride|indoor_bik|trainer/.test(k)) return "indoor";
   if (/mountain|mtb|enduro_m|downhill/.test(k)) return "mtb";
   if (/cycling|biking|bike|gravel|ride/.test(k)) return "ride";

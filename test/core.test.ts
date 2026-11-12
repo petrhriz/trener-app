@@ -160,7 +160,7 @@ describe("zotavení – osobní normy (kap. 4)", () => {
     expect(r.rhr.status).toBe("insufficient");
     expect(r.state).toBe("green");
   });
-  it("dva 🟡 → 🟡; den po hokeji jeden 🟡 nepočítá", () => {
+  it("dva 🟡 → 🟡; den po dlouhé zátěži jeden 🟡 nepočítá", () => {
     const today = { hrv: 69, rhr: 56, sleep_s: 7 * 3600, sleep_score: 80 };
     const r1 = evaluateRecovery({ date: "2026-11-07", rows: rows(60, today), dayAfter: null, illness: false });
     expect(r1.hrv.flag).toBe("yellow");
@@ -168,7 +168,7 @@ describe("zotavení – osobní normy (kap. 4)", () => {
     expect(r1.rhr.flag).toBe("yellow");
     expect(r1.rhr.rating).toBe("Zvýšený");
     expect(r1.state).toBe("yellow");
-    const r2 = evaluateRecovery({ date: "2026-11-07", rows: rows(60, today), dayAfter: "hokeji", illness: false });
+    const r2 = evaluateRecovery({ date: "2026-11-07", rows: rows(60, today), dayAfter: "jízdě se zátěží 135", illness: false });
     expect(r2.hrv.expected).toBe(true);
     expect(r2.flags.yellow).toBe(1);
     expect(r2.state).toBe("green");
@@ -205,9 +205,7 @@ describe("kvalita a limity (5, 6.1)", () => {
     expect(classify({ sport: "ride", name: "x", moving_s: 3600, load: 50, pwr_z: z(900, 0), np: 200 }).isQuality).toBe(true);
     expect(classify({ sport: "ride", name: "x", moving_s: 3600, load: 50, pwr_z: z(0, 480), np: 200 }).type).toBe("vo2");
   });
-  it("hokej: zápas nebo zátěž nad 80; běžky nad 2 h", () => {
-    expect(classify({ sport: "hockey", name: "Hokej zápas", moving_s: 3600, load: 50, pwr_z: null, np: null }).counts).toBe(true);
-    expect(classify({ sport: "hockey", name: "trénink", moving_s: 3600, load: 70, pwr_z: null, np: null }).counts).toBe(false);
+  it("běžky nad 2 h; brusle se do kvality nepočítají", () => {
     expect(classify({ sport: "xc_ski", name: "Běžky", moving_s: 7300, load: 90, pwr_z: null, np: null }).counts).toBe(true);
     expect(classify({ sport: "skate", name: "x", moving_s: 3600, load: 100, pwr_z: null, np: null }).counts).toBe(false);
   });
@@ -360,7 +358,7 @@ describe("normalizace Garmin dat", () => {
     expect(sportFromGarmin("road_biking")).toBe("ride");
     expect(sportFromGarmin("mountain_biking")).toBe("mtb");
     expect(sportFromGarmin("indoor_cycling")).toBe("indoor");
-    expect(sportFromGarmin("other", "Hokej Teplice")).toBe("hockey");
+    expect(sportFromGarmin("ice_hockey", "Hokej s kamarády")).toBe("other");
     expect(sportFromGarmin("skate_skiing_ws")).toBe("xc_ski");
   });
   it("aktivita a mezery v datech", () => {

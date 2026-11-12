@@ -5,7 +5,6 @@ export type Sport =
   | "mtb"
   | "indoor"
   | "run"
-  | "hockey"
   | "skate"
   | "xc_ski"
   | "walk"

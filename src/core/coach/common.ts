@@ -100,7 +100,7 @@ export function constraintNoteOk(kind: string, note: string | null | undefined):
 }
 
 /** Pořadí zpracování omezení dne: výsledek nesmí záviset na pořadí řádků z databáze (výslovně zvolený sport má přednost před „běžky“). */
-const CON_ORDER = ["nemoc", "nepojedu", "dovolena", "nemuzu", "hokej", "bezky", "sport", "typ", "delka", "jizda", "kroky"];
+const CON_ORDER = ["nemoc", "nepojedu", "dovolena", "nemuzu", "bezky", "sport", "typ", "delka", "jizda", "kroky"];
 
 /**
  * Která aktivita dne je plánovaná kvalita. Nebere se „ta s největší zátěží“: kandidát je aktivita stejného
@@ -136,7 +136,7 @@ export function fixedFromConstraints(cons: Constraint[]): Map<string, Fixed> {
     if (c.kind === "nemoc") f.blocked = "Nemoc: volno, nic nedohánět.";
     else if (c.kind === "nepojedu") f.blocked = f.blocked ?? "Dnes nepojedu.";
     else if (c.kind === "dovolena") f.blocked = f.blocked ?? "Dovolená.";
-    else if (c.kind === "nemuzu" || c.kind === "hokej") f.blocked = f.blocked ?? "Nemůžu (tvoje poznámka).";
+    else if (c.kind === "nemuzu") f.blocked = f.blocked ?? "Nemůžu (tvoje poznámka).";
     else if (c.kind === "bezky") f.sport = "xc_ski";
     // neznámý sport se ignoruje (dřív shodil celý plán)
     else if (c.kind === "sport" && c.note) { if (c.note === "rest") f.rest = true; else if (isPlanSport(c.note)) f.sport = c.note; }

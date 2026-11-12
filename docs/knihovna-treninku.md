@@ -67,14 +67,14 @@ Ranní semafor z VST, klidového tepu a spánku proti tvé 60denní normě (prů
 - 🔴 **nedoregenerovaný** – volno nebo Z1 do 45 min.
 
 Další pravidla:
-- den po hokeji, dlouhých běžkách nebo zátěži nad 120 se jeden 🟡 (VST nebo tep) nepočítá (očekávaná reakce),
+- den po dlouhých běžkách nebo zátěži nad 120 se jeden 🟡 (VST nebo tep) nepočítá (očekávaná reakce),
 - VST pod normou dva dny po sobě = 🟡 i bez dalšího důvodu,
 - po nemoci 2 dny jen Z2 do 60 min, nic se nedohání.
 
 ## 6. Týdenní rámec
 
-- **Limit kvality**: březen–září 2× týdně, říjen–únor 1× týdně; hokej se počítá jako kvalita.
-- Ne dvě kvality po sobě, ne den po hokeji.
+- **Limit kvality**: březen–září 2× týdně, říjen–únor 1× týdně.
+- Ne dvě kvality po sobě.
 - Preferované dny kvality: út, st, čt, so, pá, po, ne (v tomto pořadí).
 - **Týdenní zátěž**: Udržet 7 × CTL ± 10 %, Zlepšit +5 až +10 % (max. ramp +3 CTL/týden), Pokles −10 až −20 %.
   Navíc nejvýš +10 % proti běžnému týdnu a po 3 týdnech růstu lehčí týden (−30 %).

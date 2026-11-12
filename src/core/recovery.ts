@@ -110,7 +110,7 @@ export interface RecoveryInput {
   date: string;
   /** řádky wellness D−60 … D (dnešek včetně) */
   rows: WRow[];
-  /** důvod očekávaného poklesu: „hokeji“, „dlouhých běžkách“, „jízdě se zátěží 135“ (včerejšek) */
+  /** důvod očekávaného poklesu: „dlouhých běžkách“, „jízdě se zátěží 135“ (včerejšek) */
   dayAfter: string | null;
   illness: boolean;
   /** Zotavení v % z recoveryScore: pod 34 % aspoň 🟡, pod 15 % 🔴 */
@@ -222,7 +222,7 @@ export function evaluateRecovery(inp: RecoveryInput): RecoveryResult {
   }
 
   // ---- Rozhodnutí ----
-  // Den po hokeji / dlouhých běžkách / zátěži nad 120: jeden 🟡 (HRV nebo klidový tep) nepočítat.
+  // Den po dlouhých běžkách / zátěži nad 120: jeden 🟡 (VST nebo klidový tep) nepočítat.
   if (inp.dayAfter) {
     if (hrv.flag === "yellow") hrv.expected = true;
     else if (rhr.flag === "yellow") rhr.expected = true;

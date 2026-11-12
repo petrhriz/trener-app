@@ -14,7 +14,7 @@ import type { State } from "../recovery";
 import type { DayWeather } from "../weather";
 import { type Workout, renderIcu } from "../workout";
 import { type EngineAct, type ProgressRow, easyRate, fixedFromConstraints, runCapOf } from "./common";
-import { type Built, type Cat, type WorkPlan, type Zones, START_TIER, applyStepEdit, buildWorkout, catCandidates, catNeeds, chooseCat, isCat } from "./library";
+import { type Built, type Cat, type WorkPlan, type Zones, CAT_NAME as CAT_WORD, START_TIER, applyStepEdit, buildWorkout, catCandidates, catNeeds, chooseCat, isCat } from "./library";
 import type { CoachProfile } from "./profile";
 import { type Distribution, distribution } from "./progress";
 
@@ -22,6 +22,7 @@ import { type Distribution, distribution } from "./progress";
  *  1,3–1,5), takže 2 h uvnitř ≈ 2,5–3 h venku; konkrétní strop je vlastní volba. */
 export const INDOOR_LONG_MAX = 120;
 import { runReadiness } from "./run";
+import type { Reentry } from "./reentry";
 import { type Fatigue, fatigueFactor, formFloor } from "./target";
 import { type WeekValidation, validateWeek } from "./validate";
 import type { Fixed, PastDay as V2Past } from "./common";
@@ -57,7 +58,14 @@ export interface CoachInput {
   mondayMode?: boolean;
   /** uložený pondělní plán tohoto týdne (src/report/build.ts ho uloží při prvním spuštění v týdnu); null = spočítat */
   mondayPlan?: MondayPlan | null;
+  /** návrat po pauze: strop intenzity po dnech (src/core/coach/reentry.ts); null = bez omezení */
+  reentry?: Reentry | null;
 }
+
+/** 🟡 ráno: kvalita o stupeň lehčí (VO2 a kratší ostré → práh, práh a over-under → sweet spot, sweet spot → tempo,
+ *  tempo → Z2) a o čtvrtinu kratší. Stupně a ×0,75 jsou vlastní volba (docs/trener/zdroje.md). */
+export const STEP_DOWN: Record<Cat, Cat | null> = { nm: "thr", ana: "thr", vo2s: "thr", vo2: "thr", ou: "ss", thr: "ss", ss: "tempo", tempo: null };
+export const YELLOW_CUT = 0.75;
 
 /** Pondělní plán týdne: z něj se rozběhnutý týden dopočítává. Uloží se jednou, ať únava a nová omezení mění jen
  *  dnešek a budoucí dny – ne odjeté dny a ne dvakrát. */
@@ -157,6 +165,8 @@ export interface CoachInfo {
   outlook: { days: { date: string; load: number }[]; weeks: { weekStart: string; load: number; ctlEnd: number; recoveryWeek: boolean; phaseLabel: string; exact: boolean }[] };
   /** pondělní plán tohoto týdne k uložení (nebo ten uložený) */
   mondayPlan: MondayPlan | null;
+  /** návrat po pauze (strop intenzity) – text pro stránku; null = bez omezení */
+  reentry: string | null;
   horizon: { weekStart: string; detail: boolean; load: number; done: number; need: number; target: number; notes: string[]; limit: WeekTarget["limit"]; ctlStart: number; ctlEnd: number; ctlGoal: number; phaseLabel: string; recoveryWeek: boolean; days: { date: string; role: Role; sport: PlanSport; minutes: number; load: number; name: string | null; blocked: boolean; workout: Workout | null; steps: string[]; targetText: string | null; why: string[] }[] }[];
 }
 
@@ -208,6 +218,8 @@ export function runCoach(inp: CoachInput): CoachPlan {
   const run = runReadiness(inp.acts, T, p.primary === "run");
   const rateOf = (s: PlanSport) => easyRate(inp.acts, T, s, s === "ride" && power);
   const fat = fatigueFactor(inp.fatigue);
+  // návrat po pauze: první týden jen Z1–Z2, pak nejvýš tempo / sweet spot (tvoje výslovná kvalita platí)
+  const ceilingOf = (d: string) => inp.reentry?.ceilingOn(d) ?? "full";
 
   // kondice, kterou vidíš na stránce: dnešek bez dnešního tréninku (po tréninku = start plánu)
   const ctlRef = todayDone ? startState.ctl : (inp.metric(T)?.ctl ?? startState.ctl);
@@ -316,7 +328,7 @@ export function runCoach(inp: CoachInput): CoachPlan {
         ownLong: !!f?.own && f.own.min >= 120,
         // 🟡 ráno, nebo tvůj sport dne bez intervalů (běžky, chůze…) – kvalita patří jinam
         // po závodě v témže týdnu už kvalita ne (den po závodě nikdy, i když závod v aktivitách není)
-        noKey: (d === T && inp.recovery === "yellow") || (!!f?.sport && !qualityOk(f.sport)) || (!!inp.raceDate && d > inp.raceDate && d <= addDays(inp.raceDate, 7)),
+        noKey: ceilingOf(d) === "base" || (!!f?.sport && !qualityOk(f.sport)) || (!!inp.raceDate && d > inp.raceDate && d <= addDays(inp.raceDate, 7)),
         badWeather: !!w?.bad,
       };
     });
@@ -350,7 +362,7 @@ export function runCoach(inp: CoachInput): CoachPlan {
       for (const d of dates) {
         const m = mDay(d);
         let r: Role = m && !m.blocked && !lostDay(d) ? m.role : "rest";
-        if (d === T && inp.recovery === "yellow" && r === "key" && fixed.get(d)?.type !== "quality") r = "endurance";
+        if (r === "key" && ceilingOf(d) === "base" && fixed.get(d)?.type !== "quality") { r = "endurance"; roleWhy.set(d, "místo kvality Z2 – návrat po pauze, první týden jen Z1–Z2"); }
         // včera opravdu těžký den (kvalita podle zón, dlouhý, závod), který v plánu nebyl → dnes kvalita ne
         if (d === tg.from && r === "key" && fixed.get(d)?.type !== "quality" && tail[0]?.hard) { r = "endurance"; roleWhy.set(d, "místo kvality Z2 – včera byl těžký trénink"); }
         sk.roles.set(d, r);
@@ -438,9 +450,7 @@ export function runCoach(inp: CoachInput): CoachPlan {
         const m = mDay(x.date);
         if (!m || m.load <= 0) continue;
         x.want = Math.round(m.load * scale);
-        // 🟡 dnes: místo kvality Z2 o třetinu kratší
-        const yellowKey = x.date === T && inp.recovery === "yellow" && m.role === "key";
-        const ld = yellowKey ? (x.want * 2) / 3 : x.want;
+        const ld = x.want;
         // stejný sport a druh: délka z pondělního plánu (krát poměr) – přepočet ze zátěže by kvůli rozjetí v Z1
         // dal každý den o kus míň; jinak délka ze zátěže podle sportu dne
         const c = capsOf(x.sport, x.role);
@@ -448,14 +458,13 @@ export function runCoach(inp: CoachInput): CoachPlan {
         // Při dorovnání zátěže po skutečném průběhu týdne stačí jemnější krok než
         // obvyklé 15min zaokrouhlení – jinak se menší přebytek kvality na Z2 vůbec neprojeví.
         const step = 5;
-        setMinutes(x, same && !yellowKey ? Math.max(c.min, Math.min(c.max, Math.round((m.minutes * scale) / step) * step)) : minutesFor(ld, rOf(x), x.role, x.sport, c));
-        if (x.date === T && inp.recovery === "yellow" && m.role === "key") x.why.push("🟡 ráno: místo kvality Z2, o třetinu kratší");
+        setMinutes(x, same ? Math.max(c.min, Math.min(c.max, Math.round((m.minutes * scale) / step) * step)) : minutesFor(ld, rOf(x), x.role, x.sport, c));
       }
     }
 
     // obsah: konkrétní tréninky tento a příští týden; další týdny náhled (`preview` – bez počasí a bez
     // dorovnání zátěže týdne, kroky jsou orientační)
-      const build = (x: Day3, preview = false) => {
+      const build = (x: Day3, preview = false, forceCat: Cat | null = null) => {
         const f = fixed.get(x.date);
         const w = inp.weather.get(x.date) ?? null;
         const calib = rateOf(x.sport).calib;
@@ -480,11 +489,18 @@ export function runCoach(inp: CoachInput): CoachPlan {
           let cands = catCandidates(tg.phase, { recoveryWeek: tg.recoveryWeek, winter });
           if (x.sport === "run") cands = cands.filter((c) => c !== "vo2" && c !== "vo2s");
           if (!cands.length) cands = ["thr"];
+          // návrat po pauze: nejvýš tempo a sweet spot (ne práh, VO2, sprinty)
+          if (ceilingOf(x.date) === "tempo" && f?.type !== "quality") {
+            cands = cands.filter((c) => c === "tempo" || c === "ss");
+            if (!cands.length) cands = ["tempo"];
+            if (!x.why.some((s) => s.startsWith("návrat po pauze"))) x.why.push("návrat po pauze: nejvýš tempo a sweet spot");
+          }
+          if (forceCat) cands = [forceCat];
           const before = usedCats.filter((u) => u.date < x.date);
           const lastUse: Partial<Record<Cat, string>> = {};
           for (const u of before) lastUse[u.cat] = u.date;
           const inWeek = usedCats.filter((u) => u.date >= tg.weekStart && u.date < x.date).map((u) => u.cat);
-          const ch = chooseCat({ cands, exclude: [...inWeek, ...(before.length ? [before[before.length - 1]!.cat] : [])], lastUse, date: x.date, needs: x.sport === "ride" && power ? needs : {} });
+          const ch = forceCat ? { cat: forceCat, why: null as string | null } : chooseCat({ cands, exclude: [...inWeek, ...(before.length ? [before[before.length - 1]!.cat] : [])], lastUse, date: x.date, needs: x.sport === "ride" && power ? needs : {} });
           const lvl0 = inp.progress[`${x.sport}:${ch.cat}`]?.level ?? START_TIER;
           const level = Math.max(0, tg.phase === "offseason" || tg.recoveryWeek ? lvl0 - 1 : lvl0);
           const avoidIds = [...(inp.recentWids ?? []).filter((u) => u.date < from && u.sport === x.sport && u.cat === ch.cat).slice(-3), ...usedWids.filter((u) => u.sport === x.sport && u.cat === ch.cat)].map((u) => u.wid);
@@ -530,6 +546,24 @@ export function runCoach(inp: CoachInput): CoachPlan {
           const c = capsOf(x.sport, x.role);
           const m = Math.min(c.max, x.sport === "run" ? Math.round((x.minutes * (1 + gap / fl)) / 5) * 5 : Math.round((x.minutes * (1 + gap / fl)) / 15) * 15);
           if (m !== x.minutes) { x.minutes = m; build(x); }
+        }
+      }
+    }
+    if (detail && inp.recovery === "yellow") {
+      const x = train.find((y) => y.date === T);
+      if (x && !x.own && !x.mine) {
+        const c = capsOf(x.sport, x.role === "key" ? "endurance" : x.role);
+        const cut = Math.max(c.min, Math.round((x.minutes * YELLOW_CUT) / 5) * 5);
+        if (x.role === "key") {
+          const from0 = x.cat, down = from0 ? STEP_DOWN[from0] : null;
+          x.minutes = cut;
+          if (down) { build(x, false, down); x.why.push(`🟡 ráno: o stupeň lehčí (${CAT_WORD[from0!]} → ${CAT_WORD[down]}) a o čtvrtinu kratší`); }
+          else { x.role = "endurance"; build(x); x.why.push(`🟡 ráno: místo ${from0 ? CAT_WORD[from0] : "kvality"} Z2, o čtvrtinu kratší`); }
+        } else if (x.minutes > c.min) {
+          x.minutes = cut;
+          if (x.role === "long") x.role = "endurance";
+          build(x);
+          x.why.push("🟡 ráno: o čtvrtinu kratší");
         }
       }
     }
@@ -595,7 +629,7 @@ export function runCoach(inp: CoachInput): CoachPlan {
       b = nextBlock(b, tg, tg.load);
     }
   }
-  return toPlan(inp, weeks, { outlook, mondayPlan: mp, from, todayDone, startState, history, usual: historyBase(history).usual, ctlRef, fat, longest, typical, runLongest: run.longest, runExperienced: run.experienced });
+  return toPlan(inp, weeks, { reentry: inp.reentry?.note ?? null, outlook, mondayPlan: mp, from, todayDone, startState, history, usual: historyBase(history).usual, ctlRef, fat, longest, typical, runLongest: run.longest, runExperienced: run.experienced });
 }
 
 // ---------- výstup ve tvaru plánu (dashboard, zápis do intervals.icu) ----------
@@ -629,7 +663,7 @@ export function horizonSummary(weeks: Pick<Week3, "planned" | "ctlEnd" | "target
   return `${head}. Na ${ramp === 0 ? "udržení" : "růst"} by to chtělo víc, ale ${why.join(", ")}.${settled ? ` Od ${weeks.length}. týdne už zátěž cíli odpovídá a kondice ${ramp === 0 ? "drží" : "roste"}.` : ""}`;
 }
 
-function toPlan(inp: CoachInput, weeks: Week3[], o: { outlook: CoachInfo["outlook"]; mondayPlan: MondayPlan | null; from: string; todayDone: boolean; startState: { ctl: number; atl: number }; history: { weekLoads: number[] }; usual: number; ctlRef: number; fat: { notes: string[] }; longest: number; typical: number; runLongest: number; runExperienced: boolean }): CoachPlan {
+function toPlan(inp: CoachInput, weeks: Week3[], o: { reentry: string | null; outlook: CoachInfo["outlook"]; mondayPlan: MondayPlan | null; from: string; todayDone: boolean; startState: { ctl: number; atl: number }; history: { weekLoads: number[] }; usual: number; ctlRef: number; fat: { notes: string[] }; longest: number; typical: number; runLongest: number; runExperienced: boolean }): CoachPlan {
   const T = inp.today;
   const all = weeks.flatMap((w) => w.days);
   const dayOf = (d: string) => all.find((x) => x.date === d) ?? null;
@@ -655,7 +689,7 @@ function toPlan(inp: CoachInput, weeks: Week3[], o: { outlook: CoachInfo["outloo
     const ride = x.role !== "rest" && !x.blocked;
     const tag0 = x.role === "key" ? "Kvalita" : x.role === "endurance" ? "Z2" : x.role === "long" ? "Z2 dlouhá" : x.role === "easy" ? "Z1" : "Volno";
     const tag = x.own ? "Vlastní" : ride && x.sport !== inp.profile.primary ? `${SPORT_WORD[x.sport][0]!.toUpperCase()}${SPORT_WORD[x.sport].slice(1)} · ${tag0}` : tag0;
-    const note = [...(date === T && inp.recovery === "green" && ride ? ["🟢 ráno zotavený, beze změny."] : []), ...(date === T && inp.recovery === "yellow" ? ["🟡 ráno částečně zotavený: dnes bez kvality."] : []), ...x.why.map((s) => (/[.!]$/.test(s) ? s : `${s}.`))].map((s) => s[0]!.toUpperCase() + s.slice(1)).join(" ");
+    const note = [...(date === T && inp.recovery === "green" && ride ? ["🟢 ráno zotavený, beze změny."] : []), ...(date === T && inp.recovery === "yellow" ? ["🟡 ráno částečně zotavený: dnes lehčí."] : []), ...x.why.map((s) => (/[.!]$/.test(s) ? s : `${s}.`))].map((s) => s[0]!.toUpperCase() + s.slice(1)).join(" ");
     return {
       date,
       isToday: date === T,
@@ -771,7 +805,7 @@ function toPlan(inp: CoachInput, weeks: Week3[], o: { outlook: CoachInfo["outloo
   const validation: WeekValidation = { ok: v0.ok && v1.ok, items: [...v0.items, ...v1.items] };
 
   const summary = horizonSummary(weeks, weeks[0]!.target.ctlStart, o.usual);
-  const warnings: string[] = [summary, ...w0.notes, ...o.fat.notes.map((s) => `Únava: ${s}.`)];
+  const warnings: string[] = [summary, ...w0.notes, ...o.fat.notes.map((s) => `Zátěž ubírá: ${s}.`), ...(o.reentry ? [`${o.reentry[0]!.toUpperCase()}${o.reentry.slice(1)}.`] : [])];
   for (const x of proj.filter((y) => y.date <= addDays(T, 7))) if (formZone(x.form) === "Vysoké riziko") warnings.push(`Plán vede do Vysokého rizika ${dayDm(x.date)} – uber zátěž.`);
   for (const it of validation.items) if (it.level !== "exception") warnings.push(it.text);
 
@@ -807,6 +841,7 @@ function toPlan(inp: CoachInput, weeks: Week3[], o: { outlook: CoachInfo["outloo
     validation,
     keyDays: weeks.filter((w) => w.detail).flatMap((w) => w.days).filter((x) => x.role === "key" && x.cat && x.level != null).map((x) => ({ date: x.date, sport: x.sport, cat: x.cat!, level: x.level!, base: x.base ?? x.level!, wid: x.wid ?? null, plan: x.wplan ?? null, minutes: x.minutes, name: x.name })),
     mondayPlan: null,
+    reentry: o.reentry,
     outlook: o.outlook,
     horizon: weeks.map((w) => ({ weekStart: w.weekStart, detail: w.detail, load: w.planned, done: w.target.done, need: w.target.need, target: w.target.load, notes: w.target.notes, limit: w.target.limit, ctlStart: w.target.ctlStart, ctlEnd: w.ctlEnd, ctlGoal: w.target.ctlGoal, phaseLabel: w.target.phaseLabel, recoveryWeek: w.target.recoveryWeek, days: w.days.map((x) => ({ date: x.date, role: x.role, sport: x.sport, minutes: x.minutes, load: x.load, name: x.name, blocked: !!x.blocked, workout: x.role !== "rest" && !x.blocked ? x.workout : null, steps: x.role !== "rest" && !x.blocked ? x.steps : [], targetText: x.role !== "rest" && !x.blocked ? x.targetText : null, why: x.why })) })),
   };

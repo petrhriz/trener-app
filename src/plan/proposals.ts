@@ -254,7 +254,7 @@ export async function addConstraint(env: Env, date: string, kind: string, note: 
   const s = await getSettings(env.DB);
   const icu = new IntervalsClient(env);
   if (s.icu_sync && icu.configured) {
-    const names: Record<string, string> = { nemuzu: "Nemuzu", hokej: "Hokej", bezky: "Bezky", nemoc: "Nemoc", dovolena: "Dovolena", nepojedu: "Nepojedu" };
+    const names: Record<string, string> = { nemuzu: "Nemuzu", bezky: "Bezky", nemoc: "Nemoc", dovolena: "Dovolena", nepojedu: "Nepojedu" };
     try {
       const ev = await icu.createEvent({ category: "NOTE", start_date_local: `${date}T00:00:00`, name: names[kind] ?? kind, description: note ?? "" });
       evId = String(ev.id);

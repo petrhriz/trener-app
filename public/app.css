@@ -2094,3 +2094,10 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 .cc-view .steps { margin: 0; }
 .cc-view .btns { margin-top: 2px; }
 .cc-tg { margin: 0; font-size: 13px; color: var(--muted); }
+
+/* Trenér: historie verzí plánu */
+.thist summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.th-list { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.th-v { display: flex; flex-direction: column; gap: 2px; padding-bottom: 8px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.th-v:last-child { border-bottom: 0; }
+.th-v ul { margin: 2px 0 0; padding-left: 18px; color: var(--muted); }

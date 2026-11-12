@@ -84,12 +84,42 @@ describe("Trenér v3 – plán", () => {
     const txt = [r.name, ...r.steps].join(" ");
     expect(txt).not.toMatch(/Rozjetí|Vyjetí|jízda|dojezd/);
   });
-  it("🔴 ráno: dnes nelze trénovat; 🟡: dnes bez kvality", () => {
+  it("🔴 ráno: dnes nelze trénovat; 🟡: dnes o stupeň lehčí a o čtvrtinu kratší", () => {
     const red = runCoach(input({ recovery: "red" }));
     const t = red.days.find((d) => d.isToday);
     expect(!t || t.kind === "blocked" || t.kind === "rest").toBe(true);
-    const ye = runCoach(input({ recovery: "yellow" }));
-    expect(ye.days.find((d) => d.isToday)?.kind).not.toBe("quality");
+    const g = runCoach(input()).days.find((d) => d.isToday)!;
+    const y = runCoach(input({ recovery: "yellow" })).days.find((d) => d.isToday)!;
+    expect(g.kind).toBe("quality");
+    // kvalita o stupeň dolů (jiný druh kvality, nebo Z2), délka ~×0,75
+    expect(y.kind === "z2" || y.qualityType !== g.qualityType || y.name !== g.name).toBe(true);
+    expect(y.durationMin!).toBeLessThanOrEqual(Math.round(g.durationMin! * 0.75) + 10);
+    expect(y.note).toMatch(/🟡 ráno: (o stupeň lehčí|místo)/);
+  });
+  it("🟡 stupně dolů: VO2 → práh → sweet spot → tempo → Z2", async () => {
+    const { STEP_DOWN } = await import("../../src/core/coach/engine");
+    expect(STEP_DOWN.vo2).toBe("thr");
+    expect(STEP_DOWN.thr).toBe("ss");
+    expect(STEP_DOWN.ss).toBe("tempo");
+    expect(STEP_DOWN.tempo).toBeNull();
+  });
+  it("návrat po pauze: první týden bez kvality, pak nejvýš tempo a sweet spot", async () => {
+    const { reentryOf } = await import("../../src/core/coach/reentry");
+    // 14 dní bez tréninku, dnes se začíná znovu
+    const x = input({ goal: "zvyseni" });
+    const acts = x.acts.filter((a) => a.date < addDays(T, -14));
+    const re = reentryOf(acts, T, "intermediate");
+    expect(re.resume).toBe(T);
+    expect(re.ceilingOn(T)).toBe("base");
+    expect(re.ceilingOn(addDays(T, 7))).toBe("tempo");
+    expect(re.ceilingOn(addDays(T, 14))).toBe("full");
+    const p = runCoach({ ...x, acts, reentry: re });
+    const days = p.coach.horizon.flatMap((w) => w.days);
+    // první týden po návratu žádná kvalita
+    expect(days.filter((d) => d.date < addDays(T, 7) && d.role === "key")).toEqual([]);
+    // druhý týden kvalita jen tempo / sweet spot
+    for (const d of days.filter((y) => y.date >= addDays(T, 7) && y.date < addDays(T, 14) && y.role === "key")) expect(d.name ?? "").toMatch(/tempo|sweet spot/i);
+    expect(p.coach.reentry).toMatch(/návrat po \d+ dnech pauzy/);
   });
   it("výstup sedí pro dashboard: dny 7–8, cíl týdne, změny pro zápis, kontrola týdne", () => {
     const p = runCoach(input());

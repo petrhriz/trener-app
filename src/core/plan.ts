@@ -32,7 +32,7 @@ export interface Constraint {
   date: string;
   /** sport = náhrada kola jiným sportem, note = ride | run | xc_ski | walk; typ = vynucený druh jednotky, note = z2 | quality */
   /** kroky = tvoje úprava kvality, note = JSON {reps, work_s, pct} (Trenér v2) */
-  kind: "nemuzu" | "hokej" | "bezky" | "nemoc" | "dovolena" | "nepojedu" | "sport" | "typ" | "jizda" | "delka" | "kroky";
+  kind: "nemuzu" | "bezky" | "nemoc" | "dovolena" | "nepojedu" | "sport" | "typ" | "jizda" | "delka" | "kroky";
   note: string | null;
 }
 
@@ -68,7 +68,7 @@ export interface PlanDay {
   date: string;
   isToday: boolean;
   orientational: boolean;
-  kind: Kind | "hockey" | "xc_ski" | "blocked";
+  kind: Kind | "xc_ski" | "blocked";
   tag: string;
   tagClass: "q" | "e" | "";
   name: string | null;

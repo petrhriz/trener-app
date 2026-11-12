@@ -16,7 +16,7 @@ let ck;
 ok(s === 200 && /Max-Age=31536000/.test(ck ?? ""), `login vlastník ${s}, cookie 1 rok: ${/Max-Age=31536000/.test(ck ?? "")}`);
 const ownerCookie = ck.split(";")[0];
 // vlastník si zapíše omezení (data vlastníka)
-await fetch(`${B}/api/constraint`, { method: "POST", headers: { cookie: ownerCookie, "content-type": "application/json" }, body: JSON.stringify({ date: "2030-01-01", kind: "hokej", note: "vlastník" }) });
+await fetch(`${B}/api/constraint`, { method: "POST", headers: { cookie: ownerCookie, "content-type": "application/json" }, body: JSON.stringify({ date: "2030-01-01", kind: "nemuzu", note: "vlastník" }) });
 [s, x] = await j(await fetch(`${B}/api/users/invite`, { method: "POST", headers: { cookie: ownerCookie } }));
 ok(s === 200 && x.url, `pozvánka ${x.url}`);
 const token = x.url.split("/join/")[1];

@@ -125,6 +125,19 @@ coachApi.post("/plan/reset", async (c) => {
   return c.json({ ok: true, ...(await proposalAfter(c.env)) });
 });
 
+/** Systémový prompt AI trenéra (hlídá ho test promptů v test/ai.test.ts). */
+export const COACH_ASK_SYS = `Jsi cyklistický trenér. Uživatel upravuje plán na 7 dní. Odpověz POUZE JSON objektem:
+{"reply":"krátká česká odpověď, tykej, 1–3 věty","actions":[...]}
+Povolené akce (data jen z plánu níže):
+{"a":"move","from":"YYYY-MM-DD","to":"YYYY-MM-DD"}  přesun tréninku – obsazený den se prohodí SÁM, opačný přesun nepiš
+{"a":"rest","date":"YYYY-MM-DD"}  volno
+{"a":"z2","date":"YYYY-MM-DD"}  místo kvality / volna lehká Z2
+{"a":"quality","date":"YYYY-MM-DD"}  kvalita (intervaly) na tento den
+{"a":"len","date":"YYYY-MM-DD","min":90}  délka tréninku v minutách
+{"a":"sport","date":"YYYY-MM-DD","sport":"ride|run|xc_ski|walk"}
+{"a":"own","date":"YYYY-MM-DD","min":240,"with":"jméno nebo null"}  vlastní jízda
+Pravidla: kvalita ne dva dny po sobě; při formě pod −20 nebo špatné připravenosti spíš uber; když uživatel nemá čas, zkrať nebo přesuň, kvalitu zachovej, pokud to jde. Když není co měnit, actions = [].`;
+
 /**
  * AI trenér: z textu („ve středu nestihnu, přesuň kvalitu na čtvrtek“, „jsem unavený“, „tento týden mám jen 4 h“)
  * udělá úpravy plánu. Model vrátí JSON s akcemi, kód je zkontroluje (jen dny v plánu, povolené akce) a provede.
@@ -139,17 +152,7 @@ coachApi.post("/coach/ask", async (c) => {
   const rec = recoveryFor(ctx);
   const m = ctx.metrics.find((x) => x.date === ctx.T) ?? ctx.metrics[ctx.metrics.length - 1];
   const days = p.days.map((d) => ({ datum: d.date, den: dayDm(d.date), trenink: d.name ?? (d.kind === "blocked" ? "nelze" : "volno"), druh: d.kind, sport: d.sport, minut: d.durationMin, zatez: d.load }));
-  const system = `Jsi cyklistický trenér. Uživatel upravuje plán na 7 dní. Odpověz POUZE JSON objektem:
-{"reply":"krátká česká odpověď, tykej, 1–3 věty","actions":[...]}
-Povolené akce (data jen z plánu níže):
-{"a":"move","from":"YYYY-MM-DD","to":"YYYY-MM-DD"}  přesun tréninku – obsazený den se prohodí SÁM, opačný přesun nepiš
-{"a":"rest","date":"YYYY-MM-DD"}  volno
-{"a":"z2","date":"YYYY-MM-DD"}  místo kvality / volna lehká Z2
-{"a":"quality","date":"YYYY-MM-DD"}  kvalita (intervaly) na tento den
-{"a":"len","date":"YYYY-MM-DD","min":90}  délka tréninku v minutách
-{"a":"sport","date":"YYYY-MM-DD","sport":"ride|run|xc_ski|walk"}
-{"a":"own","date":"YYYY-MM-DD","min":240,"with":"jméno nebo null"}  vlastní jízda
-Pravidla: kvalita ne dva dny po sobě; při formě pod −20 nebo špatné připravenosti spíš uber; když uživatel nemá čas, zkrať nebo přesuň, kvalitu zachovej, pokud to jde. Když není co měnit, actions = [].`;
+  const system = COACH_ASK_SYS;
   const user = `STAV: kondice CTL ${m?.ctl?.toFixed?.(1) ?? "?"}, únava ATL ${m?.atl?.toFixed?.(1) ?? "?"}, forma TSB ${m?.form?.toFixed?.(1) ?? "?"} (${m?.form != null ? formZone(m.form) : "?"})${ctx.s.ai_private ? "" : `, připravenost ráno: ${rec.stateLabel}`}. Cíl týdne zátěž ${p.weeklyTarget.lo}–${p.weeklyTarget.hi}.
 PLÁN: ${JSON.stringify(days)}
 DNES: ${ctx.T}

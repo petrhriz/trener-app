@@ -1,5 +1,5 @@
 // Stav (nemoc / zranění / dovolená), přesun kvality, kalendář měsíce, chat s AI.
-import { pageAllowedPrivate, stripHealth } from "../core/privacy";
+import { noteContext, pageAllowedPrivate, stripHealth } from "../core/privacy";
 import { Hono } from "hono";
 import type { Env } from "../env";
 import { noteKey } from "../report/aiBackground";
@@ -203,6 +203,9 @@ misc.get("/ai-note", async (c) => {
   return c.json((await pageNote(c.env, ctx, page, c.req.query("force") === "1")) ?? { text: null });
 });
 
+export const NOTE_SYS = `Jsi osobní trenér vytrvalostních sportů a zdraví. Česky, tykej, 2–3 krátké věty, max. 55 slov, bez nadpisů, odrážek a emoji.
+Neopisuj čísla, která uživatel vidí na stránce – max. jedno nebo dvě klíčová. Řekni, co z dat plyne a co udělat. Používej POUZE fakta z JSON kontextu. Aktuální čas je v poli „cas“.`;
+
 /** AI shrnutí stránky (cache v KV podle dat – noteKey v src/report/aiBackground.ts); píše ho i cron na pozadí. */
 export async function pageNote(env: Env, ctx: Awaited<ReturnType<typeof loadCtx>>, page: string, force: boolean): Promise<{ text: string; model: string | null } | null> {
   if (!NOTE_ASK[page]) return null;
@@ -214,10 +217,10 @@ export async function pageNote(env: Env, ctx: Awaited<ReturnType<typeof loadCtx>
   const llm = await import("../llm/llm");
   const { llmAvailable, numbersOk, runChat } = llm;
   if (!(await llmAvailable(env))) return null;
-  const context = await aiContext(env, ctx);
-  const sys = `Jsi osobní trenér vytrvalostních sportů a zdraví. Česky, tykej, 2–3 krátké věty, max. 55 slov, bez nadpisů, odrážek a emoji.
-Neopisuj čísla, která uživatel vidí na stránce – max. jedno nebo dvě klíčová. Řekni, co z dat plyne a co udělat. Používej POUZE fakta z JSON kontextu. Aktuální čas je v poli „cas“.`;
-  const out = await runChat(env, [{ role: "system", content: sys }, { role: "user", content: `KONTEXT (JSON):\n${JSON.stringify(context)}\n\n${NOTE_ASK[page]}` }], 260, 0.3);
+  // soukromí: bez zdravotních údajů, stránka Zotavení se vůbec nepíše (src/core/privacy.ts)
+  const context = noteContext(await aiContext(env, ctx), page, !!ctx.s.ai_private);
+  if (!context) return null;
+  const out = await runChat(env, [{ role: "system", content: NOTE_SYS }, { role: "user", content: `KONTEXT (JSON):\n${JSON.stringify(context)}\n\n${NOTE_ASK[page]}` }], 260, 0.3);
   if (!out || !numbersOk(out, context)) return null;
   const res = { text: out.trim(), model: llm.getLastModel() };
   await env.KV.put(key, JSON.stringify(res), { expirationTtl: 24 * 3600 }).catch(() => {});

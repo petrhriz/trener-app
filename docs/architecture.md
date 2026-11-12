@@ -34,7 +34,7 @@
 - `wellness_daily` – den: HRV, klidový tep, spánek (délka, skóre, kvalifikátor), kroky, energie, stres, váha, VO2max
 - `daily_metrics` – den: zátěž, CTL, ATL, forma, ramp rate, normy (průměr/SD/N), semafor
 - `planned_workouts` – den, název, kroky (JSON + text), cílová zátěž, zdůvodnění, stav, `intervals_event_id`
-- `constraints` – omezení (nemůžu, hokej, nemoc, jiný sport, vlastní jízda…)
+- `constraints` – omezení (nemůžu, nemoc, jiný sport, vlastní jízda…)
 - `proposals` – poslední seznam změn plánu (platí jen nejnovější)
 - `weather_hourly` – cache Open-Meteo
 - `settings` – FTP, zóny, cíl, časy zpráv, přepínače

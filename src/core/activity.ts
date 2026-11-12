@@ -49,7 +49,6 @@ export const SPORT_EMOJI: Record<string, string> = {
   mtb: "🚵",
   indoor: "🚴",
   run: "🏃",
-  hockey: "🏒",
   skate: "⛸️",
   xc_ski: "🎿",
   walk: "🚶",
@@ -235,7 +234,7 @@ export function analyzeActivity(a: ActRow, plan: PlannedForAct | null, ftp: numb
   const laps = buildLaps(a, plan, isZ2Plan, hasPower, indoor);
 
   // ---- zóny ----
-  const showHr = a.hr_z && a.sport !== "hockey" && a.sport !== "walk" && a.sport !== "hike";
+  const showHr = a.hr_z && a.sport !== "walk" && a.sport !== "hike";
   const hrZones = showHr ? zoneRows(a.hr_z!, moving, HR_COLORS) : null;
   const hrZonesNote = showHr && hz ? `Zóny tepu: ${[1, 2, 3, 4, 5].map((z) => `Z${z} ${hrZoneRange(hz, z).join("–")}`).join(", ")} bpm (Garmin${hz.lthr ? `, LTHR ${hz.lthr}` : ""}).` : null;
   const pwrZones = hasPower && a.pwr_z ? zoneRows(a.pwr_z, moving, PWR_COLORS) : null;
@@ -391,10 +390,7 @@ function goalText(a: ActRow, plan: PlannedForAct | null, c: GoalCtx): string {
       if (c.compliance != null) s.push(`Splnění ${c.compliance} %.`);
       return s.join(" ");
     }
-    if (a.sport === "hockey") {
-      s.push(`Hokej ${hms(mv)}, tep průměr ${num(a.avg_hr)} a max ${num(a.max_hr)} bpm, zátěž ${num(a.load)}.`);
-      s.push(c.isQuality ? "Počítá se jako kvalitní jednotka týdne, další den bez intervalů." : "Do limitu kvality se nepočítá.");
-    } else if (a.sport === "xc_ski") {
+    if (a.sport === "xc_ski") {
       s.push(`Běžky ${hms(mv)}, zátěž ${num(a.load)} (z tepu, orientační).`);
       s.push(c.isQuality ? "Nad 2 h nebo zátěž nad 120: počítá se jako kvalitní jednotka týdne." : "Do limitu kvality se nepočítá.");
     } else s.push(`${a.name ?? "Aktivita"} ${hms(mv)}, zátěž ${num(a.load)} (z tepu, orientační). Do kvality se nepočítá.`);
