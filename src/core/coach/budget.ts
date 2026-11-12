@@ -14,8 +14,18 @@ export const WINTER_APPROACH = 0.15, WINTER_MAX_DROP = 5;
 /** Růst kondice v Základu a Rozvoji: TrainingPeaks – při kondici do 45 nízké riziko do 3 bodů za týden, nad 45
  *  4–6 střední; Friel 5–8 pro většinu. Beru spodní, bezpečnou hranu: 3, nad 45 → 4. */
 export const rampUp = (ctl: number) => (ctl <= 45 ? 3 : 4);
-/** Lehčí týden (Friel 3:1): o 40–50 % méně objemu (Roadman, přehled výzkumu taperu) → 55 % běžného týdne. */
+/** Lehčí týden (Friel 3:1): o 40–50 % méně objemu (Roadman, přehled výzkumu taperu) → 55 % průměru předchozích
+ *  zátěžových týdnů bloku. */
 export const RECOVERY_SHARE = 0.55;
+/** Lehčí týden přijde po tolika zátěžových týdnech za sebou (Friel 3:1). */
+export const BLOCK_WEEKS = 3;
+/** Lehký týden v historii: zátěž pod 75 % běžné úrovně předchozích týdnů. Musí zachytit lehčí týden (55 %) i první
+ *  týden ladění (70 %), běžné kolísání (±15 %) ne – konkrétní hranice je vlastní volba. Týden s ≥ 3 dny mimo
+ *  (nemoc, zranění, dovolená) je lehký vždy. */
+export const LIGHT_SHARE = 0.75;
+/** Pod touto průměrnou zátěží zátěžových týdnů se lehčí týden nedělá: při ~4,5 h Z2 týdně (kondice do ~29) se únava
+ *  nenahromadí a ubrání by jen srazilo kondici. Vlastní volba – zdroje 3:1 doporučují pro všechny, hranici nedávají. */
+export const MIN_RECOVERY_LOAD = 200;
 /** Ladění před závodem (Bosquet a kol. 2007, metaanalýza 27 studií): 2 týdny, objem o 41–60 % méně (postupně),
  *  intenzita a počet tréninků beze změny → týden před závodním 70 %, závodní týden 45 % běžného týdne. */
 export const TAPER_SHARE = { before: 0.7, race: 0.45 };
@@ -55,8 +65,10 @@ export interface History {
   weekSessions: number[];
   /** dny mimo (Nemocný / Zraněný / Dovolená) v týchž týdnech */
   weekOff: number[];
-  /** typický (medián) růst kondice za týden za 4 měsíce; null = neznámý */
-  provenRamp: number | null;
+  /** týdny (ze stejných 4), které se do obvyklé zátěže nepočítají: lehčí týden, ladění, přechod po závodě */
+  skip?: boolean[];
+  /** pozice v bloku z historie (před tímto týdnem) */
+  block?: BlockState;
   /** nejvyšší kondice za posledních 6 měsíců (vrchol sezóny) – pro zimní základ */
   seasonPeak?: number | null;
 }
@@ -65,8 +77,8 @@ export interface History {
  * Obvyklá týdenní zátěž: vážený průměr 4 týdnů (novější víc). Týdny s ≥ 3 dny mimo se nepočítají, jeden
  * ojedinělý propad (pod čtvrtinu ostatních) taky ne. Když nezbude nic, bere se skutečnost.
  */
-export function usualLoad(h: Pick<History, "weekLoads" | "weekOff">): number {
-  const off = (i: number) => (h.weekOff[i] ?? 0) >= 3;
+export function usualLoad(h: Pick<History, "weekLoads" | "weekOff" | "skip">): number {
+  const off = (i: number) => (h.weekOff[i] ?? 0) >= 3 || !!h.skip?.[i];
   const max = (i: number) => Math.max(0, ...h.weekLoads.filter((_x, j) => j !== i && !off(j)));
   const low = h.weekLoads.map((x, i) => !off(i) && x < 0.25 * max(i));
   const outage = low.filter(Boolean).length === 1 ? low.indexOf(true) : -1;
@@ -86,8 +98,11 @@ export interface WeekTarget {
   phaseLabel: string;
   /** růst kondice za celý týden podle fáze */
   ramp: number;
+  /** pozice v bloku 1–4 (4 = lehčí týden) */
   cycleIdx: number;
   recoveryWeek: boolean;
+  /** z čeho je lehčí týden / ladění: průměr zátěžových týdnů bloku, resp. poslední běžný týden před laděním */
+  base: number | null;
   winter: boolean;
   /** zimní krátké délky (Z2 75 min, dlouhá 2 h) – jen Zima a Udržování; Zlepšit v zimě trénuje normálně */
   shortDays: boolean;
@@ -128,10 +143,55 @@ export interface BudgetInput {
   weeks: number;
 }
 
-/** Lehčí každý 4. týden bloku v Základu a Rozvoji – podle kalendářního týdne, ať je stabilní. */
-export function cycleIndex(weekStart: string): number {
-  const n = Math.floor(daysBetween("2024-01-01", weekStart) / 7);
-  return (((n % 4) + 4) % 4) + 1;
+/** Pozice v bloku: kolik zátěžových týdnů za sebou od posledního lehkého, zátěže zátěžových týdnů a poslední týdny. */
+export interface BlockState {
+  /** zátěžových týdnů za sebou od posledního lehkého */
+  streak: number;
+  /** zátěže zátěžových týdnů (nejstarší první, nejvýš 6) */
+  loads: number[];
+  /** zátěže posledních 3 týdnů bez týdnů mimo (reference pro „lehký“) */
+  recent: number[];
+}
+export const EMPTY_BLOCK: BlockState = { streak: 0, loads: [], recent: [] };
+
+/** Běžná úroveň z předchozích týdnů: druhý nejvyšší ze tří (jeden výjimečný týden ji nezvedne), z méně týdnů nejvyšší. */
+const levelOf = (recent: number[]): number | null => {
+  if (!recent.length) return null;
+  const s = [...recent].sort((a, b) => b - a);
+  return s.length >= 3 ? s[1]! : s[0]!;
+};
+/** Je týden se zátěží `load` lehký proti předchozím týdnům? */
+export const isLightWeek = (load: number, b: BlockState): boolean => { const l = levelOf(b.recent); return l != null && l > 0 && load < LIGHT_SHARE * l; };
+
+/** Další týden v bloku. `forced` = lehký bez ohledu na zátěž (lehčí týden, ladění, týden mimo); `off` = do reference nepatří. */
+export function pushWeek(b: BlockState, load: number, forced = false, off = false): BlockState {
+  const light = forced || off || isLightWeek(load, b);
+  return {
+    streak: light ? 0 : b.streak + 1,
+    loads: light ? b.loads : [...b.loads, Math.round(load)].slice(-6),
+    recent: off ? b.recent : [...b.recent, Math.round(load)].slice(-3),
+  };
+}
+
+/** Průměr posledních (nejvýš 3) zátěžových týdnů – z něj je lehčí týden. */
+export const blockAvg = (b: BlockState): number | null => { const l = b.loads.slice(-BLOCK_WEEKS); return l.length ? l.reduce((t, x) => t + x, 0) / l.length : null; };
+
+/**
+ * Historie týdnů (nejstarší první, ideálně 8): které byly lehké, které se nepočítají do obvyklé zátěže a pozice
+ * v bloku. Do obvyklé zátěže se nepočítá ojedinělý lehký týden (lehčí týden bloku mezi zátěžovými) a týdny ladění
+ * a přechodu kolem závodu. Dva lehké týdny za sebou mimo závod už jsou změna návyku – ty se počítají.
+ */
+export function weekHistory(o: { starts: string[]; loads: number[]; off: number[]; raceDate: string | null }): { light: boolean[]; skip: boolean[]; block: BlockState } {
+  let b: BlockState = EMPTY_BLOCK;
+  const light: boolean[] = [];
+  o.loads.forEach((x, i) => {
+    const off = (o.off[i] ?? 0) >= 3;
+    light.push(off || isLightWeek(x, b));
+    b = pushWeek(b, x, false, off);
+  });
+  const race = (s: string) => { if (!o.raceDate) return false; const d = daysBetween(s, o.raceDate); return d >= -7 && d <= 14; };
+  const skip = light.map((l, i) => l && (race(o.starts[i]!) || (!light[i - 1] && !light[i + 1])));
+  return { light, skip, block: b };
 }
 
 const r0 = (x: number) => Math.round(x);
@@ -143,19 +203,24 @@ export const historyBase = (h: History) => ({ usual: usualLoad(h), hasHistory: h
 
 /**
  * Cíl jednoho týdne. `k` = pořadí (0 = tento, od `from` do neděle), `ctl` = kondice na začátku plánovaných dní
- * (u dalších týdnů ta, na kterou opravdu dojde předchozí plán), `prevTotal` = zátěž předchozího normálního týdne
- * (strop: nejvýš +15 %, aspoň +30; u tohoto týdne strop z historie +30 %, aspoň +40).
+ * (u dalších týdnů ta, na kterou opravdu dojde předchozí plán), `blk` = pozice v bloku před týdnem (z historie
+ * a předchozích plánovaných týdnů). Strop: u tohoto týdne z historie +30 % (aspoň +40), u dalších nejvýš +15 %
+ * (aspoň +30) proti poslednímu zátěžovému týdnu – lehčí týden ani ladění strop nesnižují.
  */
-export function weekTarget(inp: BudgetInput, k: number, ctl: number, prevTotal: number): WeekTarget {
+export function weekTarget(inp: BudgetInput, k: number, ctl: number, blk: BlockState = inp.history.block ?? EMPTY_BLOCK): WeekTarget {
   const { usual, hasHistory } = historyBase(inp.history);
+  const prevTotal = blk.loads[blk.loads.length - 1] ?? usual;
   const weekStart = addDays(mondayOf(inp.from), 7 * k);
   const from = k === 0 ? inp.from : weekStart;
   const days = daysBetween(from, addDays(weekStart, 7));
   const done = k === 0 ? inp.doneLoad : 0;
   const phase = phaseFor(inp.goal, weekStart, inp.raceDate);
   const cyc = phase === "base" || phase === "build";
-  const cycleIdx = cyc ? cycleIndex(weekStart) : 1;
-  const recoveryWeek = cyc && cycleIdx === 4;
+  const avg = blockAvg(blk);
+  // lehčí týden po 3 zátěžových za sebou (z historie, ne z kalendáře); při malé zátěži se nedělá
+  const recoveryWeek = cyc && blk.streak >= BLOCK_WEEKS && avg != null && avg >= MIN_RECOVERY_LOAD;
+  const cycleIdx = cyc ? (recoveryWeek ? 4 : Math.min(BLOCK_WEEKS, blk.streak + 1)) : 1;
+  let base: number | null = null;
   const ramp = Math.round(rampOf(phase, ctl, inp.history.seasonPeak ?? null) * 10) / 10;
   const notes: string[] = [];
   // cíl jen pro plánované dny: růst se krátí poměrem dní (ve čtvrtek zbývají 4 dny → 4/7 týdenního růstu);
@@ -175,12 +240,15 @@ export function weekTarget(inp: BudgetInput, k: number, ctl: number, prevTotal: 
     limit = "historie";
   }
   if (phase === "taper" && inp.raceDate) {
+    // z posledního běžného (zátěžového) týdne před laděním – ne z průměru, do kterého už ladění spadlo
     const raceWeek = daysBetween(weekStart, inp.raceDate) < 7;
-    load = Math.max(0, r0(prevTotal * (raceWeek ? TAPER_SHARE.race : TAPER_SHARE.before)) - done);
+    base = prevTotal;
+    load = Math.max(0, r0(base * (raceWeek ? TAPER_SHARE.race : TAPER_SHARE.before)) - done);
     limit = "ladění";
   }
   if (recoveryWeek) {
-    const easy = Math.max(0, r0(prevTotal * RECOVERY_SHARE) - done);
+    base = avg!;
+    const easy = Math.max(0, r0(base * RECOVERY_SHARE) - done);
     if (easy < load) { load = easy; limit = "lehčí týden"; }
   }
   const f = k === 0 ? inp.fatigue : k === 1 ? (1 + inp.fatigue) / 2 : 1;
@@ -191,23 +259,27 @@ export function weekTarget(inp: BudgetInput, k: number, ctl: number, prevTotal: 
   const span = k === 0 && days < 7 ? " do neděle" : "";
   if (limit === "historie" && load < need)
     notes.push(`Na ${goalTxt} by bylo potřeba ${need} zátěže${span}. ${hasHistory && k === 0 ? `Poslední týdny jezdíš kolem ${usual} týdně a víc než o 30 % najednou nepřidávám` : k > 0 ? "Přidávám nejvýš o 15 % za týden" : "Bez historie začínám opatrně"}, takže ${load} → kondice ${n1(ctlEnd)}.`);
-  if (limit === "ladění") notes.push(`Ladění před závodem: ${load} zátěže (${daysBetween(weekStart, inp.raceDate!) < 7 ? "45" : "70"} % běžného týdne), intenzita a počet tréninků zůstávají → forma do závodu stoupá.`);
-  if (limit === "lehčí týden") notes.push(`Lehčí 4. týden bloku: ${load} zátěže (asi 55 % běžného, o 40–50 % méně podle Friela) → kondice ${n1(ctlEnd)}.`);
+  if (limit === "ladění") notes.push(`Ladění před závodem: ${load} zátěže (${daysBetween(weekStart, inp.raceDate!) < 7 ? "45" : "70"} % posledního běžného týdne ${r0(base!)}), intenzita a počet tréninků zůstávají → forma do závodu stoupá.`);
+  if (limit === "lehčí týden") notes.push(`Lehčí týden po ${blk.streak} zátěžových: ${load} zátěže (55 % jejich průměru ${r0(base!)}, o 40–50 % méně podle Friela) → kondice ${n1(ctlEnd)}.`);
   if (limit === "únava") notes.push(`Únava: týden o ${r0((1 - f) * 100)} % lehčí → kondice ${n1(ctlEnd)}.`);
-  return { weekStart, from, days, phase, phaseLabel: PHASE_LABEL3[phase], ramp, cycleIdx, recoveryWeek, winter: isWinter(weekStart), shortDays: isWinter(weekStart) && (phase === "offseason" || phase === "maintain"), floor: phase === "offseason" && inp.history.seasonPeak ? r1(inp.history.seasonPeak * (1 - WINTER_DROP)) : null, ctlStart: r1(ref), ctlGoal: r1(ctlGoal), need, load, done: r0(done), ctlEnd: r1(ctlEnd), limit, notes };
+  return { weekStart, from, days, phase, phaseLabel: PHASE_LABEL3[phase], ramp, cycleIdx, recoveryWeek, base: base == null ? null : r0(base), winter: isWinter(weekStart), shortDays: isWinter(weekStart) && (phase === "offseason" || phase === "maintain"), floor: phase === "offseason" && inp.history.seasonPeak ? r1(inp.history.seasonPeak * (1 - WINTER_DROP)) : null, ctlStart: r1(ref), ctlGoal: r1(ctlGoal), need, load, done: r0(done), ctlEnd: r1(ctlEnd), limit, notes };
 }
+
+/** Pozice v bloku po týdnu `t` se zátěží `total`: lehčí týden, ladění a přechod po závodě blok končí (a strop
+ *  dalších týdnů nesnižují – navazuje se na poslední zátěžový týden). */
+export const nextBlock = (blk: BlockState, t: Pick<WeekTarget, "recoveryWeek" | "phase">, total: number): BlockState =>
+  pushWeek(blk, total, t.recoveryWeek || t.phase === "taper");
 
 /** Cíle všech týdnů s rovnoměrným odhadem kondice (engine místo toho navazuje skutečným výhledem plánu). */
 export function weekTargets(inp: BudgetInput): WeekTarget[] {
   const out: WeekTarget[] = [];
   let ctl = inp.ctlNow;
-  let prev = historyBase(inp.history).usual;
+  let blk = inp.history.block ?? EMPTY_BLOCK;
   for (let k = 0; k < inp.weeks; k++) {
-    const t = weekTarget(inp, k, ctl, prev);
+    const t = weekTarget(inp, k, ctl, blk);
     out.push(t);
     ctl = ctlAfter(ctl, t.load, t.days);
-    // po lehčím týdnu se pokračuje z úrovně před ním (lehčí týden strop dalších nesnižuje)
-    if (!t.recoveryWeek && t.phase !== "taper") prev = t.done + t.load;
+    blk = nextBlock(blk, t, t.done + t.load);
   }
   return out;
 }

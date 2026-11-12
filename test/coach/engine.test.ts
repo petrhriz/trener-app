@@ -41,7 +41,11 @@ describe("Trenér v3 – plán", () => {
     // cíl týdne se měří od kondice na začátku týdne (neděle večer)
     expect(p.ctlTarget).toBeLessThan(p.ctlWeekStart);
     expect(Math.abs(u.ctlTarget - u.ctlWeekStart)).toBeLessThan(0.6);
-    expect(z.ctlTarget).toBeGreaterThan(z.ctlWeekStart);
+    // Zlepšit: historie je 10 stejných týdnů bez lehkého → tento týden je lehčí (po 3 zátěžových, z historie, Oprava 1);
+    // růst se proto měří v dalším týdnu, ne v tomto (dřív lehčí týden podle kalendáře tento týden nepadl)
+    expect(z.recoveryWeek).toBe(true);
+    expect(z.horizon[1]!.ctlEnd).toBeGreaterThan(z.horizon[1]!.ctlStart);
+    expect(z.horizon[1]!.ctlEnd).toBeGreaterThan(u.horizon[1]!.ctlEnd);
     expect(p.ctlWeekStart).toBe(u.ctlWeekStart);
   });
   it("4 týdny: tento a příští s tréninky, další dva orientačně; navazují kondicí", () => {
