@@ -337,7 +337,7 @@ export function runCoach3(inp: Coach3Input): Plan3 {
     }
     for (const x of train) if (fixed.get(x.date)?.sport && x.sport !== p.primary && !x.own) {
       const capped = x.want > 0 && Math.abs(x.load - x.want) > x.want * 0.15;
-      x.why.push(capped ? (x.load < x.want ? `${SPORT_WORD[x.sport]} místo ${SPORT_GEN[p.primary]}: ${x.minutes} min je strop ${SPORT_GEN[x.sport]}${x.sport === "run" ? " podle toho, kolik teď běháš" : ""} – zátěž ${x.load} místo ${x.want}, zbytek dostanou ostatní dny` : `${SPORT_WORD[x.sport]} místo ${SPORT_GEN[p.primary]}: zátěž ${x.load} místo ${x.want} (kratší už to nejde), ostatní dny jsou o to lehčí`) : `${SPORT_WORD[x.sport]} místo ${SPORT_GEN[p.primary]}: stejná zátěž (${x.load}), délka podle sportu`);
+      x.why.push(capped ? (x.load < x.want ? `${SPORT_WORD[x.sport]} místo ${SPORT_GEN[p.primary]}: ${x.minutes} min je strop ${SPORT_GEN[x.sport]}${x.sport === "run" ? " podle toho, kolik teď běháš" : ""} – zátěž ${x.load} místo ${x.want}, zbytek dostanou ostatní dny` : `${SPORT_WORD[x.sport]} místo ${SPORT_GEN[p.primary]}: ${x.minutes} min vyjde na zátěž ${x.load} (${SPORT_WORD[p.primary]} by dalo ${x.want}), ostatní dny jsou o to lehčí`) : `${SPORT_WORD[x.sport]} místo ${SPORT_GEN[p.primary]}: stejná zátěž (${x.load}), délka podle sportu`);
     }
 
     // kontrola formy: výhled po dnech; pod dnem se zkracují Z2 a dlouhý, pak poslední kvalita → Z2
