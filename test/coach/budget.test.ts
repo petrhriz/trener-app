@@ -210,3 +210,24 @@ describe("fáze před závodem (Friel: Rozvoj 6–8 týdnů)", () => {
     expect(ph(10)).toBe("base");
   });
 });
+
+import { BLOCK_WEEKS_40, blockWeeksFor } from "../../src/core/coach/budget";
+import { validateProfile } from "../../src/core/coach/profile";
+describe("od 40 let lehčí týden po 2 zátěžových (Friel / TrainingPeaks 2+1)", () => {
+  it("délka bloku podle roku narození", () => {
+    expect(blockWeeksFor(null, "2027-04-05")).toBe(3);
+    expect(blockWeeksFor(1990, "2027-04-05")).toBe(3);
+    expect(blockWeeksFor(1987, "2027-04-05")).toBe(BLOCK_WEEKS_40);
+  });
+  it("2+1: lehčí týden po 2 zátěžových, 55 % jejich průměru", () => {
+    const w = weekTargets({ goal: "zvyseni", raceDate: null, from: "2027-04-05", ctlNow: 43, doneLoad: 0, fatigue: 1, weeks: 6, blockWeeks: 2, history: { ...hist([300, 300, 300, 300]), block: { streak: 0, loads: [300, 300, 300], recent: [300, 300, 300] } } });
+    expect(w.map((x) => x.recoveryWeek)).toEqual([false, false, true, false, false, true]);
+    expect(w[2]!.load).toBe(Math.round(((w[0]!.load + w[1]!.load) / 2) * 0.55));
+    expect(w[2]!.cycleIdx).toBe(3);
+  });
+  it("profil: rok narození se uloží, nesmysl odmítne", () => {
+    expect(validateProfile({ birthYear: 1980 }).profile.birthYear).toBe(1980);
+    expect(validateProfile({ birthYear: "" }).profile.birthYear).toBeNull();
+    expect(validateProfile({ birthYear: 1800 }).errors.length).toBe(1);
+  });
+});

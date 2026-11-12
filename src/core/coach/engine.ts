@@ -25,7 +25,7 @@ import { runReadiness } from "./run";
 import { type Fatigue, fatigueFactor, formFloor } from "./target";
 import { type WeekValidation, validateWeek } from "./validate";
 import type { Fixed, PastDay as V2Past } from "./common";
-import { type WeekTarget, TWO_KEYS_MIN_H, historyBase, nextBlock, usualSessions, weekHistory, weekTarget } from "./budget";
+import { type WeekTarget, TWO_KEYS_MIN_H, blockWeeksFor, historyBase, nextBlock, usualSessions, weekHistory, weekTarget } from "./budget";
 import { type PastDay, type SkDay, solveWeek } from "./skeleton";
 import { type Role, capsFor, loadFor, minutesFor, nameFor, relabel, stepsText } from "./sport";
 
@@ -126,6 +126,8 @@ export interface CoachInfo {
   phase: string;
   phaseLabel: string;
   cycleIdx: number;
+  /** délka bloku včetně lehčího týdne (4, od 40 let 3) */
+  cycleLen: number;
   cycle: boolean;
   recoveryWeek: boolean;
   nextRecovery: string | null;
@@ -205,7 +207,7 @@ export function runCoach(inp: CoachInput): CoachPlan {
   // kondice, kterou vidíš na stránce: dnešek bez dnešního tréninku (po tréninku = start plánu)
   const ctlRef = todayDone ? startState.ctl : (inp.metric(T)?.ctl ?? startState.ctl);
   // cíl týdne vždy od kondice na konci neděle (začátek týdne); ctlRef je jen pro zobrazení „dnes“
-  const binp = { goal: inp.goal, raceDate: inp.raceDate, from, ctlNow: startState.ctl, doneLoad, history, fatigue: fat.factor, weeks: 4 };
+  const binp = { goal: inp.goal, raceDate: inp.raceDate, from, ctlNow: startState.ctl, doneLoad, history, fatigue: fat.factor, weeks: 4, blockWeeks: blockWeeksFor(p.birthYear, T) };
   let blk = history.block;
   const fixed = fixedFromConstraints(inp.constraints);
   const needs = catNeeds(inp.power, T);
@@ -751,6 +753,7 @@ function toPlan(inp: CoachInput, weeks: Week3[], o: { mondayPlan: MondayPlan | n
     phase: tg.phase,
     phaseLabel: tg.phaseLabel,
     cycleIdx: tg.cycleIdx,
+    cycleLen: blockWeeksFor(inp.profile.birthYear, T) + 1,
     cycle: cyc,
     recoveryWeek: tg.recoveryWeek,
     nextRecovery: cyc && !tg.recoveryWeek ? (weeks.find((w) => w.target.recoveryWeek)?.weekStart ?? null) : null,

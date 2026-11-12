@@ -1225,7 +1225,7 @@ async function pageTrener(el) {
   const r = d.readiness, rec = r.recovery, f = r.fitness, p = r.plan;
   const co = d.coach; // Trenér v2 (uložený plán podle profilu); null = starý trenér
   const hTxt = (x) => String(x).replace(".", ",");
-  const coLine = co ? `<p class="tproj"><b>${esc(co.phaseLabel)}</b>${co.cycle ? ` · týden ${co.cycleIdx} ze 4${co.recoveryWeek ? " (lehčí)" : co.nextRecovery ? ` · lehčí týden od ${dm(co.nextRecovery)}` : ""}` : ""} · cíl týdne <b>${co.load}</b> zátěže (asi ${hTxt(co.hours)} h) · na udržení kondice ${co.keepLoad} · poslední 4 týdny ${co.recentLoad}</p>` : "";
+  const coLine = co ? `<p class="tproj"><b>${esc(co.phaseLabel)}</b>${co.cycle ? ` · týden ${co.cycleIdx} ze ${co.cycleLen || 4}${co.recoveryWeek ? " (lehčí)" : co.nextRecovery ? ` · lehčí týden od ${dm(co.nextRecovery)}` : ""}` : ""} · cíl týdne <b>${co.load}</b> zátěže (asi ${hTxt(co.hours)} h) · na udržení kondice ${co.keepLoad} · poslední 4 týdny ${co.recentLoad}</p>` : "";
   const tone = rec.state === "green" ? "good" : rec.state === "yellow" ? "warn" : "bad";
   const paused = d.status && d.status.kind !== "active";
   const skipped = (d.constraints || []).find((c) => c.date === r.date && ["nepojedu", "nemuzu", "dovolena", "nemoc"].includes(c.kind));
@@ -3034,6 +3034,9 @@ async function coachProfileForm(box) {
       ${OTHER[p.primary].map(([k, l]) => `<label class="chk"><input type="checkbox" data-sp="${k}" ${p.sports[k].enabled ? "checked" : ""}> ${l}</label>`).join("")}
       ${p.primary === "ride" ? `<label class="chk"><input type="checkbox" id="cpRunQ" ${p.sports.run.quality ? "checked" : ""}> Běh může mít i intervaly (jinak jen lehce)</label>` : ""}
       <label class="chk"><input type="checkbox" id="cpSnow" ${p.snow ? "checked" : ""}> Teď je sníh (běžky se začnou plánovat)</label>
+      <div class="sl" style="margin:14px 0 6px">Rok narození</div>
+      <input type="number" id="cpBirth" min="1920" max="2015" step="1" inputmode="numeric" placeholder="např. 1980" value="${p.birthYear || ""}" style="max-width:9em">
+      <p class="note">Od 40 let dává trenér lehčí týden po 2 zátěžových místo po 3 (Friel / TrainingPeaks: 2+1 pro starší 40 let). Bez vyplnění 3+1.</p>
       <div class="btns"><button class="btn pri" id="cpSave">Uložit</button><span class="note" id="cpMsg">${esc(msg)}</span></div>
       <p class="note">${"Zátěž týdne počítá trenér z tvé kondice a z posledních 4 týdnů, délky jízd z toho, co poslední měsíc jezdíš."} Dny ani hodiny se nenastavují. Zaškrtnutý další sport dá trenér nejvýš jeden vytrvalostní den týdně (stejná zátěž, délka podle sportu; běh ve stropech podle toho, kolik běháš), běžky jen když je zaškrtnutý sníh. Kdykoli si sport můžeš zvolit u dne sám. Cíl (Zlepšit / Udržet / Pokles) se přepíná v Trenérovi.</p>`;
     const read = () => {
@@ -3041,6 +3044,8 @@ async function coachProfileForm(box) {
       box.querySelectorAll("[data-sp]").forEach((i) => { q.sports[i.dataset.sp].enabled = i.checked; });
       const rq = box.querySelector("#cpRunQ"); if (rq) q.sports.run.quality = rq.checked;
       q.snow = box.querySelector("#cpSnow").checked;
+      const by = box.querySelector("#cpBirth").value.trim();
+      q.birthYear = by ? Number(by) : null;
       return q;
     };
     const curVer = () => +(box.querySelector("#cpVer .on")?.dataset.ver || ver);

@@ -2,6 +2,7 @@
 // Dny ani hodiny se nenastavují: zátěž týdne se počítá z kondice a z posledních týdnů (target.ts).
 import { PLAN_SPORTS, type PlanSport, type Sport } from "../../datasource/types";
 import { addDays, mondayOf } from "../../lib/time";
+import { blockWeeksFor } from "./budget";
 
 export interface SportPref {
   /** sport se smí plánovat (hlavní sport je zapnutý vždy) */
@@ -16,6 +17,8 @@ export interface CoachProfile {
   sports: Record<PlanSport, SportPref>;
   /** je sníh → běžky místo části vytrvalosti */
   snow: boolean;
+  /** rok narození – od 40 let lehčí týden po 2 zátěžových (2+1 místo 3+1); null = nevyplněno */
+  birthYear?: number | null;
 }
 
 export const DEFAULT_PROFILE: CoachProfile = {
@@ -23,6 +26,7 @@ export const DEFAULT_PROFILE: CoachProfile = {
   primary: "ride",
   sports: { ride: { enabled: true, quality: true }, run: { enabled: false, quality: false }, xc_ski: { enabled: false, quality: false }, walk: { enabled: false, quality: false } },
   snow: false,
+  birthYear: null,
 };
 
 const isObj = (x: unknown): x is Record<string, any> => !!x && typeof x === "object" && !Array.isArray(x);
@@ -30,7 +34,7 @@ const isObj = (x: unknown): x is Record<string, any> => !!x && typeof x === "obj
 /** Kontrola a doplnění profilu (i starší podoby s hodinami a dny – ty se zahodí). Profil je vždy použitelný. */
 export function validateProfile(input: unknown, base: CoachProfile = DEFAULT_PROFILE): { profile: CoachProfile; errors: string[] } {
   const errors: string[] = [];
-  const p: CoachProfile = { v: 2, primary: base.primary, sports: JSON.parse(JSON.stringify(base.sports)), snow: base.snow };
+  const p: CoachProfile = { v: 2, primary: base.primary, sports: JSON.parse(JSON.stringify(base.sports)), snow: base.snow, birthYear: base.birthYear ?? null };
   if (!isObj(input)) return { profile: p, errors: ["profil není objekt"] };
   if (input.primary != null) {
     if (input.primary === "ride" || input.primary === "run") p.primary = input.primary;
@@ -44,6 +48,12 @@ export function validateProfile(input: unknown, base: CoachProfile = DEFAULT_PRO
       if (typeof x.quality === "boolean") p.sports[s].quality = x.quality;
     }
   if (typeof input.snow === "boolean") p.snow = input.snow;
+  if (input.birthYear === null || input.birthYear === "") p.birthYear = null;
+  else if (input.birthYear !== undefined) {
+    const y = Number(input.birthYear);
+    if (Number.isInteger(y) && y >= 1920 && y <= 2015) p.birthYear = y;
+    else errors.push("rok narození musí být celé číslo 1920–2015");
+  }
   p.sports[p.primary] = { enabled: true, quality: true };
   p.sports.walk.quality = false;
   return { profile: p, errors };
@@ -52,12 +62,13 @@ export function validateProfile(input: unknown, base: CoachProfile = DEFAULT_PRO
 const SPORT_CZ: Record<PlanSport, string> = { ride: "kolo", run: "běh", xc_ski: "běžky", walk: "chůze" };
 
 /** Shrnutí profilu lidsky – přesně to, co trenér s profilem dělá (src/core/coach/engine.ts, „další sporty z profilu“). */
-export function profileSummary(p: CoachProfile): string[] {
+export function profileSummary(p: CoachProfile, today?: string): string[] {
   const other: PlanSport = p.primary === "ride" ? "run" : "ride";
   const out = [`Hlavní sport: ${SPORT_CZ[p.primary]}.`];
   const word = (s: PlanSport) => SPORT_CZ[s][0]!.toUpperCase() + SPORT_CZ[s].slice(1);
   if (p.sports[other].enabled) out.push(`${word(other)}: nejvýš jeden vytrvalostní den týdně místo ${p.primary === "ride" ? "jízdy" : "běhu"}${other === "run" ? " (délka ve stropech běhu podle toho, kolik běháš)" : ""}${p.sports[other].quality ? "; když si u dne zvolíš kvalitu, smí mít i intervaly" : ""}.`);
   if (p.sports.xc_ski.enabled) out.push(p.snow ? "Je sníh – jeden vytrvalostní den týdně na běžkách." : "Běžky se plánují, až zapneš „Je sníh“ (pak jeden vytrvalostní den týdně).");
+  if (p.birthYear) out.push(`Rok narození ${p.birthYear}: lehčí týden po ${blockWeeksFor(p.birthYear, today ?? `${new Date().getFullYear()}-01-01`)} zátěžových.`);
   if (!p.sports[other].enabled && !p.sports.xc_ski.enabled) out.push("Jiné sporty trenér sám neplánuje (u dne si je můžeš zvolit).");
   return out;
 }

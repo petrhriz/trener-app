@@ -17,8 +17,12 @@ export const rampUp = (ctl: number) => (ctl <= 45 ? 3 : 4);
 /** Lehčí týden (Friel 3:1): o 40–50 % méně objemu (Roadman, přehled výzkumu taperu) → 55 % průměru předchozích
  *  zátěžových týdnů bloku. */
 export const RECOVERY_SHARE = 0.55;
-/** Lehčí týden přijde po tolika zátěžových týdnech za sebou (Friel 3:1). */
+/** Lehčí týden přijde po tolika zátěžových týdnech za sebou (Friel 3:1). Od 40 let po 2 (2:1) – TrainingPeaks / Friel:
+ *  3+1 pro zkušené a mladší 40 let, 2+1 pro méně zkušené a starší 40 let. */
 export const BLOCK_WEEKS = 3;
+export const BLOCK_WEEKS_40 = 2;
+/** Délka bloku podle věku (rok narození z profilu; bez něj 3+1). */
+export const blockWeeksFor = (birthYear: number | null | undefined, today: string): number => (birthYear && Number(today.slice(0, 4)) - birthYear >= 40 ? BLOCK_WEEKS_40 : BLOCK_WEEKS);
 /** Lehký týden v historii: zátěž pod 75 % běžné úrovně předchozích týdnů. Musí zachytit lehčí týden (55 %) i první
  *  týden ladění (70 %), běžné kolísání (±15 %) ne – konkrétní hranice je vlastní volba. Týden s ≥ 3 dny mimo
  *  (nemoc, zranění, dovolená) je lehký vždy. */
@@ -158,6 +162,8 @@ export interface BudgetInput {
   fatigue: number;
   /** kolik týdnů (včetně tohoto) */
   weeks: number;
+  /** zátěžových týdnů v bloku před lehčím (3, od 40 let 2) */
+  blockWeeks?: number;
 }
 
 /** Pozice v bloku: kolik zátěžových týdnů za sebou od posledního lehkého, zátěže zátěžových týdnů a poslední týdny. */
@@ -191,7 +197,7 @@ export function pushWeek(b: BlockState, load: number, forced = false, off = fals
 }
 
 /** Průměr posledních (nejvýš 3) zátěžových týdnů – z něj je lehčí týden. */
-export const blockAvg = (b: BlockState): number | null => { const l = b.loads.slice(-BLOCK_WEEKS); return l.length ? l.reduce((t, x) => t + x, 0) / l.length : null; };
+export const blockAvg = (b: BlockState, n = BLOCK_WEEKS): number | null => { const l = b.loads.slice(-n); return l.length ? l.reduce((t, x) => t + x, 0) / l.length : null; };
 
 /**
  * Historie týdnů (nejstarší první, ideálně 8): které byly lehké, které se nepočítají do obvyklé zátěže a pozice
@@ -233,12 +239,13 @@ export function weekTarget(inp: BudgetInput, k: number, ctl: number, blk: BlockS
   const done = k === 0 ? inp.doneLoad : 0;
   const phase = phaseFor(inp.goal, weekStart, inp.raceDate);
   const cyc = phase === "base" || phase === "build";
-  const avg = blockAvg(blk);
+  const bw = inp.blockWeeks ?? BLOCK_WEEKS;
+  const avg = blockAvg(blk, bw);
   // lehčí týden po 3 zátěžových za sebou (z historie, ne z kalendáře); při malé zátěži se nedělá a ani těsně před
   // laděním – ladění samo ubírá objem a podle Bosqueta navazuje na běžný trénink
   const taperNext = phaseFor(inp.goal, addDays(weekStart, 7), inp.raceDate) === "taper";
-  const recoveryWeek = cyc && !taperNext && blk.streak >= BLOCK_WEEKS && avg != null && avg >= MIN_RECOVERY_LOAD;
-  const cycleIdx = cyc ? (recoveryWeek ? 4 : Math.min(BLOCK_WEEKS, blk.streak + 1)) : 1;
+  const recoveryWeek = cyc && !taperNext && blk.streak >= bw && avg != null && avg >= MIN_RECOVERY_LOAD;
+  const cycleIdx = cyc ? (recoveryWeek ? bw + 1 : Math.min(bw, blk.streak + 1)) : 1;
   let base: number | null = null;
   const ramp = Math.round(rampOf(phase, ctl, inp.history.seasonPeak ?? null) * 10) / 10;
   const notes: string[] = [];
