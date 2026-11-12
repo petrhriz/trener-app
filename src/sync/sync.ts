@@ -374,7 +374,10 @@ export async function syncTick(env: Env, opts: { force?: boolean; manual?: boole
     const st = (await getState<{ cursor: string; done: boolean; v: number }>(env.DB, "icu_load_bf")) ?? { cursor: T, done: false, v: V };
     if (st.v !== V) Object.assign(st, { cursor: T, done: false, v: V });
     if (st.done) return;
-    const from = addDays(st.cursor, -59);
+    // okno podle počtu: nejvýš ~12 aktivit (velká odpověď intervals.icu by přetáhla limit CPU), nejvýš 60 dní
+    const next = await all<{ date: string }>(env.DB, "SELECT date FROM activities WHERE icu_load IS NULL AND date <= ? ORDER BY date DESC LIMIT 12", st.cursor);
+    const oldest12 = next.length >= 12 ? next[next.length - 1]!.date : null;
+    const from = oldest12 && oldest12 > addDays(st.cursor, -59) ? oldest12 : addDays(st.cursor, -59);
     const rows = await all<{ id: string; date: string }>(env.DB, "SELECT id, date FROM activities WHERE icu_load IS NULL AND date >= ? AND date <= ?", from, st.cursor);
     if (rows.length) {
       const list = await icu.activitiesRaw(from, st.cursor);
@@ -393,7 +396,7 @@ export async function syncTick(env: Env, opts: { force?: boolean; manual?: boole
     }
     const oldestAct = await first<{ d: string }>(env.DB, "SELECT MIN(date) AS d FROM activities");
     st.cursor = addDays(from, -1);
-    if (!oldestAct?.d || st.cursor < oldestAct.d) st.done = true;
+    if (!next.length || !oldestAct?.d || st.cursor < oldestAct.d) st.done = true;
     await setState(env.DB, "icu_load_bf", st);
   });
 

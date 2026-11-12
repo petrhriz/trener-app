@@ -55,11 +55,12 @@ Stav k 10. 11. 2026. **Hotové** = číslo přebírám ze zdroje a jen ho zobraz
 
 ## Kondice za minulé roky
 
-intervals.icu má kondici jen od doby, kdy v něm jsou aktivity. Pro starší roky ji aplikace **počítá sama** ze
-zátěže aktivit stažených z Garminu (celá historie). Kde zátěž z intervals.icu chybí, odhadne ji z NP a FTP nebo
-z tepu, takže starší roky jsou přibližné (hlavně starší FTP a zóny tepu).
+Od 12. 11. 2026 je v intervals.icu celá historie (od 2019), aplikace z něj dočetla kondici (CTL/ATL) i zátěž
+starších aktivit (`icu kondice backfill` a `icu zátěž historie` v `src/sync/sync.ts`). Vlastní výpočet běží jen
+pro dny, které intervals.icu ještě nemá (dnešek před synchronizací), a pro aktivity, které se nespárovaly.
 
-Když do intervals.icu nahraješ starou historii (export z Garminu, FIT soubory), intervals.icu spočítá zátěž
-i CTL stejně jako u nových aktivit. Aplikace si pak kondici stáhne znovu: v D1 stačí smazat kurzor
-`icu_fit_bf` (`npx wrangler d1 execute trener-db --remote --command "DELETE FROM sync_state WHERE key = 'icu_fit_bf'"`),
-cron ji během několika čtvrthodin stáhne po 180 dnech.
+Vzorec je stejný jako v intervals.icu (veřejný model výkonnosti Banister / Coggan: CTL = exponenciální průměr
+denní zátěže za 42 dní, ATL za 7 dní, forma = CTL − ATL). Nad zátěží z intervals.icu dává do 0,2 stejné CTL.
+Rozdíl dělá jen zátěž aktivit bez wattmetru: vlastní odhad z průměrného tepu je proti HRSS z intervals.icu
+(počítá z celého průběhu tepu) v součtu o 3 % výš u letošních aktivit a o 5–13 % u starších let (dnešní LTHR
+a klidový tep). Srovnání: `node scripts/compare-kondice.mjs`.
