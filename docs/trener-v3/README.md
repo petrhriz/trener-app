@@ -57,3 +57,10 @@ Hlášené chyby měly společnou příčinu – v2 míchal různé výchozí bo
 
 Pokles kondici vždy snižuje, udržet drží, zlepšit zvedá – rozdíl proti cíli jen kvůli únavě a lehčímu týdnu, a to
 souhrn v plánu říká.
+
+## Simulace (modeloví sportovci)
+
+`npx vite-node scripts/coach3-sim.ts vystup.json` – 7 situací po 8 týdnů (pokles, udržet, zlepšit v zimě i v sezóně,
+závod, běh ve středu, návrat). Sportovec každý den odjede přesně plán, kondice se přepočítá, trenér plánuje znovu.
+Výsledek 12. 11. 2026 (po opravě „týden od pondělí“): pokles 40 → 32,5, udržet 40 → 40,0, zlepšit v zimě 40 → 38,6
+(zimní délky nepustí víc), zlepšit v sezóně 42,9 → 48,2, pravidla drží ve všech situacích.
