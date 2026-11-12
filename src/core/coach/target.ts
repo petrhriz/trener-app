@@ -8,8 +8,8 @@ import { num } from "../../lib/format";
 import { daysBetween, month } from "../../lib/time";
 import { K_CTL, type Goal } from "../fitness";
 
-export type Phase = "offseason" | "maintain" | "base" | "build" | "taper";
-export const PHASE_LABEL: Record<Phase, string> = { offseason: "Zimní pokles", maintain: "Udržování", base: "Základ", build: "Rozvoj", taper: "Ladění" };
+export type Phase = "offseason" | "maintain" | "base" | "build" | "taper" | "post";
+export const PHASE_LABEL: Record<Phase, string> = { offseason: "Zimní pokles", maintain: "Udržování", base: "Základ", build: "Rozvoj", taper: "Ladění", post: "Po závodě" };
 
 /** CTL po 7 dnech stejné denní zátěže d: C·k7 + d·(1 − k7) */
 export const K7 = Math.pow(1 - K_CTL, 7);
@@ -29,6 +29,8 @@ export function phaseFor(goal: Goal, weekStart: string, raceDate: string | null)
   if (goal === "zavod" && raceDate) {
     const d = daysBetween(weekStart, raceDate);
     if (d >= 0 && d <= 14) return "taper";
+    // týden po závodním týdnu: přechod – lehce, bez kvality (Friel: zotavení po závodě 1 týden u kratších závodů)
+    if (d >= -7 && d < 0) return "post";
     if (d > 84) return "base";
     if (d >= 0) return "build";
   }

@@ -161,4 +161,23 @@ describe("závod", () => {
     expect(d.kind).toBe("blocked");
     expect(d.note).toMatch(/Závod/);
   });
+  // Oprava 2: dřív cíl Závod s datem v minulosti spadl hned v pondělí do Rozvoje se 2 kvalitami
+  it("týden po závodě: přechod – lehce, bez kvality; pak zase normálně", () => {
+    // závod minulou neděli (v aktivitách není), dnes čtvrtek týdne po závodě
+    const c = runCoach(input({ goal: "zavod", raceDate: "2026-11-08" })).coach;
+    expect(c.phase).toBe("post");
+    expect(c.phaseLabel).toBe("Po závodě");
+    expect(c.horizon[0]!.days.filter((d) => d.role === "key")).toEqual([]);
+    expect(c.horizon[0]!.limit).toBe("po závodě");
+    expect(c.horizon[0]!.notes.join(" ")).toMatch(/Týden po závodě: lehce a bez kvality, \d+ zátěže \(55 %/);
+    expect(c.horizon[0]!.load).toBeLessThan(c.horizon[1]!.load * 0.75);
+    expect(c.horizon[1]!.phaseLabel).not.toBe("Po závodě");
+  });
+  it("den po závodě nikdy kvalita, i když závod v aktivitách není (závod uprostřed týdne)", () => {
+    for (const race of ["2026-11-17", "2026-11-18", "2026-11-19"]) {
+      const c = runCoach(input({ goal: "zavod", raceDate: race })).coach;
+      const after = c.horizon.flatMap((w) => w.days).filter((d) => d.date > race && d.date <= addDays(race, 7));
+      expect(after.filter((d) => d.role === "key"), race).toEqual([]);
+    }
+  });
 });

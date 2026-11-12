@@ -237,14 +237,14 @@ export function runCoach(inp: CoachInput): CoachPlan {
     // ladění (Bosquet 2007): méně objemu, ale stejně tréninků a intenzita zůstává → kratší tréninky
     if (tg.phase === "taper" && tg.load > 15) sessions = Math.min(nDays, Math.max(sessions, Math.round(history.weekSessions.reduce((t, x) => t + x, 0) / Math.max(1, history.weekSessions.length))));
     const phaseKeys = tg.phase === "build" && sessions >= 4 ? 2 : 1;
-    let keys = sessions >= 3 ? phaseKeys : sessions === 2 ? 1 : 0;
+    let keys = tg.phase === "post" ? 0 : sessions >= 3 ? phaseKeys : sessions === 2 ? 1 : 0;
     if (k === 0) keys = Math.max(0, Math.min(keys, fat.keysMax) - doneKeys0);
     else if (k === 1) keys = Math.min(keys, Math.max(1, fat.keysMax));
     const hasWeekend = dates.some((d) => dow(d) >= 6);
     // dlouhý jen když na něj po kvalitách zbyde zátěž aspoň na jeho minimální délku (jinak je to jen Z2)
     const keyLoad = loadFor(capsOf(p.primary, "key").max, rate, "key");
     const longMin = loadFor(capsOf(p.primary, "long").min, rate, "long");
-    const long = sessions >= 2 && hasWeekend && !(k === 0 && doneLong0) && tg.load - keys * keyLoad >= longMin + (sessions - keys - 1) * loadFor(capE.min, rate, "endurance");
+    const long = tg.phase !== "post" && sessions >= 2 && hasWeekend && !(k === 0 && doneLong0) && tg.load - keys * keyLoad >= longMin + (sessions - keys - 1) * loadFor(capE.min, rate, "endurance");
 
     // může mít sport dne intervaly? (hlavní sport ano; další podle profilu, běh jen při pravidelném běhání)
     const qualityOk = (s: PlanSport) => s === p.primary || (!!p.sports[s]?.quality && (s !== "run" || run.experienced));
@@ -261,7 +261,8 @@ export function runCoach(inp: CoachInput): CoachPlan {
         must: !!(f?.sport || f?.minutes || f?.own || f?.edit),
         ownLong: !!f?.own && f.own.min >= 120,
         // 🟡 ráno, nebo tvůj sport dne bez intervalů (běžky, chůze…) – kvalita patří jinam
-        noKey: (d === T && inp.recovery === "yellow") || (!!f?.sport && !qualityOk(f.sport)),
+        // po závodě v témže týdnu už kvalita ne (den po závodě nikdy, i když závod v aktivitách není)
+        noKey: (d === T && inp.recovery === "yellow") || (!!f?.sport && !qualityOk(f.sport)) || (!!inp.raceDate && d > inp.raceDate && d <= addDays(inp.raceDate, 7)),
         badWeather: !!w?.bad,
       };
     });
@@ -271,6 +272,8 @@ export function runCoach(inp: CoachInput): CoachPlan {
       if (pd) return { date: d, trained: pd.role !== "rest", hard: pd.role === "key" || pd.role === "long" };
       const acts = actsOn(d);
       const mins = acts.reduce((t, a) => t + (a.moving_s ?? 0) / 60, 0);
+      // den závodu je těžký, i když závod v aktivitách není
+      if (d === inp.raceDate) return { date: d, trained: true, hard: true };
       return { date: d, trained: mins >= 20, hard: acts.some((a) => a.quality) || mins >= Math.max(110, typical * 1.5) };
     });
     const habit: Record<number, number> = {};
@@ -481,9 +484,10 @@ export function horizonSummary(weeks: Pick<Week3, "planned" | "ctlEnd" | "target
   const wk = (i: number) => (i === 0 ? "tento" : i === 1 ? "příští" : `${i + 1}.`);
   const by = (l: string) => weeks.map((w, i) => (w.target.limit === l ? i : -1)).filter((i) => i >= 0);
   const why: string[] = [];
-  const h = by("historie"), f = by("únava"), r = by("lehčí týden");
+  const h = by("historie"), f = by("únava"), r = by("lehčí týden"), po = by("po závodě");
   if (h.length) why.push(`zátěž přidávám postupně (obvykle jezdíš kolem ${usual} týdně, nejvýš o 30 %, pak o 15 % za týden)`);
   if (f.length) why.push(`únava ubírá ${f.map(wk).join(" a ")} týden`);
+  if (po.length) why.push(`${po.map(wk).join(" a ")} týden je po závodě – lehce, bez kvality`);
   if (r.length) why.push(`${r.map(wk).join(" a ")} týden je lehčí (po 3 zátěžových týdnech)`);
   // plán nedá ani cíl po omezeních: tréninky se nevejdou do stropů délek (v zimě Z2 do 75 min, dlouhá do 2 h)
   const short = weeks.filter((w) => !w.target.recoveryWeek && w.planned < w.target.load * 0.93);
@@ -609,9 +613,9 @@ function toPlan(inp: CoachInput, weeks: Week3[], o: { from: string; todayDone: b
   const v2Past = (d: string): V2Past => {
     const acts = inp.acts.filter((a) => a.date === d);
     const mins = acts.reduce((t, a) => t + (a.moving_s ?? 0) / 60, 0);
-    const q = acts.some((a) => a.quality);
+    const q = acts.some((a) => a.quality) || d === inp.raceDate;
     const lg = mins >= Math.max(110, o.typical * 1.5);
-    return { trained: mins >= 20, key: q, hard: q || lg, minutes: Math.round(mins), sport: acts[0] ? planSport(acts[0].sport) : null, long: lg };
+    return { trained: mins >= 20 || d === inp.raceDate, key: q, hard: q || lg, minutes: Math.round(mins), sport: acts[0] ? planSport(acts[0].sport) : null, long: lg };
   };
   const fixed = fixedFromConstraints(inp.constraints);
   const validate = (w: Week3): WeekValidation => {

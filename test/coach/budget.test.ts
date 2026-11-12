@@ -130,6 +130,15 @@ describe("pozice v bloku z historie (Oprava 1)", () => {
     const w = weekTargets({ ...base, ctlNow: 17, weeks: 2, history: { ...hist([120, 120, 120, 120]), block: b } });
     expect(w.some((x) => x.recoveryWeek)).toBe(false);
   });
+  it("lehčí týden ne těsně před laděním (ladění samo ubírá); po závodě týden přechodu, pak nový blok", () => {
+    let b = EMPTY_BLOCK;
+    for (const x of [300, 300, 300]) b = pushWeek(b, x);
+    const w = weekTargets({ ...base, goal: "zavod", raceDate: "2027-04-25", ctlNow: 45, weeks: 5, history: { ...hist([300, 300, 300, 300]), block: b } });
+    expect(w.map((x) => x.phase)).toEqual(["build", "taper", "taper", "post", "build"]);
+    expect(w[0]!.recoveryWeek).toBe(false);
+    expect(w[3]!.limit).toBe("po závodě");
+    expect(w[3]!.load).toBe(Math.round(w[0]!.load * 0.55));
+  });
   it("závodní týden: 45 % posledního běžného týdne před laděním, i když první týden ladění už je v historii", () => {
     let b = EMPTY_BLOCK;
     for (const x of [380, 390, 400, 280]) b = pushWeek(b, x, false);

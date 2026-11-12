@@ -363,7 +363,7 @@ export function buildWorkout(inp: BuildInput): Built {
 
 /** Které kategorie připadají v úvahu (v pořadí přednosti). */
 export function catCandidates(phase: Phase, o: { recoveryWeek: boolean; winter: boolean }): Cat[] {
-  if (o.recoveryWeek || phase === "taper") return ["nm", "vo2s"];
+  if (o.recoveryWeek || phase === "taper" || phase === "post") return ["nm", "vo2s"];
   if (phase === "offseason") return ["ss", "tempo", "nm", "ou"];
   if (phase === "maintain") return o.winter ? ["ss", "thr", "tempo", "ou"] : ["thr", "vo2", "ou", "vo2s", "ss"];
   if (phase === "base") return ["tempo", "ss", "thr", "ou"];
