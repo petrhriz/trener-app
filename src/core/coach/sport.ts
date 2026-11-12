@@ -1,6 +1,7 @@
 // Trenér v3 – všechno, co závisí na sportu: zátěž za hodinu, stropy délek a slova v popisu tréninku.
 // Den v plánu má cíl ZÁTĚŽE; délka se z ní dopočítá podle sportu – změna kola na běh tak drží zátěž.
 import type { PlanSport } from "../../datasource/types";
+import { runCapOf } from "./common";
 import type { Block, Workout } from "../workout";
 
 export type Role = "rest" | "easy" | "endurance" | "key" | "long";
@@ -16,13 +17,13 @@ export interface Caps {
 /**
  * Stropy délky dne (min). Zima (listopad–únor): krátké jízdy, dlouhá do 2 h, kvalita na trenažéru do 1 h.
  * Sezóna: dlouhá nejvýš o 15 % delší než tvoje nejdelší za 4 týdny (aspoň 2 h). Běh podle připravenosti
- * (1,5× nejdelšího běhu, 30–90 min), běžky a chůze rozumně.
+ * (`runCapOf`: 1,5× nejdelšího běhu za 4 týdny, aspoň 60, nejvýš 180 min – tvoje rozhodnutí), běžky a chůze rozumně.
  */
 export function capsFor(o: { sport: PlanSport; role: Role; winter: boolean; longest: number; typical: number; runLongest: number }): Caps {
   const { sport, role } = o;
   if (role === "rest") return { min: 0, max: 0 };
   if (sport === "run") {
-    const top = Math.max(30, Math.min(90, Math.round((o.runLongest || 30) * 1.5)));
+    const top = runCapOf(o.runLongest);
     return role === "easy" ? { min: 20, max: Math.min(40, top) } : role === "long" ? { min: 40, max: top } : { min: 30, max: Math.min(top, 60) };
   }
   if (sport === "walk") return role === "key" ? { min: 30, max: 60 } : { min: 30, max: role === "long" ? 180 : 120 };

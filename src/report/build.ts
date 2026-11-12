@@ -1,7 +1,7 @@
 // Skládání reportů z kontextu. Vše deterministické – LLM sem nevstupuje.
 import { BIKE_SPORTS } from "../datasource/types";
 import { type ActivityAnalysis, type PlannedForAct, analyzeActivity } from "../core/activity";
-import { qualityFromName } from "../core/quality";
+import { hrQuality, qualityFromName } from "../core/quality";
 import { ftpCheck } from "../core/ftpCheck";
 import { workoutFromIcu } from "../core/workout";
 import { acwr, lthrSanity, sleepRegularity, weeklyReview, type WeeklyReview } from "../core/extras";
@@ -248,7 +248,8 @@ export async function planForCoach(ctx: Ctx, rec: RecoveryResult, opt: { dryRun?
     ctx.s.coach_profile = profile;
   }
   const constraints = [...ctx.constraints, ...statusConstraints(ctx)];
-  const acts: EngineAct[] = ctx.acts.map((a) => ({ id: a.id, date: a.date, sport: a.sport, load: a.load, moving_s: a.moving_s, quality: !!a.is_quality && a.sport !== "skate" && a.sport !== "padel", hr_z: a.hr_z, pwr_z: a.pwr_z, laps: a.laps ?? null, compliance: (a as any).icu_compliance ?? null }));
+  const acts: EngineAct[] = ctx.acts.map((a) => ({ id: a.id, date: a.date, sport: a.sport, load: a.load, moving_s: a.moving_s, // kvalita podle tepu i u aktivit uložených dřív (běh a kolo bez wattmetru se dřív za kvalitu nepočítaly)
+    quality: (!!a.is_quality || ((a.sport === "run" || (isBike(a.sport) && !a.np)) && !!hrQuality(a.hr_z))) && a.sport !== "skate" && a.sport !== "padel", hr_z: a.hr_z, pwr_z: a.pwr_z, laps: a.laps ?? null, compliance: (a as any).icu_compliance ?? null }));
   const power = ctx.acts.filter((a) => isBike(a.sport)).map((a) => ({ id: a.id, date: a.date, mmp: a.mmp, max20: a.max20, pwr_z: a.pwr_z }));
   const state: { progress: Record<string, ProgressRow> } = { progress: {} };
   for (const r of await all<{ key: string; level: number; last_date: string | null }>(ctx.env.DB, "SELECT key, level, last_date FROM coach_progress")) state.progress[r.key] = { level: r.level, last: r.last_date };

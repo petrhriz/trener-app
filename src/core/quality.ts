@@ -20,6 +20,20 @@ export interface ActLike {
   load: number | null;
   pwr_z: number[] | null;
   np: number | null;
+  /** čas v zónách tepu (s), Z1–Z5 */
+  hr_z?: number[] | null;
+}
+
+/** Kvalita podle tepu (běh, kolo bez wattmetru): aspoň 10 min v Z4+ (nad LT2 – „intenzivně“ v tříbodovém modelu
+ *  Seilera), z toho aspoň 5 min v Z5 = VO2. Tep se v intervalech zpožďuje, takže čas nad prahem podle tepu je kratší
+ *  než podle wattů (Sylta, Tønnessen & Seiler 2014) – proto 10 a 5 min místo 15 a 8 min u wattů (vlastní volba). */
+export const HR_Q_MIN = 10, HR_VO2_MIN = 5;
+export function hrQuality(hr_z: number[] | null | undefined): "vo2" | "prah" | null {
+  if (!hr_z || !hr_z.length) return null;
+  const z4plus = hr_z.slice(3).reduce((t, x) => t + (x ?? 0), 0);
+  const z5plus = hr_z.slice(4).reduce((t, x) => t + (x ?? 0), 0);
+  if (z4plus < HR_Q_MIN * 60) return null;
+  return z5plus >= HR_VO2_MIN * 60 ? "vo2" : "prah";
 }
 
 export interface QualityInfo {
@@ -41,8 +55,15 @@ export function classify(a: ActLike, plannedQuality?: QualityType | null): Quali
       const z5plus = (z[4] ?? 0) + (z[5] ?? 0) + (z[6] ?? 0);
       if (z5plus >= 8 * 60) return { isQuality: true, type: "vo2", counts: true };
       if (z4plus >= 15 * 60) return { isQuality: true, type: "prah", counts: true };
+      return { isQuality: false, type: null, counts: false };
     }
-    return { isQuality: false, type: null, counts: false };
+    // bez wattmetru podle tepu
+    const h = hrQuality(a.hr_z);
+    return h ? { isQuality: true, type: h, counts: true } : { isQuality: false, type: null, counts: false };
+  }
+  if (a.sport === "run") {
+    const h = hrQuality(a.hr_z);
+    return h ? { isQuality: true, type: h, counts: true } : { isQuality: false, type: null, counts: false };
   }
   if (a.sport === "hockey") {
     const match = /z[aá]pas|match/i.test(a.name ?? "");

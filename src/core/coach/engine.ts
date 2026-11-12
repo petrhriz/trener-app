@@ -13,7 +13,7 @@ import type { QualityType } from "../quality";
 import type { State } from "../recovery";
 import type { DayWeather } from "../weather";
 import { type Workout, renderIcu } from "../workout";
-import { type EngineAct, type ProgressRow, easyRate, fixedFromConstraints } from "./common";
+import { type EngineAct, type ProgressRow, easyRate, fixedFromConstraints, runCapOf } from "./common";
 import { type Built, type Cat, type WorkPlan, type Zones, START_TIER, applyStepEdit, buildWorkout, catCandidates, catNeeds, chooseCat, isCat } from "./library";
 import type { CoachProfile } from "./profile";
 import { type Distribution, distribution } from "./progress";
@@ -312,16 +312,19 @@ export function runCoach(inp: CoachInput): CoachPlan {
     // (🔴 volno, 🟡 dnes bez kvality) – jinak by každodenní nové rozdělení zbytku týdne tiše ubíralo zátěž
     const pinned = k === 0 && !!monday;
     const mDay = (d: string) => monday?.days.find((x) => x.date === d) ?? null;
+    const roleWhy = new Map<string, string>();
     if (pinned) {
       for (const d of dates) {
         const m = mDay(d);
         let r: Role = m && !m.blocked && !lostDay(d) ? m.role : "rest";
         if (d === T && inp.recovery === "yellow" && r === "key" && fixed.get(d)?.type !== "quality") r = "endurance";
+        // včera opravdu těžký den (kvalita podle zón, dlouhý, závod), který v plánu nebyl → dnes kvalita ne
+        if (d === tg.from && r === "key" && fixed.get(d)?.type !== "quality" && tail[0]?.hard) { r = "endurance"; roleWhy.set(d, "místo kvality Z2 – včera byl těžký trénink"); }
         sk.roles.set(d, r);
       }
       // nová únava / nemoc může ubrat kvality (pozdější → Z2), přidat ne
       const keyDays = dates.filter((d) => sk.roles.get(d) === "key" && fixed.get(d)?.type !== "quality");
-      for (const d of keyDays.slice(Math.max(0, fat.keysMax - doneKeys0))) sk.roles.set(d, "endurance");
+      for (const d of keyDays.slice(Math.max(0, fat.keysMax - doneKeys0))) { sk.roles.set(d, "endurance"); roleWhy.set(d, `místo kvality Z2 – únava (kvalita nejvýš ${fat.keysMax}× týdně)`); }
       sk.notes.length = 0;
     }
     const notes = [...tg.notes, ...sk.notes];
@@ -353,6 +356,7 @@ export function runCoach(inp: CoachInput): CoachPlan {
       const sport: PlanSport = role === "rest" ? p.primary : (f?.sport ?? autoSport.get(d) ?? p.primary);
       return { date: d, role, sport, minutes: 0, load: 0, want: 0, name: null, workout: null, steps: [], targetText: null, indoor: false, qualityType: null, cat: null, tiz: 0, why: [], blocked: f?.blocked ?? (d === inp.raceDate ? "🏁 Závod – den D." : d === T && inp.recovery === "red" ? "🔴 ráno: volno, nebo Z1 do 45 min / procházka." : null), own: f?.own ?? null, mine: !!(f && (f.sport || f.type || f.minutes || f.own || f.edit)), userRest: !!f?.rest };
     });
+    for (const x of days) { const w = roleWhy.get(x.date); if (w && x.role !== "rest") x.why.push(w); }
     const train = days.filter((x) => x.role !== "rest");
     const rOf = (x: Day3) => rateOf(x.sport).rate;
     const setMinutes = (x: Day3, m: number) => { x.minutes = m; x.load = loadFor(m, rOf(x), x.role); };
@@ -693,7 +697,7 @@ function toPlan(inp: CoachInput, weeks: Week3[], o: { mondayPlan: MondayPlan | n
       keys: w.keys,
       long: w.long,
       caps,
-      runCap: capsFor({ sport: "run", role: "long", winter: false, longest: 0, typical: 0, runLongest: o.runLongest }).max,
+      runCap: runCapOf(o.runLongest),
       tsbFloor: w.target.phase === "build" ? -30 : w.target.phase === "taper" ? null : -20,
       forms: fp.map((x) => ({ date: x.date, form: x.form })),
     });
