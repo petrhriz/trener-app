@@ -1,0 +1,14 @@
+node_modules/
+.wrangler/
+dist/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.env
+*.log
+coverage/
+exports/
+screenshoty/
+dist-test/
+docs/kadence/
+.claude/

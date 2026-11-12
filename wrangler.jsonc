@@ -1,0 +1,36 @@
+﻿{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "trener-app",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  // Jediný cron. Co se kdy má stát, rozhoduje interní plánovač podle času v Europe/Prague.
+  // Každých 5 min: rychlá kontrola nových aktivit; těžší kroky (wellness, backfill) jen každých 15 min.
+  "triggers": { "crons": ["* * * * *"] }, // každou minutu: vlastník každých 5 min, další uživatelé v mezičase
+  "observability": { "enabled": true },
+  "kv_namespaces": [
+    { "binding": "KV", "id": "1dfcfb7a0f4b49a59752cc25e0c7b0c1" }
+  ],
+  "d1_databases": [
+    { "binding": "DB", "database_name": "trener-db", "database_id": "61e8ef4f-c737-4020-aa7c-823c6b564bf3", "migrations_dir": "migrations" }
+  ],
+  "ai": { "binding": "AI" },
+  // Dashboard: statické soubory; /api, /auth a /admin obsluhuje Worker
+  "assets": {
+    "directory": "public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/admin/*", "/health", "/auth", "/auth/*", "/logout"]
+  },
+  "vars": {
+    "TZ_NAME": "Europe/Prague",
+    "LAT": "50.08",
+    "LON": "14.42",
+    "DATA_SOURCE": "garmin",
+    "PUBLIC_URL": "https://trener-app.trener-app.workers.dev",
+    // Doplní se po nastavení Cloudflare Access (volitelné, viz README)
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": "",
+    "LLM_MODEL": "@cf/mistralai/mistral-small-3.1-24b-instruct"
+  }
+}

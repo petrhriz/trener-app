@@ -1,0 +1,36 @@
+{
+  "name": "trener-app",
+  "version": "1.0.0.4",
+  "private": true,
+  "type": "module",
+  "description": "Osobní AI trenér cyklistiky a zdraví na Cloudflare Workers (Garmin, intervals.icu, dashboard)",
+  "scripts": {
+    "dev": "node scripts/stamp.mjs && wrangler dev",
+    "deploy": "node scripts/stamp.mjs && wrangler d1 migrations apply trener-db --remote && node scripts/deploy-worker.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "sync:backfill": "node scripts/backfill.mjs",
+    "wipe": "node scripts/wipe.mjs",
+    "export": "wrangler d1 export trener-db --remote --output exports/trener-export.sql",
+    "compare": "node scripts/compare.mjs",
+    "admin": "node scripts/admin.mjs",
+    "secrets:check": "node scripts/check-secrets.mjs",
+    "secrets:push": "node scripts/push-secrets.mjs"
+  },
+  "dependencies": {
+    "hono": "^4.13.17"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261107.1",
+    "@garmin/fitsdk": "^21.221.0",
+    "@types/node": "^26.6.6",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7",
+    "wrangler": "^4.158.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "workerd@1.20261104.1": true
+  }
+}

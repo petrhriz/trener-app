@@ -1,0 +1,21 @@
+# Zkopíruj jako .dev.vars a doplň hodnoty. .dev.vars je v .gitignore a nikdy se necommituje.
+# Hodnotu piš hned za "=" bez uvozovek a bez mezer.
+
+# Garmin Personal API key (Garmin Connect -> Personal API)
+GARMIN_API_KEY=
+
+# Náhodný řetězec pro administrátorské volání (ruční sync, přihlašovací odkaz) a podpis přihlášení.
+# Vygeneruje se sám (`npm run secrets:push`), když je prázdný.
+ADMIN_TOKEN=
+
+# intervals.icu API klíč (Settings -> Developer Settings) a ID atleta (např. i123456)
+INTERVALS_API_KEY=
+INTERVALS_ATHLETE_ID=
+
+# Volitelné (jdou zadat i v dashboardu → Nastavení → Připojení):
+# Mapy.com API klíč (mapové podklady), zdarma na developer.mapy.com
+MAPY_API_KEY=
+# AI: Google AI Studio (Gemma) – aistudio.google.com → Get API key
+GEMINI_API_KEY=
+# AI: NVIDIA (Nemotron) – build.nvidia.com → Get API Key (nvapi-…)
+NVIDIA_API_KEY=

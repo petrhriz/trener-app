@@ -1,0 +1,19 @@
+# HTML vždy ověřit u serveru (aplikace na ploše iPhonu jinak drží starou verzi).
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/manifest.webmanifest
+  Cache-Control: no-cache
+# Skript a styly mají v adrese otisk obsahu (?v=…, scripts/stamp.mjs) – po změně mají novou adresu, proto natrvalo.
+/app.js
+  Cache-Control: public, max-age=31536000, immutable
+/app.css
+  Cache-Control: public, max-age=31536000, immutable
+# Ikony počasí a aplikace se nemění.
+/wx/*
+  Cache-Control: public, max-age=2592000
+/*.png
+  Cache-Control: public, max-age=2592000
+/fonts/*
+  Cache-Control: public, max-age=2592000
