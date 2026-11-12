@@ -36,5 +36,12 @@ describe.skipIf(!process.env.BENCH)("bench runCoach", () => {
       for (let i = 0; i < n; i++) runCoach(inp);
       console.log(`runCoach ${label}: ${((performance.now() - t0) / n).toFixed(2)} ms`);
     }
+    // čtvrtek s uloženým pondělním plánem (běžný stav po opravě 3 – bez přepočtu pondělí)
+    const mp = runCoach(simInput(sc, acts, "2027-04-05")).coach.mondayPlan;
+    const inp = { ...simInput(sc, acts, "2027-04-08"), mondayPlan: mp };
+    for (let i = 0; i < 5; i++) runCoach(inp);
+    const n = 40, t0 = performance.now();
+    for (let i = 0; i < n; i++) runCoach(inp);
+    console.log(`runCoach čtvrtek s uloženým pondělím: ${((performance.now() - t0) / n).toFixed(2)} ms`);
   });
 });
