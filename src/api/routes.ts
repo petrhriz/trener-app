@@ -366,9 +366,25 @@ api.get("/coach", async (c) => {
       acts: acts.map((a) => ({ id: a.id, name: a.name, sport: a.sport, moving_s: a.moving_s, load: Math.round(a.load ?? 0), q: !!a.is_quality })),
     });
   }
+  // kalendář trenéra: 2 ukončené týdny + tento týden do včerejška – skutečnost po dnech a co bylo v plánu
+  const W0 = mondayOf(T);
+  const past: { date: string; acts: { id: string; sport: string; min: number; load: number; q: boolean; name: string | null }[]; plan: { name: string; min: number | null; kind: string } | null }[] = [];
+  for (let d = addDays(W0, -14); d < T; d = addDays(d, 1)) {
+    const acts = ctx.acts.filter((a) => a.date === d && ((a.load ?? 0) >= 5 || (a.moving_s ?? 0) >= 900));
+    const pl = ctx.calendar.find((x) => x.date === d && x.kind !== "rest" && x.name) ?? null;
+    past.push({ date: d, acts: acts.map((a) => ({ id: a.id, sport: a.sport, min: Math.round((a.moving_s ?? 0) / 60), load: Math.round(a.load ?? 0), q: !!a.is_quality, name: a.name ?? null })), plan: pl ? { name: pl.name, min: pl.duration_min ?? null, kind: pl.kind } : null });
+  }
+  const pastWeeks = [-14, -7].map((o) => {
+    const ws = addDays(W0, o);
+    const load = Math.round(ctx.acts.filter((a) => a.date >= ws && a.date < addDays(ws, 7)).reduce((t, a) => t + (a.load ?? 0), 0));
+    const m = ctx.metrics.find((x) => x.date === addDays(ws, 6));
+    return { weekStart: ws, load, ctlEnd: m ? Math.round(m.ctl * 10) / 10 : null };
+  });
   return c.json({
     insights,
     recent,
+    past,
+    pastWeeks,
     readiness: r,
     // graf tréninku: % FTP kroků (watty) a zóny tepu (kroky podle tepu)
     ftp: ctx.s.ftp,

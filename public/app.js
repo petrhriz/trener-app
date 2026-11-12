@@ -1093,6 +1093,50 @@ const localToday = () => { const d = new Date(); return `${d.getFullYear()}-${St
 let tOpen = null; // otevřený den (panel úprav)
 function tSportIco(s) { return ({ run: "🏃", xc_ski: XC_SVG, walk: "🚶" })[s] || "🚴"; }
 /** Pruh zátěže týdne: hotovo (plně) + plán (světle) proti cílovému pásmu. */
+/**
+ * Kalendář trenéra (v3, etapa 2): 2 ukončené týdny skutečnost, tento týden (odjeto + plán), příští týden přesně
+ * a další dva orientačně. Řádek = týden (souhrn: zátěž, kondice), sloupce po–ne.
+ */
+function coachCalendar(d, co) {
+  if (!co || co.version !== 3 || !co.horizon) return "";
+  const T = d.readiness.date;
+  const ROLE = { key: ["K", "kvalita", "q"], long: ["D", "dlouhá", "l"], endurance: ["Z2", "Z2", "e"], easy: ["Z1", "lehce", "e"], rest: ["", "volno", "r"] };
+  const pastBy = new Map((d.past || []).map((x) => [x.date, x]));
+  const futBy = new Map(co.horizon.flatMap((w) => w.days.map((x) => [x.date, x])));
+  const hm = (m) => (m >= 60 ? `${Math.floor(m / 60)}:${String(Math.round(m % 60)).padStart(2, "0")}` : `${Math.round(m)}′`);
+  const cell = (date, orient) => {
+    const day = Number(date.slice(8, 10));
+    const today = date === T ? " today" : "";
+    const ps = pastBy.get(date);
+    if (ps) {
+      const acts = ps.acts;
+      if (!acts.length) return `<div class="cc-d past${ps.plan ? " miss" : ""}${today}" title="${dayDm(date)}${ps.plan ? ` · v plánu ${esc(ps.plan.name)}, neodjeto` : " · volno"}"><b>${day}</b><i>${ps.plan ? "✕" : "·"}</i></div>`;
+      const min = acts.reduce((t, a) => t + a.min, 0), load = acts.reduce((t, a) => t + a.load, 0), q = acts.some((a) => a.q);
+      return `<a class="cc-d past done${q ? " q" : ""}${today}" href="#/aktivita/${acts[0].id}" title="${dayDm(date)} · ${esc(acts.map((a) => a.name || a.sport).join(", "))} · zátěž ${load}"><b>${day}</b><i>${SPORT_ICON[acts[0].sport] || "🏅"}</i><span>${hm(min)}</span><small>${load}</small></a>`;
+    }
+    const x = futBy.get(date);
+    if (!x) return `<div class="cc-d${today}"><b>${day}</b></div>`;
+    if (x.blocked) return `<div class="cc-d blk${today}" title="${dayDm(date)} · nelze"><b>${day}</b><i>⛔</i></div>`;
+    const [ab, lab, cls] = ROLE[x.role] || ROLE.rest;
+    if (x.role === "rest") return `<div class="cc-d rest${orient ? " or" : ""}${today}" title="${dayDm(date)} · volno"><b>${day}</b><i>·</i></div>`;
+    return `<button type="button" class="cc-d plan ${cls}${orient ? " or" : ""}${today}" data-ccday="${date}" title="${dayDm(date)} · ${esc(x.name || lab)} · ${hm(x.minutes)} · zátěž ${x.load}"><b>${day}</b><i>${x.sport === "ride" ? ab : tSportIco(x.sport)}</i><span>${hm(x.minutes)}</span><small>${x.load}</small></button>`;
+  };
+  const n1 = (v) => (v == null ? DASH : num(v, 1));
+  const W0 = co.horizon[0].weekStart;
+  const rows = [];
+  for (const pw of d.pastWeeks || []) rows.push({ ws: pw.weekStart, kind: "past", sum: `zátěž <b>${pw.load}</b>${pw.ctlEnd != null ? ` · kondice ${n1(pw.ctlEnd)}` : ""}` });
+  co.horizon.forEach((w, i) => {
+    const total = w.done + w.load;
+    const tag = i === 0 ? "tento" : i === 1 ? "příští" : "orientačně";
+    const lehci = w.recoveryWeek ? ' · <span class="ttag">lehčí</span>' : "";
+    rows.push({ ws: w.weekStart, kind: i === 0 ? "cur" : w.detail ? "next" : "orient", tag, sum: `zátěž <b>${total}</b>${i === 0 && w.done ? ` <small>(odjeto ${w.done})</small>` : ""} · kondice ${n1(w.ctlStart)} → <b>${n1(w.ctlEnd)}</b>${lehci}` });
+  });
+  const head = `<div class="cc-h">${DAYS.map((x) => `<span>${x}</span>`).join("")}</div>`;
+  const body = rows.map((r) => `<div class="cc-w ${r.kind}"><div class="cc-s"><span>${dm(r.ws)}–${dm(addDay(r.ws, 6))}${r.tag ? ` <em>${r.tag}</em>` : ""}</span><span>${r.sum}</span></div><div class="cc-r">${[0, 1, 2, 3, 4, 5, 6].map((k) => cell(addDay(r.ws, k), r.kind === "orient")).join("")}</div></div>`).join("");
+  const legend = `<div class="legend"><span>K kvalita · D dlouhá · Z2 vytrvalost · ✕ v plánu, neodjeto</span><span>číslo dole = zátěž</span></div>`;
+  return card("c12 t-cal", "📅 Plán na 4 týdny", W0 ? `od ${dm(addDay(W0, -14))}` : "", `<div class="ccal">${head}${body}</div>${legend}<p class="note">Tento a příští týden jsou konkrétní tréninky, další dva orientačně (druh, délka, zátěž) – doplní se, až se přiblíží. Klik na plánovaný den otevře jeho úpravu.</p>`, 'data-tt="tyden"');
+}
+
 function weekBar(w, label) {
   if (!w) return "";
   const t = w.target || {};
@@ -1178,7 +1222,11 @@ async function pageTrener(el) {
     return `<button type="button" class="tsd ${done ? "done" : ""} ${pd && pd.name && !done ? "pl" : ""} ${date === r.date ? "today" : ""} ${q ? "q" : ""}" ${pd && date >= r.date ? `data-peek="${date}"` : ""} title="${dayDm(date)}${pd && pd.name ? ` · ${esc(pd.name)}` : ""}"><i>${ico}</i><b>${DAYS[dow(date) - 1]}</b><small>${Number(date.slice(8, 10))}.</small></button>`;
   };
   const strip = `<div class="tstrip-sc" id="tStrip">${[-7, 0, 7].map((o) => `<div class="tstrip" data-wk="${o}">${[0, 1, 2, 3, 4, 5, 6].map((k) => stripDay(addDay(mon, o + k))).join("")}</div>`).join("")}</div>`;
-  const bars = (cur ? weekBar({ ...cur, target: d.weeks.target }, `Tento týden · ${wkLabel(cur)}`) : "") + (inPlan(next) ? weekBar({ ...next, target: d.weeks.target }, `Příští týden · ${wkLabel(next)}`) : "");
+  // v3: každý týden má svůj cíl (tento = odjeto + cíl zbylých dní, příští = cíl celého týdne)
+  const band = (x) => ({ lo: Math.round(x * 0.9), hi: Math.round(x * 1.1) });
+  const hz = co && co.version === 3 && co.horizon ? co.horizon : null;
+  const tCur = hz ? band(hz[0].done + hz[0].target) : d.weeks.target, tNext = hz && hz[1] ? band(hz[1].target) : d.weeks.target;
+  const bars = (cur ? weekBar({ ...cur, target: tCur }, `Tento týden · ${wkLabel(cur)}`) : "") + (inPlan(next) ? weekBar({ ...next, target: tNext }, `Příští týden · ${wkLabel(next)}`) : "");
   const weekCard = card("c12 t-week", "", "", strip + bars, 'data-tt="tyden"');
   // --- dny ---
   const others = (x) => p.days.filter((y) => y.date !== x.date);
@@ -1269,7 +1317,7 @@ async function pageTrener(el) {
   el.innerHTML = `<div class="head"><div><h1>Trenér</h1><div class="sub">cíl ${esc(d.goalLabel || "")}</div></div></div>
   <div class="ioseg ttabs" role="tablist">${TABS.map(([k, l]) => `<button type="button" role="tab" data-ttab="${k}" class="${tTab === k ? "on" : ""}" aria-selected="${tTab === k}">${l}</button>`).join("")}</div>
   <div class="grid tgrid">
-    <div class="c7 col tcol">${todayCard}${weekCard}${planCard}</div>
+    <div class="c7 col tcol">${todayCard}${weekCard}${coachCalendar(d, co)}${planCard}</div>
     <div class="c5 col tcol">${stateCard}${recentCard}${chatCard}${goalCard}${loadsCard}${intens}</div>
     ${weatherCard}
   </div>${pendBar}`;
@@ -1310,6 +1358,13 @@ async function pageTrener(el) {
   }));
   el.querySelectorAll(".tpanel .sw-sport button").forEach((b) => b.addEventListener("click", () => post("plan/sport", { dates: [b.parentElement.dataset.date], sport: b.dataset.sport })));
   el.querySelectorAll("[data-len]").forEach((b) => b.addEventListener("click", () => post("plan/len", { date: b.dataset.len, min: +b.dataset.v })));
+  // kalendář: klik na plánovaný den v nejbližších 8 dnech otevře jeho úpravu
+  el.querySelectorAll("[data-ccday]").forEach((b) => b.addEventListener("click", () => {
+    const dt = b.dataset.ccday;
+    if (!p.days.some((x) => x.date === dt)) return;
+    tOpen = dt;
+    pageTrener(el).then(() => el.querySelector(`[data-day="${dt}"]`)?.scrollIntoView({ block: "center" }));
+  }));
   el.querySelectorAll(".stepf").forEach((f2) => f2.addEventListener("submit", (e) => {
     e.preventDefault();
     const fd = new FormData(f2);
