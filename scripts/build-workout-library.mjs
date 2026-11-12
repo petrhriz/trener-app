@@ -69,7 +69,7 @@ function mainSet(segs, cat) {
   if (a < 0 || b < a) return null;
   // krátké tréninky: první těžký úsek hledat až po rozjetí (aspoň 5 min od začátku)
   if (short) { let t = 0; a = -1; for (let i = 0; i < segs.length; i++) { if (t >= 300 && segs[i][1] >= HARD) { a = i; break; } t += segs[i][0]; } if (a < 0 || b < a) return null; }
-  const m = segs.slice(a, b + 1).map(([d, p]) => [tidy(d, p >= HARD), Math.round(p * 100)]);
+  const m = segs.slice(a, b + 1).map(([d, p]) => [Math.round(d), Math.round(p * 100)]);
   // sloučit sousední stejné úseky
   const out = [];
   for (const s of m) { const l = out[out.length - 1]; if (l && l[1] === s[1]) l[0] += s[0]; else out.push([...s]); }
@@ -177,6 +177,16 @@ for (const [cat, map] of Object.entries(byCat)) {
   console.log(`${cat}: ${map.size} čistých → ${uniq.length} vybráno (náročnost ${uniq[0]?.s}–${uniq[uniq.length - 1]?.s})`);
 }
 
+// až po výběru: délky na běžné hodnoty (tidy) a z nich znovu tvar, minuty a náročnost – výběr se tím nemění
+for (const w of picked) {
+  w.g = w.g.map((x) => (typeof x[1] === "number" ? [tidy(x[0], x[1] >= HARD * 100), x[1]] : [x[0], x[1].map((s) => [tidy(s[0], s[1] >= HARD * 100), s[1]])]));
+  const flatMain = w.g.flatMap((x) => (typeof x[1] === "number" ? [x] : Array.from({ length: x[0] }, () => x[1]).flat()));
+  const work = flatMain.filter((s) => s[1] >= HARD * 100);
+  w.n = shapeOf(w.g);
+  w.m = Math.round(flatMain.reduce((t, s) => t + s[0], 0) / 60);
+  w.t = Math.round(work.reduce((t, s) => t + s[0], 0) / 6) / 10;
+  w.s = Math.round(work.reduce((t, s) => t + s[0] * (s[1] / 100) ** 2, 0) / 60);
+}
 const rows = picked.map((w) => `  ${JSON.stringify({ id: w.id, c: w.c, n: w.n, m: w.m, t: w.t, s: w.s, g: w.g })},`).join("\n");
 const out = `// GENEROVÁNO skriptem scripts/build-workout-library.mjs – neupravovat ručně.
 // Hlavní části tréninků převzaté z knihovny projektu Domestique (Apache-2.0,
