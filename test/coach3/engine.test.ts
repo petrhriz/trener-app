@@ -35,13 +35,14 @@ function input(o: Partial<Coach3Input> = {}, perWeek = 1): Coach3Input {
 
 describe("Trenér v3 – plán", () => {
   it("pokles snižuje, udržet drží, zlepšit zvedá kondici – proti dnešní hodnotě", () => {
-    const p = runCoach3(input({ goal: "pokles" })).coach;
-    const u = runCoach3(input({ goal: "udrzeni" })).coach;
-    const z = runCoach3(input({ goal: "zvyseni" })).coach;
-    expect(p.ctlTarget).toBeLessThan(p.ctlNow);
-    expect(Math.abs(u.ctlTarget - u.ctlNow)).toBeLessThan(0.6);
-    expect(z.ctlTarget).toBeGreaterThan(z.ctlNow);
-    expect(p.ctlNow).toBe(u.ctlNow);
+    // v pondělí (rozběhnutý týden bez dohánění porovnává test níž)
+    const mon = (goal: "pokles" | "udrzeni" | "zvyseni") => { const x = input({ goal }); return runCoach3({ ...x, today: "2026-11-09", acts: x.acts.filter((y) => y.date < "2026-11-09") }).coach; };
+    const p = mon("pokles"), u = mon("udrzeni"), z = mon("zvyseni");
+    // cíl týdne se měří od kondice na začátku týdne (neděle večer)
+    expect(p.ctlTarget).toBeLessThan(p.ctlWeekStart);
+    expect(Math.abs(u.ctlTarget - u.ctlWeekStart)).toBeLessThan(0.6);
+    expect(z.ctlTarget).toBeGreaterThan(z.ctlWeekStart);
+    expect(p.ctlWeekStart).toBe(u.ctlWeekStart);
   });
   it("4 týdny: tento a příští s tréninky, další dva orientačně; navazují kondicí", () => {
     const h = runCoach3(input()).coach.horizon;
@@ -133,5 +134,16 @@ describe("kvalita a tvůj sport dne", () => {
     const h1 = out.coach.horizon[1]!;
     expect(h1.days.find((d) => d.date === key.date)!.role).not.toBe("key");
     expect(h1.days.filter((d) => d.role === "key").length).toBe(w1.days.filter((d) => d.role === "key").length);
+  });
+});
+
+describe("rozběhnutý týden: plán z pondělí, nedohání se", () => {
+  it("odjeto míň než v pondělním plánu → zbytek týdne stejný jako v pondělí, ne víc", () => {
+    const x = input({ goal: "udrzeni" });
+    const monday = runCoach3({ ...x, today: "2026-11-09", acts: x.acts.filter((y) => y.date < "2026-11-09") }).coach.horizon[0]!;
+    const planRest = monday.days.filter((d) => d.date >= "2026-11-12").reduce((t, d) => t + d.load, 0);
+    // čtvrtek: od pondělí odjeto jen úterý (55)
+    const thu = runCoach3({ ...x, acts: x.acts.filter((y) => y.date < "2026-11-09" || y.date === "2026-11-10") }).coach.horizon[0]!;
+    expect(Math.abs(thu.load - planRest)).toBeLessThanOrEqual(planRest * 0.1);
   });
 });
