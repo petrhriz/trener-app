@@ -22,6 +22,11 @@ export function phaseFor(goal: Goal, weekStart: string, raceDate: string | null)
   return isWinter(weekStart) ? "base" : "build";
 }
 
+/** Dno formy pro výhled plánu: −30 = spodní hranice pásma „Optimální“ (−10 až −30) v intervals.icu (stejná pásma
+ *  jako stránka, src/core/fitness.ts formZone). Pod ním „Vysoké riziko“. Ladění dno nemá (forma tam stoupá). */
+export const FORM_FLOOR = -30;
+export const formFloor = (phase: Phase): number | null => (phase === "taper" ? null : FORM_FLOOR);
+
 export interface Fatigue {
   /** forma (CTL − ATL) na konci včerejška */
   form: number | null;
@@ -39,14 +44,14 @@ export function fatigueFactor(f: Fatigue): { factor: number; keysMax: number; no
   let factor = 1, keysMax = 2;
   const notes: string[] = [];
   const cut = (x: number, why: string) => { if (x < factor) factor = x; notes.push(why); };
-  if (f.form != null && f.form < -30) cut(0.8, `forma ${num(f.form, 0)} (pod −30)`);
-  else if (f.form != null && f.form < -20) cut(0.9, `forma ${num(f.form, 0)} (pod −20)`);
+  // forma −10 až −30 je podle intervals.icu optimální trénink, sama o sobě neubírá; až pod −30 (Vysoké riziko)
+  if (f.form != null && f.form < FORM_FLOOR) cut(0.8, `forma ${num(f.form, 0)} (pod −30, vysoké riziko)`);
   if (f.badMornings >= 3) cut(0.8, `${f.badMornings} horší rána za 5 dní`);
   else if (f.badMornings >= 2) cut(0.9, `${f.badMornings} horší rána za 5 dní`);
   if (f.hrvLow) cut(0.9, "VST týdenní průměr pod normou");
   if (f.illnessDays >= 4) { cut(0.7, "návrat po nemoci"); keysMax = 0; }
   else if (f.illnessDays >= 1) { cut(0.85, "po nemoci postupně"); keysMax = 1; }
   if (factor <= 0.8) keysMax = Math.min(keysMax, 1);
-  if (f.form != null && f.form < -25) keysMax = Math.min(keysMax, 1);
+  if (f.form != null && f.form < FORM_FLOOR) keysMax = Math.min(keysMax, 1);
   return { factor, keysMax, notes };
 }

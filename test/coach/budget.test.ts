@@ -188,3 +188,14 @@ describe("ladění před závodem (Bosquet 2007: −41 až −60 % objemu, inten
     expect(w[2]!.load).toBe(Math.round(normal * 0.45));
   });
 });
+
+import { FORM_FLOOR, NO_FATIGUE, fatigueFactor, formFloor } from "../../src/core/coach/target";
+describe("forma podle pásem intervals.icu (−10 až −30 optimální)", () => {
+  it("forma −25 sama neubírá; pod −30 týden o 20 % lehčí a kvalita nejvýš 1×", () => {
+    expect(fatigueFactor({ ...NO_FATIGUE, form: -25 })).toMatchObject({ factor: 1, keysMax: 2 });
+    expect(fatigueFactor({ ...NO_FATIGUE, form: -32 })).toMatchObject({ factor: 0.8, keysMax: 1 });
+    expect(FORM_FLOOR).toBe(-30);
+    expect(formFloor("base")).toBe(-30);
+    expect(formFloor("taper")).toBeNull();
+  });
+});

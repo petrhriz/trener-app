@@ -22,7 +22,7 @@ import { type Distribution, distribution } from "./progress";
  *  1,3–1,5), takže 2 h uvnitř ≈ 2,5–3 h venku; konkrétní strop je vlastní volba. */
 export const INDOOR_LONG_MAX = 120;
 import { runReadiness } from "./run";
-import { type Fatigue, fatigueFactor } from "./target";
+import { type Fatigue, fatigueFactor, formFloor } from "./target";
 import { type WeekValidation, validateWeek } from "./validate";
 import type { Fixed, PastDay as V2Past } from "./common";
 import { type WeekTarget, TWO_KEYS_MIN_H, historyBase, nextBlock, usualSessions, weekHistory, weekTarget } from "./budget";
@@ -531,7 +531,7 @@ export function runCoach(inp: CoachInput): CoachPlan {
     }
 
     // kontrola formy: výhled po dnech; pod dnem se zkracují Z2 a dlouhý, pak poslední kvalita → Z2
-    const floor = tg.phase === "build" ? -30 : tg.phase === "taper" ? null : -20;
+    const floor = formFloor(tg.phase);
     const proj = () => project(state, stateDate, dates.map((d) => days.find((x) => x.date === d)!.load));
     if (floor != null) {
       for (let it = 0; it < 3; it++) {
@@ -730,7 +730,7 @@ function toPlan(inp: CoachInput, weeks: Week3[], o: { mondayPlan: MondayPlan | n
       long: w.long,
       caps,
       runCap: runCapOf(o.runLongest),
-      tsbFloor: w.target.phase === "build" ? -30 : w.target.phase === "taper" ? null : -20,
+      tsbFloor: formFloor(w.target.phase),
       forms: fp.map((x) => ({ date: x.date, form: x.form })),
     });
   };
@@ -759,7 +759,7 @@ function toPlan(inp: CoachInput, weeks: Week3[], o: { mondayPlan: MondayPlan | n
     recentLoad: Math.round(o.history.weekLoads.reduce((t, x) => t + x, 0) / Math.max(1, o.history.weekLoads.length)),
     ramp: tg.ramp,
     hours: Math.round((minutes0 / 60) * 4) / 4,
-    tsbFloor: tg.phase === "build" ? -30 : tg.phase === "taper" ? null : -20,
+    tsbFloor: formFloor(tg.phase),
     sessions: w0.sessions,
     keys: w0.keys,
     ctlNow: Math.round(o.ctlRef * 10) / 10,

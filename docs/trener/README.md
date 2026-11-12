@@ -29,7 +29,7 @@ Hlášené chyby měly společnou příčinu – v2 míchal různé výchozí bo
    podle pravidel (max 3 dny za sebou, kvalita ne po kvalitě ani po dlouhém, dlouhý o víkendu, tvoje volby platí).
 5. **Délky** ze zátěže dne a sazby sportu (zátěž za hodinu Z2 z tvé historie). Změna sportu drží zátěž.
 6. **Obsah** (jen tento a příští týden): kvalita z knihovny, Z2 a dlouhý ze zbylé zátěže, texty podle sportu.
-7. **Kontrola formy**: výhled forma po dnech; pod dnem (−20, v rozvoji −30) se ubírá.
+7. **Kontrola formy**: výhled forma po dnech; pod −30 (konec pásma „Optimální“ v intervals.icu) se ubírá.
 
 ## Etapy
 
