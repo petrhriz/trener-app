@@ -79,3 +79,16 @@ describe("historie a lehčí týden", () => {
     expect(idx[4]).toBe(idx[0]);
   });
 });
+
+describe("cíl od kondice na stránce (včera 41,8, dnes bez tréninku 40,8, čtvrtek)", () => {
+  const b = { raceDate: null, from: "2026-11-12", ctlNow: 41.8, ctlRef: 40.8, doneLoad: 43, history: hist([300, 300, 300, 300]), fatigue: 1, weeks: 1 };
+  it("pokles pod 40,8, udržet ~40,8, zlepšit nad 40,8 – změna se měří od čísla, které vidíš", () => {
+    const p = weekTargets({ ...b, goal: "pokles" })[0]!;
+    const u = weekTargets({ ...b, goal: "udrzeni" })[0]!;
+    const z = weekTargets({ ...b, goal: "zvyseni" })[0]!;
+    expect(p.ctlStart).toBe(40.8);
+    expect(p.ctlEnd).toBeLessThan(40.8);
+    expect(u.ctlEnd).toBeCloseTo(40.8, 1);
+    expect(z.ctlEnd).toBeGreaterThan(40.8 + 0.4);
+  });
+});

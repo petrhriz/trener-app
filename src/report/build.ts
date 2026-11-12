@@ -221,7 +221,8 @@ export function fatigueOf(ctx: Ctx, rec: RecoveryResult, cons: { date: string; k
   for (let i = 1; i <= 4; i++) { const st = recoveryStateOn(ctx, addDays(T, -i)); if (st && st !== "green") bad++; }
   const hist = norm(ctx.well.filter((w) => w.date >= addDays(T, -60) && w.date < addDays(T, -7)).map((w) => w.hrv));
   const last7 = norm(ctx.well.filter((w) => w.date >= addDays(T, -6) && w.date <= T).map((w) => w.hrv));
-  const hrvLow = hist.n >= 21 && last7.n >= 4 && last7.mean < hist.mean - 0.75 * hist.sd;
+  // stejná hranice jako normální rozsah na stránce (průměr − 1 SD) – „trochu pod průměrem“ ještě není únava
+  const hrvLow = hist.n >= 21 && last7.n >= 4 && last7.mean < hist.mean - hist.sd;
   const illnessDays = new Set(cons.filter((c) => c.kind === "nemoc" && c.date > addDays(T, -10) && c.date <= T).map((c) => c.date)).size;
   return { form: y ? y.ctl - y.atl : null, badMornings: bad, hrvLow, illnessDays };
 }

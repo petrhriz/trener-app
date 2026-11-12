@@ -81,8 +81,10 @@ export interface BudgetInput {
   raceDate: string | null;
   /** první plánovaný den */
   from: string;
-  /** kondice na konci dne před `from` */
+  /** kondice na konci dne před `from` (výchozí bod výpočtu) */
   ctlNow: number;
+  /** kondice, kterou vidíš na stránce (dnes bez dnešního tréninku) – cíl tohoto týdne se měří od ní */
+  ctlRef?: number;
   /** zátěž odjetá tento týden před `from` */
   doneLoad: number;
   history: History;
@@ -122,8 +124,10 @@ export function weekTarget(inp: BudgetInput, k: number, ctl: number, prevTotal: 
   const recoveryWeek = cyc && cycleIdx === 4;
   const ramp = rampFor(phase, inp.history.provenRamp);
   const notes: string[] = [];
-  // cíl jen pro plánované dny: růst se krátí poměrem dní (ve čtvrtek zbývají 4 dny → 4/7 týdenního růstu)
-  const ctlGoal = ctl + (ramp * days) / 7;
+  // cíl jen pro plánované dny: růst se krátí poměrem dní (ve čtvrtek zbývají 4 dny → 4/7 týdenního růstu);
+  // tento týden se měří od kondice na stránce (dnešek bez dnešního tréninku), ne od včerejška
+  const ref = k === 0 ? (inp.ctlRef ?? ctl) : ctl;
+  const ctlGoal = ref + (ramp * days) / 7;
   const need = r0(loadToReach(ctl, ctlGoal, days));
   let load = need;
   let limit: WeekTarget["limit"] = null;
@@ -144,13 +148,13 @@ export function weekTarget(inp: BudgetInput, k: number, ctl: number, prevTotal: 
   if (f < 1) { load = load * f; limit = "únava"; }
   load = r0(load);
   const ctlEnd = ctlAfter(ctl, load, days);
-  const goalTxt = ramp < 0 ? `řízený pokles kondice na ${n1(ctlGoal)}` : ramp === 0 ? `udržení kondice ${n1(ctl)}` : `růst kondice na ${n1(ctlGoal)}`;
+  const goalTxt = ramp < 0 ? `řízený pokles kondice na ${n1(ctlGoal)}` : ramp === 0 ? `udržení kondice ${n1(ref)}` : `růst kondice na ${n1(ctlGoal)}`;
   const span = k === 0 && days < 7 ? " do neděle" : "";
   if (limit === "historie" && load < need)
     notes.push(`Na ${goalTxt} by bylo potřeba ${need} zátěže${span}. ${hasHistory && k === 0 ? `Poslední týdny jezdíš kolem ${usual} týdně a víc než o 30 % najednou nepřidávám` : k > 0 ? "Přidávám nejvýš o 15 % za týden" : "Bez historie začínám opatrně"}, takže ${load} → kondice ${n1(ctlEnd)}.`);
   if (limit === "lehčí týden") notes.push(`Lehčí 4. týden bloku: ${load} zátěže (asi 65 % běžného) → kondice ${n1(ctlEnd)}.`);
   if (limit === "únava") notes.push(`Únava: týden o ${r0((1 - f) * 100)} % lehčí → kondice ${n1(ctlEnd)}.`);
-  return { weekStart, from, days, phase, phaseLabel: PHASE_LABEL[phase], ramp, cycleIdx, recoveryWeek, winter: isWinter(weekStart), ctlStart: r1(ctl), ctlGoal: r1(ctlGoal), need, load, done: r0(done), ctlEnd: r1(ctlEnd), limit, notes };
+  return { weekStart, from, days, phase, phaseLabel: PHASE_LABEL[phase], ramp, cycleIdx, recoveryWeek, winter: isWinter(weekStart), ctlStart: r1(ref), ctlGoal: r1(ctlGoal), need, load, done: r0(done), ctlEnd: r1(ctlEnd), limit, notes };
 }
 
 /** Cíle všech týdnů s rovnoměrným odhadem kondice (engine místo toho navazuje skutečným výhledem plánu). */

@@ -156,7 +156,9 @@ export function runCoach3(inp: Coach3Input): Plan3 {
   const rateOf = (s: PlanSport) => easyRate(inp.acts, T, s, s === "ride" && power);
   const fat = fatigueFactor(inp.fatigue);
 
-  const binp = { goal: inp.goal, raceDate: inp.raceDate, from, ctlNow: startState.ctl, doneLoad, history, fatigue: fat.factor, weeks: 4 };
+  // kondice, kterou vidíš na stránce: dnešek bez dnešního tréninku (po tréninku = start plánu)
+  const ctlRef = todayDone ? startState.ctl : (inp.metric(T)?.ctl ?? startState.ctl);
+  const binp = { goal: inp.goal, raceDate: inp.raceDate, from, ctlNow: startState.ctl, ctlRef, doneLoad, history, fatigue: fat.factor, weeks: 4 };
   let prevTotal = historyBase(history).usual;
   const fixed = fixedFromConstraints(inp.constraints);
   const needs = catNeeds(inp.power, T);
@@ -361,7 +363,7 @@ export function runCoach3(inp: Coach3Input): Plan3 {
     prevDays = days;
   }
 
-  return toPlan(inp, weeks, { from, todayDone, startState, history, usual: historyBase(history).usual, fat, longest, typical, runLongest: run.longest, runExperienced: run.experienced });
+  return toPlan(inp, weeks, { from, todayDone, startState, history, usual: historyBase(history).usual, ctlRef, fat, longest, typical, runLongest: run.longest, runExperienced: run.experienced });
 }
 
 // ---------- výstup ve tvaru plánu (dashboard, zápis do intervals.icu, Telegram) ----------
@@ -389,7 +391,7 @@ export function horizonSummary(weeks: Pick<Week3, "planned" | "ctlEnd" | "target
   return `${head}. Na ${ramp === 0 ? "udržení" : "růst"} by to chtělo víc, ale ${why.join(", ")}.${settled ? ` Od ${weeks.length}. týdne už zátěž cíli odpovídá a kondice ${ramp === 0 ? "drží" : "roste"}.` : ""}`;
 }
 
-function toPlan(inp: Coach3Input, weeks: Week3[], o: { from: string; todayDone: boolean; startState: { ctl: number; atl: number }; history: { weekLoads: number[] }; usual: number; fat: { notes: string[] }; longest: number; typical: number; runLongest: number; runExperienced: boolean }): Plan3 {
+function toPlan(inp: Coach3Input, weeks: Week3[], o: { from: string; todayDone: boolean; startState: { ctl: number; atl: number }; history: { weekLoads: number[] }; usual: number; ctlRef: number; fat: { notes: string[] }; longest: number; typical: number; runLongest: number; runExperienced: boolean }): Plan3 {
   const T = inp.today;
   const all = weeks.flatMap((w) => w.days);
   const dayOf = (d: string) => all.find((x) => x.date === d) ?? null;
@@ -530,7 +532,7 @@ function toPlan(inp: Coach3Input, weeks: Week3[], o: { from: string; todayDone: 
   const v0 = validate(w0), v1 = validate(w1);
   const validation: WeekValidation = { ok: v0.ok && v1.ok, items: [...v0.items, ...v1.items] };
 
-  const summary = horizonSummary(weeks, o.startState.ctl, o.usual);
+  const summary = horizonSummary(weeks, o.ctlRef, o.usual);
   const warnings: string[] = [summary, ...w0.notes, ...o.fat.notes.map((s) => `Únava: ${s}.`)];
   for (const x of proj.filter((y) => y.date <= addDays(T, 7))) if (formZone(x.form) === "Vysoké riziko") warnings.push(`Plán vede do Vysokého rizika ${dayDm(x.date)} – uber zátěž.`);
   for (const it of validation.items) if (it.level !== "exception") warnings.push(it.text);
@@ -548,14 +550,14 @@ function toPlan(inp: Coach3Input, weeks: Week3[], o: { from: string; todayDone: 
     recoveryWeek: tg.recoveryWeek,
     nextRecovery: cyc && !tg.recoveryWeek ? addDays(W0, 7 * (4 - tg.cycleIdx)) : null,
     load: total0,
-    keepLoad: Math.round(7 * o.startState.ctl),
+    keepLoad: Math.round(7 * o.ctlRef),
     recentLoad: Math.round(o.history.weekLoads.reduce((t, x) => t + x, 0) / Math.max(1, o.history.weekLoads.length)),
     ramp: tg.ramp,
     hours: Math.round((minutes0 / 60) * 4) / 4,
     tsbFloor: tg.phase === "build" ? -30 : tg.phase === "taper" ? null : -20,
     sessions: w0.sessions,
     keys: w0.keys,
-    ctlNow: Math.round(o.startState.ctl * 10) / 10,
+    ctlNow: Math.round(o.ctlRef * 10) / 10,
     ctlTarget: w0.ctlEnd,
     notes: [summary, ...w0.notes],
     distribution: distribution(inp.acts, T),
