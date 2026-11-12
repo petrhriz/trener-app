@@ -1,4 +1,5 @@
 // Telegram: příkazy, volný text (záměr nejdřív pravidly, LLM až jako záloha), tlačítka Z1… a „ano / ne“.
+import { stripHealth } from "../core/privacy";
 import type { Env } from "../env";
 import { carbsFor } from "../core/nutrition";
 import type { Change } from "../core/plan";
@@ -331,7 +332,7 @@ async function freeQuestion(env: Env, text: string) {
     sacharidy_pravidla: "do 60 min jen voda; 1–2 h 30–60 g/h; 2–3 h 60–90 g/h; bidon 60 g, gel 45 g",
     sacharidy_priklady: { "1:30 Z2": carbsFor(90, "z2").text, "2:00 kvalita": carbsFor(120, "quality").text, "3:00 Z2": carbsFor(180, "z2").text },
   };
-  const ans = await answerQuestion(env, text, context);
+  const ans = await answerQuestion(env, text, ctx.s.ai_private ? stripHealth(context) : context);
   if (ans) return send(env, e(ans));
   await send(env, `Na tohle ti teď bez LLM neodpovím. Zkus /rano, /plan, /zitra, /aktivita, /tyden nebo /pomoc.\n<i>Dnes: ${e(decision)} – ${e(why)}</i>`);
 }

@@ -1,4 +1,5 @@
 // 6. kolo: stav (nemoc / zranění / dovolená), přesun kvality, kalendář měsíce, chat s AI.
+import { pageAllowedPrivate, stripHealth } from "../core/privacy";
 import { Hono } from "hono";
 import type { Env } from "../env";
 import { STATUS_LABEL, type StatusKind } from "../core/readinessScore";
@@ -109,7 +110,7 @@ round6.post("/plan/own", async (c) => {
 });
 
 round6.post("/chat", async (c) => {
-  const { messages, page } = (await c.req.json()) as { messages: { role: string; content: string }[]; page?: { title?: string; text?: string } | null };
+  const { messages, page } = (await c.req.json()) as { messages: { role: string; content: string }[]; page?: { title?: string; text?: string; hash?: string } | null };
   if (!Array.isArray(messages) || !messages.length) return c.json({ error: "bad input" }, 400);
   const msgs = messages.slice(-10).map((m) => ({ role: (m.role === "assistant" ? "assistant" : "user") as "assistant" | "user", content: String(m.content ?? "").slice(0, 2000) }));
   let ctx = await loadCtx(c.env);
@@ -128,10 +129,13 @@ ${wk}
 
 Změny (${p.changes.length}) čekají na potvrzení v Trenérovi → Návrh změn.${own.with ? " U jízdy s někým se nedivím, když Z2 přetáhneš – v rozboru aktivity to označ „Jel jsem s někým“." : ""}`, checked: true, action: { kind: "jizda", date: own.date, proposal: pid } });
   }
+  // soukromí: bez zdravotních údajů a bez obsahu stránek, které je ukazují (Zotavení, Přehled…)
+  const priv = !!ctx.s.ai_private;
+  const showPage = !!page?.text && (!priv || pageAllowedPrivate(String(page.hash ?? "")));
   const context = {
-    ...(await aiContext(c.env, ctx)),
+    ...(priv ? stripHealth(await aiContext(c.env, ctx)) : await aiContext(c.env, ctx)),
     // co uživatel právě vidí na stránce dashboardu (panel 🤖) – odpovídej hlavně k tomu
-    ...(page?.text ? { stranka_kterou_vidi: { nazev: String(page.title ?? "").slice(0, 80), obsah: String(page.text).slice(0, 3500) } } : {}),
+    ...(showPage ? { stranka_kterou_vidi: { nazev: String(page!.title ?? "").slice(0, 80), obsah: String(page!.text).slice(0, 3500) } } : {}),
   };
   const out = await answerChat(c.env, msgs, context);
   if (!out) return c.json({ error: "AI teď neodpovídá (Workers AI nedostupné, nebo vypnuté v Nastavení)." }, 503);

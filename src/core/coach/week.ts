@@ -2,6 +2,7 @@
 // Malý řešič: projde kombinace dnů a rolí, tvrdá pravidla vyřadí, zbytek oboduje. Stejný vstup = stejný výsledek.
 // Žádné nastavené dny: trénovat jde kdykoli. Pořadí důležitosti je kvalita → dlouhý → vytrvalost, takže když
 // v týdnu zbývá málo dnů (něco jsi vynechal), zůstane to důležité a vytrvalost propadne.
+import type { StepEdit } from "./library";
 import { PLAN_SPORTS, type PlanSport } from "../../datasource/types";
 import { addDays, dow } from "../../lib/time";
 import type { OwnRide } from "../ownRide";
@@ -29,6 +30,8 @@ export interface Fixed {
   type?: "z2" | "quality";
   minutes?: number;
   own?: OwnRide;
+  /** tvoje úprava kroků kvality (počet, délka úseku, intenzita) */
+  edit?: StepEdit;
 }
 
 /** Skutečnost dne (odjeté aktivity). */

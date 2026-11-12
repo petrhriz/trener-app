@@ -36,7 +36,8 @@ export interface CalItem {
 export interface Constraint {
   date: string;
   /** sport = náhrada kola jiným sportem, note = ride | run | xc_ski | walk; typ = vynucený druh jednotky, note = z2 | quality */
-  kind: "nemuzu" | "hokej" | "bezky" | "nemoc" | "dovolena" | "nepojedu" | "sport" | "typ" | "jizda" | "delka";
+  /** kroky = tvoje úprava kvality, note = JSON {reps, work_s, pct} (Trenér v2) */
+  kind: "nemuzu" | "hokej" | "bezky" | "nemoc" | "dovolena" | "nepojedu" | "sport" | "typ" | "jizda" | "delka" | "kroky";
   note: string | null;
 }
 

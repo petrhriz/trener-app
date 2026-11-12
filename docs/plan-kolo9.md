@@ -5,46 +5,54 @@ Podnět: návrh a audit od ChatGPT (`screenshoty/Chatgpt navrh stranky/`). Záv�
 
 | # | Co | Stav |
 |---|---|---|
+| 0 | Kondice z intervals.icu za celou historii | hotovo |
 | 1 | AI trenér: kontrola celého týdne po úpravě | hotovo |
-| 2 | Zóny s datem platnosti | čeká |
-| 3 | Editor tréninku s grafem intervalů | čeká |
-| 4 | (volitelně) AI dostane jen tréninková čísla, bez zdravotních | čeká na rozhodnutí |
+| 2 | FTP a zóny s datem platnosti | hotovo |
+| 3 | Graf tréninku a úprava kvality | hotovo |
+| 4 | AI bez zdravotních údajů (přepínač) | hotovo, výchozí vypnuto |
+
+## 0. Kondice z intervals.icu za celou historii
+
+Do intervals.icu se nahrála historie od 2019. Aplikace z něj dřív dočetla kondici jen od září 2025 (dočtení
+skončilo, když tam starší data nebyla), starší roky počítala sama ze zátěže odhadnuté z tepu.
+
+- Vzorec je stejný jako v intervals.icu (veřejný model Banister / Coggan: CTL 42 dní, ATL 7 dní, forma = CTL − ATL).
+  Nad zátěží z intervals.icu dává do 0,2 stejné CTL.
+- Rozdíl byl jen v zátěži aktivit bez wattmetru: vlastní odhad z průměrného tepu o 5–13 % výš (dnešní LTHR a klidový
+  tep na staré roky), CTL v průměru o 1–3,5 výš, v jednotlivých dnech až o 7,6.
+- Oprava: znovu dočíst kondici (`icu_fit_bf` verze 2) a nový krok `icu zátěž historie` (zátěž starších aktivit).
+  Dočítá se jen s potřebnými poli (`fields=`), jinak velká odpověď přetáhne limit CPU.
+- Výsledek: uložená kondice sedí s intervals.icu ve všech letech. Srovnání: `node scripts/compare-kondice.mjs`.
+- intervals.icu tedy zůstává zdrojem kondice; vlastní výpočet je záloha pro dny a aktivity, které ještě nemá.
 
 ## 1. AI trenér: kontrola celého týdne po úpravě
 
-**Problém:** `/coach/ask` po úpravách od AI hledal nová porušení pravidel jen na dnech, které AI změnila.
-Přesun ale umí rozbít i jiný den: 4 dny tréninku za sebou (chyba padne na den, kterého se AI nedotkla),
-kvalita den po nově dlouhém dni, propad formy pod hranici o pár dní později.
+`/coach/ask` po úpravách od AI hledal nová porušení pravidel jen na upravených dnech. Přesun ale umí rozbít i jiný
+den (4 dny za sebou, kvalita po nově dlouhém dni, propad formy o pár dní dál). `newViolations(before, after)`
+v `src/core/coach/validate.ts` porovná kontrolu celého týdne; nová chyba kdekoli → upravené dny se vrátí.
+U řady dní a propadu formy rozhoduje počet výskytů, ne datum. Upozornění úpravu nevrací.
 
-**Řešení:** čistá funkce `newViolations(before, after)` v `src/core/coach/validate.ts` porovná výsledek
-závěrečné kontroly týdne před a po úpravě. Nové chyby nebo výjimky kdekoli v týdnu → upravené dny se vrátí.
-U řady dní a propadu formy rozhoduje počet výskytů, ne datum (posun už existujícího porušení úpravu nezablokuje).
-Upozornění (chybějící dlouhý, 80/20) úpravu nevrací. Testy v `test/coach/audit.test.ts`.
+## 2. FTP a zóny s datem platnosti
 
-Platí jen pro Trenéra v2 (`settings.coach_v2`); původní plánovač má vlastní `checkWeek`.
+- Tabulka `zone_history` (migrace 0012): řádek platí od `date` do dalšího. `zonesAt()` v `src/core/zones.ts`.
+- Plnění: změna FTP / zón (Nastavení, intervals.icu, Garmin) → řádek od dneška (`recordZones`, každou hodinu
+  a při uložení Nastavení). Historie FTP z jízd v intervals.icu (`icu_ftp` v den jízdy, krok `historie zón`).
+- Výsledek u vlastníka: 298 W do 8/2025 (hodnota z doby nahrání do intervals.icu, ne skutečná tehdejší),
+  250 W od 4. 9. 2025, 298 W od 26. 9. 2026.
+- Podle tehdejších hodnot se teď počítá: barvy zón v grafu aktivity, popis zón tepu, výkon v Z2 na tep,
+  výběr lehkých jízd pro EF a vlastní odhad zátěže. Přehled v Nastavení → „FTP a zóny v čase“.
 
-## 2. Zóny s datem platnosti
+## 3. Graf tréninku a úprava kvality
 
-**Cíl:** když se změní FTP, práh nebo tepové zóny, staré aktivity zůstanou vyhodnocené podle zón, které platily
-v den aktivity (čas v zónách, zátěž, 80/20), a dnešní zóny se nepromítnou zpětně do historie.
+- Trenér: u každého tréninku graf (sloupec = krok, šířka = délka, výška a barva = % FTP / zóna tepu, čárkovaně FTP).
+- U kvality v panelu „Upravit“: počet opakování, délka úseku, intenzita ±10 %. Uloží se jako omezení dne `kroky`
+  (JSON) + typ kvalita, aby řešič den neodsunul. `applyStepEdit()` v `src/core/coach/library.ts` přepočítá délku,
+  zátěž, čas nad Z2 i cíl okruhů; pracovní čas série nejvýš +50 %. Souvislé tempo: jen délka a intenzita.
+  Kontrola týdne bere úpravu jako tvoji volbu (výjimka). „Zpět na návrh trenéra“ úpravu smaže.
 
-Náčrt:
-- tabulka historie zón (od kdy platí, sport, FTP / práh / LTHR, hranice) – nová migrace + `TENANT_TABLES`,
-- při změně v Nastavení nebo při novém FTP z `ftpCheck` se uloží nový záznam místo přepsání,
-- výpočty v `src/core/` dostanou zóny podle data aktivity (funkce „zóny k datu“),
-- v Nastavení přehled: od kdy platily které hodnoty.
+## 4. AI bez zdravotních údajů
 
-## 3. Editor tréninku s grafem intervalů
-
-**Cíl:** u naplánovaného tréninku vidět průběh intervalů jako graf (sloupce podle intenzity a délky,
-barvy zón), jak to má intervals.icu, a jednoduše upravit kroky (délka, intenzita, opakování).
-
-Náčrt:
-- graf ze struktury, kterou už dává knihovna (`buildWorkout`), v `public/app.js` jako SVG,
-- úpravy kroků uložené jako omezení dne, kontrola stropů a délky v `src/core/`,
-- zápis do intervals.icu stejně jako dnes (až po „Zapsat“).
-
-## 4. (volitelně) Co AI dostane
-
-Google AI Studio může na bezplatném tarifu použít data ke zlepšování služeb (`src/llm/providers.ts`).
-Možnost: přepínač v Nastavení, který zdravotní hodnoty (HRV, spánek, klidový tep) do AI neposílá.
+Nastavení → „AI nedostane zdravotní údaje“. Zapnuto: z kontextu chatu, Telegramu a zhodnocení aktivity se vyřadí
+VST, klidový tep, spánek, stres, Body Battery, dech, váha a zotavení (`stripHealth` v `src/core/privacy.ts`),
+obsah stránky se pošle jen u tréninkových stránek, AI trenér nedostane ranní připravenost a závěry zpráv
+se neuhlazují. Výchozí vypnuto (chování beze změny).

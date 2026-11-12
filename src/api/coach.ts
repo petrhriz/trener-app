@@ -18,12 +18,13 @@ import { resetCoachWeeks } from "../coach/store";
 import { profileFromHistory, profileSummary, validateProfile } from "../core/coach/profile";
 import { constraintNoteOk } from "../core/coach/engine";
 import { MAX_OWN_MIN } from "../core/coach/week";
+import { readStepEdit } from "../core/coach/library";
 import { type ValidationItem, type WeekValidation, newViolations } from "../core/coach/validate";
 import { getSettings, setSetting } from "../lib/settings";
 
 export const coachApi = new Hono<{ Bindings: Env; Variables: { uid: number } }>();
 const isDate = (d: unknown): d is string => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d);
-const USER_KINDS = ["sport", "typ", "delka", "jizda"];
+const USER_KINDS = ["sport", "typ", "delka", "jizda", "kroky"];
 
 type Day = Awaited<ReturnType<typeof planFor>>["days"][number];
 interface Session { sport: string; type: "z2" | "quality"; min: number | null; own: string | null }
@@ -33,7 +34,7 @@ const sessionOf = (d: Day | undefined): Session | null =>
     : null;
 
 async function clearDay(env: Env, date: string) {
-  await run(env.DB, `DELETE FROM constraints WHERE date = ? AND kind IN ('typ', 'delka', 'jizda')`, date);
+  await run(env.DB, `DELETE FROM constraints WHERE date = ? AND kind IN ('typ', 'delka', 'jizda', 'kroky')`, date);
 }
 /** Dát trénink na den (null = volno). */
 async function place(env: Env, date: string, s: Session | null) {
@@ -86,7 +87,25 @@ coachApi.post("/plan/len", async (c) => {
   return c.json({ ok: true, ...(await proposalAfter(c.env)) });
 });
 
-/** Vrátit všechny moje úpravy plánu od dneška (sport, druh, délka, vlastní jízda). */
+/**
+ * Editor tréninku: úprava hlavní série kvality (počet opakování, délka úseku v s, intenzita ±10 %). Den se zároveň
+ * zafixuje jako kvalita, aby ho řešič neodsunul. Limity a pojistku růstu hlídá applyStepEdit; prázdná úprava = zpět.
+ */
+coachApi.post("/plan/steps", async (c) => {
+  const b = (await c.req.json()) as { date: string; reps?: number; work_s?: number; pct?: number; reset?: boolean };
+  if (!isDate(b.date)) return c.json({ error: "bad input" }, 400);
+  if (b.reset) {
+    await run(c.env.DB, "DELETE FROM constraints WHERE date = ? AND kind = 'kroky'", b.date);
+    return c.json({ ok: true, ...(await proposalAfter(c.env)) });
+  }
+  const note = JSON.stringify({ reps: b.reps, work_s: b.work_s, pct: b.pct ?? 0 });
+  if (!constraintNoteOk("kroky", note) || !readStepEdit(note)) return c.json({ error: "Mimo rozsah: opakování 1–12, úsek 30 s – 30 min, intenzita ±10 %." }, 400);
+  await addConstraint(c.env, b.date, "kroky", note);
+  await addConstraint(c.env, b.date, "typ", "quality");
+  return c.json({ ok: true, ...(await proposalAfter(c.env)) });
+});
+
+/** Vrátit všechny moje úpravy plánu od dneška (sport, druh, délka, vlastní jízda, kroky). */
 coachApi.post("/plan/reset", async (c) => {
   const ctx = await loadCtx(c.env);
   await run(c.env.DB, `DELETE FROM constraints WHERE date >= ? AND kind IN (${USER_KINDS.map(() => "?").join(", ")})`, ctx.T, ...USER_KINDS);
@@ -120,7 +139,7 @@ Povolené akce (data jen z plánu níže):
 {"a":"sport","date":"YYYY-MM-DD","sport":"ride|run|xc_ski|walk"}
 {"a":"own","date":"YYYY-MM-DD","min":240,"with":"jméno nebo null"}  vlastní jízda
 Pravidla: kvalita ne dva dny po sobě; při formě pod −20 nebo špatné připravenosti spíš uber; když uživatel nemá čas, zkrať nebo přesuň, kvalitu zachovej, pokud to jde. Když není co měnit, actions = [].`;
-  const user = `STAV: kondice CTL ${m?.ctl?.toFixed?.(1) ?? "?"}, únava ATL ${m?.atl?.toFixed?.(1) ?? "?"}, forma TSB ${m?.form?.toFixed?.(1) ?? "?"} (${m?.form != null ? formZone(m.form) : "?"}), připravenost ráno: ${rec.stateLabel}. Cíl týdne zátěž ${p.weeklyTarget.lo}–${p.weeklyTarget.hi}.
+  const user = `STAV: kondice CTL ${m?.ctl?.toFixed?.(1) ?? "?"}, únava ATL ${m?.atl?.toFixed?.(1) ?? "?"}, forma TSB ${m?.form?.toFixed?.(1) ?? "?"} (${m?.form != null ? formZone(m.form) : "?"})${ctx.s.ai_private ? "" : `, připravenost ráno: ${rec.stateLabel}`}. Cíl týdne zátěž ${p.weeklyTarget.lo}–${p.weeklyTarget.hi}.
 PLÁN: ${JSON.stringify(days)}
 DNES: ${ctx.T}
 ZPRÁVA: ${q}`;
@@ -138,7 +157,7 @@ ZPRÁVA: ${q}`;
   const guard = !!ctx.s.coach_v2;
   const before = guardItems(p);
   const planDates = p.days.map((d) => d.date).sort();
-  const snap = guard && planDates.length ? await all<{ date: string; kind: string; note: string | null; created_at: string | null }>(c.env.DB, `SELECT date, kind, note, created_at FROM constraints WHERE date >= ? AND date <= ? AND kind IN ('sport', 'typ', 'delka', 'jizda')`, planDates[0], planDates[planDates.length - 1]) : [];
+  const snap = guard && planDates.length ? await all<{ date: string; kind: string; note: string | null; created_at: string | null }>(c.env.DB, `SELECT date, kind, note, created_at FROM constraints WHERE date >= ? AND date <= ? AND kind IN ('sport', 'typ', 'delka', 'jizda', 'kroky')`, planDates[0], planDates[planDates.length - 1]) : [];
   const touched = new Set<string>();
   for (const a of (parsed.actions ?? []).slice(0, 6)) {
     for (const d of [a?.date, a?.from, a?.to]) if (inPlan(d)) touched.add(d as string);
@@ -168,7 +187,7 @@ ZPRÁVA: ${q}`;
     const bad = newViolations(before, guardItems(np));
     if (bad.length) {
       for (const d of touched) {
-        await run(c.env.DB, `DELETE FROM constraints WHERE date = ? AND kind IN ('sport', 'typ', 'delka', 'jizda')`, d);
+        await run(c.env.DB, `DELETE FROM constraints WHERE date = ? AND kind IN ('sport', 'typ', 'delka', 'jizda', 'kroky')`, d);
         for (const r of snap.filter((x) => x.date === d)) await run(c.env.DB, "INSERT INTO constraints (date, kind, note, created_at) VALUES (?, ?, ?, ?)", r.date, r.kind, r.note, r.created_at ?? new Date().toISOString());
       }
       applied.length = 0;
@@ -183,7 +202,7 @@ ZPRÁVA: ${q}`;
 /** pro UI: které dny mají moje úpravy (badge „tvoje úprava“) */
 coachApi.get("/plan/mine", async (c) => {
   const ctx = await loadCtx(c.env);
-  const rows = await all<{ date: string; kind: string; note: string | null }>(c.env.DB, `SELECT date, kind, note FROM constraints WHERE date >= ? AND kind IN ('sport', 'typ', 'delka', 'jizda')`, ctx.T);
+  const rows = await all<{ date: string; kind: string; note: string | null }>(c.env.DB, `SELECT date, kind, note FROM constraints WHERE date >= ? AND kind IN ('sport', 'typ', 'delka', 'jizda', 'kroky')`, ctx.T);
   return c.json(rows.map((r) => ({ ...r, own: r.kind === "jizda" ? readOwnRide(r.note) : null })));
 });
 

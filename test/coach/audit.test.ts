@@ -8,7 +8,7 @@ import type { NLap } from "../../src/datasource/types";
 import type { HrZones } from "../../src/core/zones";
 import { NO_FATIGUE } from "../../src/core/coach/target";
 import { type CoachDay, type EngineAct, type EngineInput, type PlanInputsFingerprint, type ProgressRow, type StoredWeek, ALGO_VERSION, EVAL_WAIT_DAYS, constraintNoteOk, fingerprintOf, fixedFromConstraints, isClosed, matchKey, runEngine } from "../../src/core/coach/engine";
-import { type Cat, type Zones, CATS, buildWorkout, pickLib } from "../../src/core/coach/library";
+import { type Cat, type Zones, CATS, buildWorkout, editableBlock, pickLib } from "../../src/core/coach/library";
 import { type CoachProfile, profileFromHistory, validateProfile } from "../../src/core/coach/profile";
 import { distribution, outcomeOf } from "../../src/core/coach/progress";
 import { runReadiness } from "../../src/core/coach/run";
@@ -451,5 +451,27 @@ describe("audit: drobnosti", () => {
     const metric = (d: string) => ({ ctl: d < "2026-04-01" ? 30 : d < "2026-04-29" ? 30 + ((Date.parse(d) - Date.parse("2026-04-01")) / 864e5 / 7) * 4 : 46, atl: 46 });
     const out = runEngine({ ...s.input("2026-06-01"), metric });
     expect(out.plan.coach.ramp).toBeLessThanOrEqual(2);
+  });
+});
+
+// ---------- 9. kolo: editor tréninku ----------
+describe("kolo 9: tvoje úprava kvality v plánu", () => {
+  it("úprava kroků se projeví v plánu dne (název, zátěž) a kontrola týdne ji bere jako tvoji volbu", () => {
+    const s = simulate({ start: "2026-11-16", days: 1, goal: "zvyseni", ctl: 50, atl: 45 });
+    const T = "2026-11-17";
+    const base = runEngine(s.input(T));
+    const key = base.plan.days.find((d) => d.kind === "quality" && d.date > T && d.workout);
+    expect(key, "v týdnu je kvalita").toBeTruthy();
+    const bi = editableBlock(key!.workout!);
+    const blk = key!.workout!.blocks[bi]!;
+    const work = blk.steps[0]!.dur_s - 300;
+    const cons = [{ date: key!.date, kind: "kroky" as const, note: JSON.stringify({ work_s: work }) }, { date: key!.date, kind: "typ" as const, note: "quality" }];
+    const out = runEngine({ ...s.input(T), constraints: cons });
+    const d = out.plan.days.find((x) => x.date === key!.date)!;
+    expect(d.kind).toBe("quality");
+    expect(d.name).toMatch(/\(upraveno\)/);
+    expect(d.workout!.blocks[bi]!.steps[0]!.dur_s).toBe(work);
+    expect(d.load).toBeLessThan(key!.load);
+    expect(out.plan.coach.validation.items.filter((i) => i.level === "error" && i.date === d.date)).toEqual([]);
   });
 });

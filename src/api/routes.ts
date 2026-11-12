@@ -370,6 +370,8 @@ api.get("/coach", async (c) => {
     insights,
     recent,
     readiness: r,
+    // graf tréninku: % FTP kroků (watty) a zóny tepu (kroky podle tepu)
+    ftp: ctx.s.ftp,
     floor: [
       { label: "Dlouhá jízda o víkendu (≥ 1:30)", done: longRide, planned: longPlanned },
       ...(ctx.s.floor_strength ? [{ label: "Síla 1× týdně", done: (strength?.n ?? 0) >= 1, planned: false, count: strength?.n ?? 0 }] : []),

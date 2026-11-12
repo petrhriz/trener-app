@@ -255,6 +255,12 @@ export async function addConstraint(env: Env, date: string, kind: string, note: 
     if (note) await run(env.DB, "INSERT INTO constraints (date, kind, note, created_at) VALUES (?, 'jizda', ?, ?)", date, note, new Date().toISOString());
     return;
   }
+  if (kind === "kroky") {
+    // tvoje úprava kvality (JSON {reps, work_s, pct}); platí poslední zadání pro den
+    await run(env.DB, "DELETE FROM constraints WHERE date = ? AND kind = 'kroky'", date);
+    if (note) await run(env.DB, "INSERT INTO constraints (date, kind, note, created_at) VALUES (?, 'kroky', ?, ?)", date, note, new Date().toISOString());
+    return;
+  }
   const exists = await first(env.DB, "SELECT 1 AS x FROM constraints WHERE date = ? AND kind = ?", date, kind);
   if (exists) return;
   let evId: string | null = null;

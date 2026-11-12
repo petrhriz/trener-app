@@ -4,6 +4,8 @@
 import type { Env } from "../env";
 import type { ActivityAnalysis } from "../core/activity";
 import { llmAvailable, numbersOk, runChat, lastModel } from "./llm";
+import { stripHealth } from "../core/privacy";
+import { getSettings } from "../lib/settings";
 
 const SYS = `Jsi osobní trenér vytrvalostních sportů (kolo, běh, běžky). Píšeš krátké zhodnocení jedné aktivity svému svěřenci.
 Česky, tykej, 2–3 krátké věty, max. 60 slov. Žádné nadpisy, odrážky ani emoji.
@@ -38,7 +40,9 @@ export async function activityComment(env: Env, rep: ActivityAnalysis, extra: Re
     okruhy: rep.laps.show ? rep.laps.rows.slice(0, 12).map((l) => `${l.name}: ${l.time}${l.power ? `, ${l.power}` : ""}, tep ${l.hr}`) : null,
     ...extra,
   };
-  const out = await runChat(env, [{ role: "system", content: SYS }, { role: "user", content: `KONTEXT (JSON):\n${JSON.stringify(ctx)}\n\nNapiš zhodnocení.` }], 260, 0.3);
+  // soukromí: bez dopadu na Body Battery a dalších zdravotních údajů (src/core/privacy.ts)
+  const priv = !!(await getSettings(env.DB)).ai_private;
+  const out = await runChat(env, [{ role: "system", content: SYS }, { role: "user", content: `KONTEXT (JSON):\n${JSON.stringify(priv ? stripHealth(ctx) : ctx)}\n\nNapiš zhodnocení.` }], 260, 0.3);
   if (!out) return null;
   const text = out.replace(/^\s*(zhodnocení|hodnocení)\s*:\s*/i, "").trim();
   if (!text || !numbersOk(text, ctx)) return null;

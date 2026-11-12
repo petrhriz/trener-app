@@ -16,7 +16,7 @@ import type { State } from "../recovery";
 import type { DayWeather } from "../weather";
 import { type Workout, SPORT_LABEL, humanSteps, renderIcu } from "../workout";
 import { type Budget, type Fatigue, type Recent, NO_FATIGUE, PHASE_LABEL, isWinter, weekTarget } from "./target";
-import { type Built, type Cat, type Family, type Zones, CAT_NAME, CAT_PURPOSE, EASY_LOAD_H, START_TIER, buildWorkout, catCandidates, catNeeds, chooseCat, isCat, libById, pickLib } from "./library";
+import { type Built, type Cat, type Family, type Zones, CAT_NAME, CAT_PURPOSE, EASY_LOAD_H, START_TIER, applyStepEdit, buildWorkout, readStepEdit, catCandidates, catNeeds, chooseCat, isCat, libById, pickLib } from "./library";
 import type { CoachProfile } from "./profile";
 import { type Distribution, distribution, nextLevel, outcomeOf } from "./progress";
 import { runReadiness } from "./run";
@@ -229,11 +229,12 @@ export function constraintNoteOk(kind: string, note: string | null | undefined):
   if (kind === "typ") return empty || note === "z2" || note === "quality" || note === "auto";
   if (kind === "delka") { if (empty) return true; const n = Number(note); return Number.isFinite(n) && n >= 20 && n <= Math.max(...Object.values(MAX_DAY_MIN)); }
   if (kind === "jizda") { if (empty) return true; const o = readOwnRide(note!); return !!o && o.min >= 20 && o.min <= MAX_OWN_MIN; }
+  if (kind === "kroky") return empty || readStepEdit(note) != null;
   return note == null || note.length <= 200;
 }
 
 /** Pořadí zpracování omezení dne: výsledek nesmí záviset na pořadí řádků z databáze (výslovně zvolený sport má přednost před „běžky“). */
-const CON_ORDER = ["nemoc", "nepojedu", "dovolena", "nemuzu", "hokej", "bezky", "sport", "typ", "delka", "jizda"];
+const CON_ORDER = ["nemoc", "nepojedu", "dovolena", "nemuzu", "hokej", "bezky", "sport", "typ", "delka", "jizda", "kroky"];
 
 /** Klíčový den je uzavřený: vyhodnocený, vynechaný, nebo nejasný (starší uložené plány: evaluated = true). */
 export const isClosed = (d: Pick<CoachDay, "evaluated" | "evalState">): boolean => d.evalState ? d.evalState !== "pending" : d.evaluated === true;
@@ -279,10 +280,11 @@ export function fixedFromConstraints(cons: Constraint[]): Map<string, Fixed> {
     else if (c.kind === "typ" && (c.note === "z2" || c.note === "quality")) f.type = c.note;
     else if (c.kind === "delka" && Number.isFinite(Number(c.note)) && Number(c.note) >= 20) f.minutes = Math.min(Math.max(...Object.values(MAX_DAY_MIN)), Math.round(Number(c.note)));
     else if (c.kind === "jizda") { const o = readOwnRide(c.note); if (o && Number.isFinite(o.min)) f.own = { ...o, min: Math.min(MAX_OWN_MIN, Math.round(o.min)) }; }
+    else if (c.kind === "kroky") { const e = readStepEdit(c.note); if (e) f.edit = e; }
   }
   for (const [d, f] of out) {
     if (f.rest && !f.blocked) out.set(d, { rest: true });
-    else if (f.own) { f.sport = f.sport ?? "ride"; delete f.type; delete f.minutes; }
+    else if (f.own) { f.sport = f.sport ?? "ride"; delete f.type; delete f.minutes; delete f.edit; }
     if (!Object.keys(out.get(d)!).length) out.delete(d);
   }
   return out;
@@ -316,6 +318,11 @@ export function runEngine(inp: EngineInput): EngineOutput {
   // ---- co se ví z historie: zátěž za hodinu, poslední 4 týdny, obvyklé a nejdelší délky ----
   const er = easyRate(inp.acts, T, p.primary, p.primary === "ride" && power);
   const calibOf = (s: PlanSport) => (s === p.primary ? er.calib : easyRate(inp.acts, T, s, s === "ride" && power).calib);
+  /** tvoje úprava kroků platí jen pro kvalitu (jiný druh dne ji ignoruje) */
+  const withEdit = (b: Built, role: Role, sport: PlanSport, date: string): Built => {
+    const e = role === "key" ? fixedAll.get(date)?.edit : undefined;
+    return e ? applyStepEdit(b, e, sport === "ride" ? inp.zones.ftp : null, calibOf(sport), sport === "run") : b;
+  };
   // běh dává za hodinu víc zátěže než lehká jízda (tep je při běhu výš)
   const runRate = easyRate(inp.acts, T, "run", false).rate;
   const dayMin = new Map<string, number>();
@@ -543,7 +550,8 @@ export function runEngine(inp: EngineInput): EngineOutput {
         reason = `Dlouhý trénink: základ vytrvalosti${lg ? `. Nejdelší za 6 týdnů ${minHm(lg)}, dnes ${minHm(minutes)}` : ""}${ffOk ? "; závěr v tempu učí držet výkon na unavených nohách" : ""}.`;
       }
       if (!family) { family = "end"; reason = "Lehký objem v Z2: drží vytrvalost a nebere síly na kvalitu."; }
-      const b = buildWorkout({ sport: x.sport, family, level, wid, minutes, indoor, zones: inp.zones, calib: calibOf(x.sport) });
+      const b = withEdit(buildWorkout({ sport: x.sport, family, level, wid, minutes, indoor, zones: inp.zones, calib: calibOf(x.sport) }), role, x.sport, x.date);
+      if (role === "key" && fixedAll.get(x.date)?.edit && b.name.endsWith("(upraveno)")) why.push("tvoje úprava kroků");
       let load = b.load, name = b.name;
       if (x.own) {
         load = Math.round(b.load * (x.own.with ? 1.15 : 1));
@@ -609,7 +617,7 @@ export function runEngine(inp: EngineInput): EngineOutput {
     const validation = validateWeek({
       weekStart,
       from,
-      days: days.map((d) => ({ date: d.date, role: d.role, sport: d.sport, minutes: d.minutes, tiz: d.tiz, blocked: !!d.blocked, own: !!d.own, userQuality: fixed.get(d.date)?.type === "quality", userMinutes: !!fixed.get(d.date)?.minutes, downgraded: d.downgraded ?? null })),
+      days: days.map((d) => ({ date: d.date, role: d.role, sport: d.sport, minutes: d.minutes, tiz: d.tiz, blocked: !!d.blocked, own: !!d.own, userQuality: fixed.get(d.date)?.type === "quality", userMinutes: !!fixed.get(d.date)?.minutes || (d.role === "key" && !!fixed.get(d.date)?.edit), downgraded: d.downgraded ?? null })),
       past,
       keys: keysWanted,
       long: budget.long,
@@ -696,7 +704,7 @@ export function runEngine(inp: EngineInput): EngineOutput {
   const built = new Map<string, Built | null>();
   const workoutOf = (d: CoachDay): Built | null => {
     if (d.role === "rest" || !d.family) return null;
-    if (!built.has(d.date)) built.set(d.date, buildWorkout({ sport: d.sport, family: d.family, level: d.level, wid: d.wid, minutes: d.minutes, indoor: d.indoor, zones: inp.zones, calib: calibOf(d.sport) }));
+    if (!built.has(d.date)) built.set(d.date, withEdit(buildWorkout({ sport: d.sport, family: d.family, level: d.level, wid: d.wid, minutes: d.minutes, indoor: d.indoor, zones: inp.zones, calib: calibOf(d.sport) }), d.role, d.sport, d.date));
     return built.get(d.date)!;
   };
   const cap = (s: string) => (s ? s[0]!.toUpperCase() + s.slice(1) : s);

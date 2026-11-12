@@ -1105,6 +1105,43 @@ function weekBar(w, label) {
     <div class="wb-l"><span><i class="wb-sw done"></i>hotovo ${thou(w.done || 0)}</span><span><i class="wb-sw plan"></i>plán ${thou(w.planned || 0)}</span><span><i class="wb-sw band"></i>cíl týdne</span></div></div>`;
 }
 let tTab = (() => { try { return localStorage.getItem("tTab") || "tyden"; } catch { return "tyden"; } })(), tMoreOpen = false;
+// ---------- graf tréninku (9. kolo) ----------
+/** výška kroků podle tepu (Z1–Z5), když krok nemá watty */
+const WZ_PCT = [0.5, 0.65, 0.82, 0.97, 1.1];
+const wkPct = (s, ftp) => (s.lo != null && s.hi != null && ftp ? (s.lo + s.hi) / 2 / ftp : WZ_PCT[(s.z || 2) - 1] ?? 0.65);
+/** zóna výkonu (Coggan Z1–Z7) z podílu FTP */
+const wkZone = (p) => (p < 0.55 ? 1 : p < 0.76 ? 2 : p < 0.91 ? 3 : p < 1.06 ? 4 : p < 1.21 ? 5 : p < 1.5 ? 6 : 7);
+/** Hlavní část kvality, kterou jde upravit (stejně jako editableBlock na serveru). */
+const edIdx = (w) => { let i = w.blocks.findIndex((b) => (b.reps || 1) > 1 && b.steps.length); if (i < 0) i = w.blocks.findIndex((b) => b.kind === "work" && b.steps.length); return i; };
+/** Sloupec = krok tréninku: šířka = délka, výška a barva = intenzita. `hl` = zvýraznit blok (upravovaná série). */
+function workoutSvg(w, ftp, hl = null) {
+  if (!w || !w.blocks || !w.blocks.length) return "";
+  const segs = [];
+  w.blocks.forEach((b, bi) => { for (let r = 0; r < (b.reps || 1); r++) b.steps.forEach((s) => segs.push({ d: s.dur_s, p: wkPct(s, ftp), bi, t: s.lo != null && s.hi != null ? `${s.lo}–${s.hi} W` : s.hrLo ? `${s.hrLo}–${s.hrHi} bpm` : `Z${s.z || 2} tepu` })); });
+  const tot = segs.reduce((t, s) => t + s.d, 0) || 1;
+  const W = 600, H = 64, maxP = Math.max(1.2, ...segs.map((s) => s.p));
+  let x = 0;
+  const rects = segs.map((s) => {
+    const w2 = (s.d / tot) * W, h = Math.max(4, (s.p / maxP) * (H - 4));
+    const r = `<rect x="${x.toFixed(1)}" y="${(H - h).toFixed(1)}" width="${Math.max(0.6, w2 - 0.8).toFixed(1)}" height="${h.toFixed(1)}" rx="1.5" fill="var(--z${wkZone(s.p)})"${hl != null && s.bi !== hl ? ' opacity=".45"' : ""}><title>${dur(s.d)} · ${s.t}</title></rect>`;
+    x += w2;
+    return r;
+  }).join("");
+  const fy = (H - (1 / maxP) * (H - 4)).toFixed(1);
+  return `<div class="wkg"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Průběh tréninku">${rects}${ftp ? `<line x1="0" x2="${W}" y1="${fy}" y2="${fy}" class="wkg-ftp"/>` : ""}</svg><div class="wkg-ax"><span>0</span><span>${ftp ? "čárkovaně = FTP" : ""}</span><span>${dur(tot)}</span></div></div>`;
+}
+/** Úprava kvality: opakování, délka úseku, intenzita (uloží se jako tvoje úprava dne). */
+function stepEditor(x, mine) {
+  if (x.kind !== "quality" || !x.workout) return "";
+  const i = edIdx(x.workout);
+  if (i < 0) return "";
+  const b = x.workout.blocks[i], s = b.steps[0], series = (b.reps || 1) > 1 || b.steps.length > 1;
+  const m = (mine || []).find((y) => y.date === x.date && y.kind === "kroky");
+  let cur = 0; try { cur = m ? JSON.parse(m.note).pct || 0 : 0; } catch { cur = 0; }
+  return `<div class="tp-g"><span class="tp-k">Kroky</span><form class="stepf" data-date="${x.date}">${series ? `<label>Opakování<input name="reps" type="number" min="1" max="12" value="${b.reps || 1}"></label>` : ""}<label>Úsek (min)<input name="work" type="number" min="0.5" max="30" step="0.5" value="${Math.round((s.dur_s / 60) * 2) / 2}"></label><label>Intenzita<select name="pct">${[-10, -5, 0, 5, 10].map((v) => `<option value="${v}" ${v === cur ? "selected" : ""}>${v > 0 ? "+" : ""}${v} %</option>`).join("")}</select></label><button class="btn sm pri">Uložit úpravu</button>${m ? `<button type="button" class="btn sm" data-stepreset="${x.date}">Zpět na návrh trenéra</button>` : ""}</form></div>
+      <p class="note">Mění hlavní část (zvýrazněná v grafu). Pracovní čas jde zvednout nejvýš o polovinu, intenzita ±10 %. Trenér přepočítá zátěž a den bere jako tvoji volbu.</p>`;
+}
+
 async function pageTrener(el) {
   const [d, mine] = await Promise.all([api("coach"), api("plan/mine").catch(() => [])]);
   const r = d.readiness, rec = r.recovery, f = r.fitness, p = r.plan;
@@ -1158,6 +1195,8 @@ async function pageTrener(el) {
       <div class="tp-g"><span class="tp-k">Sport</span><div class="sw-sport" data-date="${x.date}">${[["ride", "🚴", "Kolo"], ["run", "🏃", "Běh"], ["xc_ski", XC_SVG, "Běžky"], ["walk", "🚶", "Chůze"]].map(([k, i, l]) => `<button class="${ride && x.sport === k ? "on" : ""}" data-sport="${k}" title="${l}">${i}</button>`).join("")}</div></div>
       ${ride && !x.own ? `<div class="tp-g"><span class="tp-k">Délka</span><div class="tp-len"><button class="btn sm" data-len="${x.date}" data-v="${Math.max(20, (x.durationMin || 60) - 15)}">−15 min</button><b class="num">${dur((x.durationMin || 0) * 60)}</b><button class="btn sm" data-len="${x.date}" data-v="${(x.durationMin || 60) + 15}">+15 min</button></div></div>` : ""}
       ${ownForm(x)}
+      ${ride && x.workout ? workoutSvg(x.workout, d.ftp, q ? edIdx(x.workout) : null) : ""}
+      ${stepEditor(x, mine)}
       ${x.steps && x.steps.length ? `<details class="stepsd"><summary>Kroky tréninku (${x.steps.length})</summary><ol class="steps">${x.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol></details>` : ""}
       ${x.note ? `<p class="note">${esc(x.note)}</p>` : ""}</div>` : "";
     return `<div class="tday ${x.isToday ? "today" : ""} ${ride ? "" : "rest"} ${q ? "q" : ""} ${open ? "open" : ""}" data-day="${x.date}" ${ride ? 'draggable="true"' : ""}>
@@ -1165,7 +1204,7 @@ async function pageTrener(el) {
       <span class="td-main">${ride ? `<span class="td-ico">${tSportIco(x.sport)}</span>` : ""}<span class="td-t"><b>${esc(x.name || (x.kind === "blocked" ? x.tag : x.kind === "hockey" ? "Hokej" : "Volno"))}</b>${tags}${x.targetText && ride ? `<small>${esc(x.targetText)}</small>` : ""}</span></span>
       <span class="td-n num">${ride ? `${dur((x.durationMin || 0) * 60)}<small>zátěž ${num(x.load)}</small>${x.targetText ? `<small class="td-tg">${esc(String(x.targetText).replace(/\s*\(.*$/, ""))}</small>` : ""}` : ""}</span>
       <span class="td-w">${wtxt}</span>
-      ${x.kind === "blocked" ? "<span></span>" : `<button class="td-btn ${ride ? "" : "add"}" data-open="${x.date}" aria-expanded="${open}" title="${ride ? "Upravit" : "Přidat trénink"}">${open ? "Zavřít" : ride ? "Upravit" : "Přidat"}</button>`}</div>${!open && ride ? `<div class="tpeek">${x.steps && x.steps.length ? `<ol class="steps">${x.steps.map((st) => `<li>${esc(st)}</li>`).join("")}</ol>` : `<p class="sub">${esc(x.targetText || "Kroky tréninku nemám.")}</p>`}${x.why && x.why.length ? `<p class="note">${esc(x.why.join(" · "))}</p>` : ""}</div>` : ""}${panel}</div>`;
+      ${x.kind === "blocked" ? "<span></span>" : `<button class="td-btn ${ride ? "" : "add"}" data-open="${x.date}" aria-expanded="${open}" title="${ride ? "Upravit" : "Přidat trénink"}">${open ? "Zavřít" : ride ? "Upravit" : "Přidat"}</button>`}</div>${!open && ride ? `<div class="tpeek">${x.workout ? workoutSvg(x.workout, d.ftp) : ""}${x.steps && x.steps.length ? `<ol class="steps">${x.steps.map((st) => `<li>${esc(st)}</li>`).join("")}</ol>` : `<p class="sub">${esc(x.targetText || "Kroky tréninku nemám.")}</p>`}${x.why && x.why.length ? `<p class="note">${esc(x.why.join(" · "))}</p>` : ""}</div>` : ""}${panel}</div>`;
   };
   const RS = { done: ["✅", "splněno", "good"], partial: ["🟡", "částečně", "warn"], missed: ["❌", "vynecháno", "bad"], skipped: ["⏸️", "volno (tvoje volba)", ""], extra: ["➕", "navíc mimo plán", ""] };
   const nPlan = rc.filter((x) => x.plan && x.status !== "skipped").length, nOk = rc.filter((x) => x.status === "done").length;
@@ -1271,6 +1310,12 @@ async function pageTrener(el) {
   }));
   el.querySelectorAll(".tpanel .sw-sport button").forEach((b) => b.addEventListener("click", () => post("plan/sport", { dates: [b.parentElement.dataset.date], sport: b.dataset.sport })));
   el.querySelectorAll("[data-len]").forEach((b) => b.addEventListener("click", () => post("plan/len", { date: b.dataset.len, min: +b.dataset.v })));
+  el.querySelectorAll(".stepf").forEach((f2) => f2.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const fd = new FormData(f2);
+    post("plan/steps", { date: f2.dataset.date, ...(fd.get("reps") ? { reps: +fd.get("reps") } : {}), work_s: Math.round(+fd.get("work") * 60), pct: +fd.get("pct") });
+  }));
+  el.querySelectorAll("[data-stepreset]").forEach((b) => b.addEventListener("click", () => post("plan/steps", { date: b.dataset.stepreset, reset: true })));
   el.querySelectorAll(".ownf").forEach((f2) => f2.addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = new FormData(f2);
@@ -2791,6 +2836,7 @@ async function pageNastaveni(el) {
      ${f("garmin_key_created", "Garmin klíč vytvořen", "date")}
      <label class="chk"><input type="checkbox" name="llm_enabled" ${s.llm_enabled ? "checked" : ""}> AI pro volné otázky a chat</label>
      <label class="chk"><input type="checkbox" name="llm_polish" ${s.llm_polish ? "checked" : ""}> LLM uhlazuje závěr zpráv</label>
+     <label class="chk"><input type="checkbox" name="ai_private" ${s.ai_private ? "checked" : ""}> AI nedostane zdravotní údaje (VST, spánek, klidový tep, stres, Body Battery, váha) – jen trénink</label>
      <label class="chk"><input type="checkbox" name="floor_strength" ${s.floor_strength ? "checked" : ""}> Síla 1× týdně v minimu týdne</label>
      <label class="chk"><input type="checkbox" name="icu_sync" ${s.icu_sync ? "checked" : ""}> Zápis plánu do intervals.icu</label>
    </div><div class="btns"><button class="btn pri" type="submit">Uložit</button><span class="note" id="saved"></span></div></form>`)}
@@ -2820,7 +2866,7 @@ async function pageNastaveni(el) {
     for (const k of ["goal_name", "goal_date", "garmin_key_created"]) body[k] = fd.get(k) || null;
     for (const k of ["goal", "place_name", "morning_from", "morning_to", "evening_time", "weekly_time"]) if (String(fd.get(k) ?? "").trim()) body[k] = String(fd.get(k)).trim();
     { const m = /^(\d{1,2}):(\d{2})$/.exec(String(fd.get("sleep_goal") ?? "").trim()); if (m) body.sleep_goal_min = +m[1] * 60 + +m[2]; }
-    for (const k of ["llm_enabled", "llm_polish", "icu_sync", "floor_strength"]) body[k] = fd.get(k) === "on";
+    for (const k of ["llm_enabled", "llm_polish", "ai_private", "icu_sync", "floor_strength"]) body[k] = fd.get(k) === "on";
     const numOr = (k, d) => { const v = String(fd.get(k) ?? "").trim(); return v !== "" && isFinite(+v) ? +v : d; };
     body.ride_temps = { cold: numOr("t_cold", s.ride_temps?.cold ?? 3), hot: numOr("t_hot", s.ride_temps?.hot ?? 30), ideal: numOr("t_ideal", s.ride_temps?.ideal ?? 18) };
     const sv = el.querySelector("#saved");

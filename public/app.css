@@ -2120,3 +2120,12 @@ table, .tip, .chip, .astats, .tabbar, .seg, .btn { overflow-wrap: normal; }
   .dn-rings .dn-side .gring { --rs: 76px !important; }
   .dn-rings .dn-ring .gring { --rs: 108px !important; }
 }
+
+/* graf tréninku a úprava kroků (9. kolo) */
+.wkg { margin: 6px 0 4px; }
+.wkg svg { display: block; width: 100%; height: 64px; }
+.wkg-ftp { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; opacity: .7; }
+.wkg-ax { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.stepf { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.stepf label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+.stepf input { width: 76px; }

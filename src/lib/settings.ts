@@ -21,6 +21,8 @@ export interface Settings {
   weekly_time: string;
   llm_enabled: boolean;
   llm_polish: boolean;
+  /** AI nedostane zdravotní údaje (VST, spánek, klidový tep, stres, Body Battery, váha) – src/core/privacy.ts */
+  ai_private: boolean;
   /** AI model: "auto" (Gemma → Nemotron → Workers AI podle zadaných klíčů) nebo "google:<id>" / "nvidia:<id>" / "workers:<id>" */
   llm_model: string;
   icu_sync: boolean;
@@ -65,6 +67,7 @@ export const DEFAULTS: Settings = {
   weekly_time: "19:30",
   llm_enabled: true,
   llm_polish: false,
+  ai_private: false,
   llm_model: "auto",
   icu_sync: true,
   garmin_key_created: null,

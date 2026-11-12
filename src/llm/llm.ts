@@ -128,7 +128,8 @@ export async function answerChat(
 /** Přepis jedné věty závěru do přirozenější češtiny (volitelné, llm_polish). Čísla musí sedět. */
 export async function polish(env: Env, sentence: string, context: unknown): Promise<string> {
   const s = await getSettings(env.DB);
-  if (!s.llm_polish || !anyLlm(env) || !s.llm_enabled) return sentence;
+  // soukromí: věta zprávy může obsahovat VST, spánek… → neuhlazovat
+  if (!s.llm_polish || !anyLlm(env) || !s.llm_enabled || s.ai_private) return sentence;
   const out = await runLlm(env, STYLE, `Přepiš tuto větu přirozeněji, stejný význam, stejná čísla, max. 1 věta:\n${sentence}`, 120);
   return out && numbersOk(out, { sentence, context }) && out.length < 300 ? out : sentence;
 }

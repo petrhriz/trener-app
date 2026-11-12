@@ -413,3 +413,78 @@ export function chooseCat(o: { cands: Cat[]; exclude: Cat[]; lastUse: Partial<Re
   const rot = last ? `naposledy ${dm(last)}` : "ještě nebyl";
   return { cat, why: `${o.needs[cat]?.text ? `${o.needs[cat]!.text}; ` : ""}${CAT_NAME[cat]} ${rot}` };
 }
+
+// ---------- tvoje úprava kvality (9. kolo: editor tréninku) ----------
+
+/** Úprava hlavní série kvality: počet opakování, délka pracovního úseku (s), intenzita v % (±10). */
+export interface StepEdit {
+  reps?: number;
+  work_s?: number;
+  pct?: number;
+}
+
+export const EDIT_LIMITS = { reps: [1, 12], work_s: [30, 1800], pct: [-10, 10], growth: 1.5 } as const;
+
+const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
+
+/** Kontrola uložené úpravy (JSON z omezení „kroky“). */
+export function readStepEdit(note: string | null | undefined): StepEdit | null {
+  if (!note) return null;
+  try {
+    const o = JSON.parse(note) as Record<string, unknown>;
+    const e: StepEdit = {};
+    const n = (k: keyof StepEdit, [lo, hi]: readonly [number, number]) => {
+      if (o[k] == null) return true;
+      const v = Number(o[k]);
+      if (!Number.isFinite(v) || v < lo || v > hi) return false;
+      e[k] = Math.round(v);
+      return true;
+    };
+    if (!n("reps", EDIT_LIMITS.reps) || !n("work_s", EDIT_LIMITS.work_s) || !n("pct", EDIT_LIMITS.pct)) return null;
+    return Object.keys(e).length ? e : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Hlavní část kvality: první blok s opakováním, jinak první pracovní blok (souvislé tempo). -1 = nic. */
+export function editableBlock(w: Workout): number {
+  const i = w.blocks.findIndex((x) => (x.reps ?? 1) > 1 && x.steps.length >= 1);
+  return i >= 0 ? i : w.blocks.findIndex((x) => x.kind === "work" && x.steps.length >= 1);
+}
+
+/**
+ * Použije úpravu na hlavní sérii (první blok s opakováním; u souvislého úseku jen délka a intenzita). Pracovní čas série smí vzrůst nejvýš o polovinu
+ * (víc = jiný trénink, ne úprava) – při překročení se ubere opakování. Intenzita mění jen pracovní krok s watty.
+ * Délka dne, zátěž, čas nad Z2 i cíl pro vyhodnocení okruhů se přepočítají. Bez série vrací trénink beze změny.
+ */
+export function applyStepEdit(b: Built, e: StepEdit, ftp: number | null, calib = 1, run = false): Built {
+  const i = editableBlock(b.workout);
+  if (i < 0) return b;
+  const blk = b.workout.blocks[i]!;
+  const s0 = blk.steps[0]!;
+  const reps0 = blk.reps ?? 1;
+  // souvislý úsek bez pauzy: opakování nedává smysl (byl by to jen delší úsek)
+  const series = reps0 > 1 || blk.steps.length > 1;
+  let reps = series ? clamp(Math.round(e.reps ?? reps0), EDIT_LIMITS.reps[0], EDIT_LIMITS.reps[1]) : 1;
+  let work = Math.round(clamp(e.work_s ?? s0.dur_s, EDIT_LIMITS.work_s[0], EDIT_LIMITS.work_s[1]) / 15) * 15;
+  const lim = reps0 * s0.dur_s * EDIT_LIMITS.growth;
+  while (reps > 1 && reps * work > lim) reps--;
+  if (reps * work > lim) work = Math.max(EDIT_LIMITS.work_s[0], Math.floor(lim / reps / 15) * 15);
+  const pct = clamp(e.pct ?? 0, EDIT_LIMITS.pct[0], EDIT_LIMITS.pct[1]);
+  const f = 1 + pct / 100;
+  const step: Step = { ...s0, dur_s: work, ...(s0.lo != null ? { lo: round5(s0.lo * f) } : {}), ...(s0.hi != null ? { hi: round5(s0.hi * f) } : {}) };
+  const blocks: Block[] = b.workout.blocks.map((x, j) => (j === i ? { ...x, ...(series ? { reps } : {}), steps: [step, ...x.steps.slice(1)] } : x));
+  const workout: Workout = { blocks };
+  const dWork = (reps * work - reps0 * s0.dur_s) / 60;
+  const plan = b.plan ? { ...b.plan, reps, work_s: work, lo: step.lo ?? b.plan.lo, hi: step.hi ?? b.plan.hi, ...(b.plan.blocks ? { blocks: b.plan.blocks.map((t, j) => (j === 0 ? { ...t, reps, work_s: work, lo: step.lo ?? t.lo, hi: step.hi ?? t.hi } : t)) } : {}) } : null;
+  return {
+    ...b,
+    workout,
+    minutes: Math.round(totalSeconds(workout) / 60),
+    tizMin: Math.max(0, Math.round(b.tizMin + dWork)),
+    load: workoutLoad(workout, ftp, calib, run),
+    name: b.name.endsWith("(upraveno)") ? b.name : `${b.name} (upraveno)`,
+    plan,
+  };
+}
