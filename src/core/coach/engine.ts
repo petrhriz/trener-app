@@ -453,8 +453,8 @@ export function runCoach(inp: CoachInput): CoachPlan {
       }
     }
 
-    // obsah: konkrétní tréninky tento a příští týden; další týdny jen náhled (`preview` – délka a zátěž dne
-    // zůstávají z plánu, počasí se nebere, kroky jsou orientační)
+    // obsah: konkrétní tréninky tento a příští týden; další týdny náhled (`preview` – bez počasí a bez
+    // dorovnání zátěže týdne, kroky jsou orientační)
       const build = (x: Day3, preview = false) => {
         const f = fixed.get(x.date);
         const w = inp.weather.get(x.date) ?? null;
@@ -509,7 +509,8 @@ export function runCoach(inp: CoachInput): CoachPlan {
         x.targetText = b.targetText;
         x.qualityType = x.role === "key" ? b.qualityType : null;
         x.tiz = b.tizMin;
-        if (!x.own && !preview) { x.minutes = b.minutes; x.load = b.load; }
+        // délka a zátěž ze sestaveného tréninku (i u náhledu – dlaždice, graf a rozpis musí sedět)
+        if (!x.own) { x.minutes = b.minutes; x.load = b.load; }
       };
     if (detail) {
       for (const x of train.filter((y) => y.role === "key")) build(x);

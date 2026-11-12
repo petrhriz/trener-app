@@ -25,6 +25,11 @@ const CAT = {
 const PER_CAT = { tempo: 24, ss: 32, thr: 36, ou: 28, vo2: 32, vo2s: 24, ana: 20, nm: 18 };
 const HARD = 0.76; // nad vrškem Z2
 
+/**
+ * Délka úseku zaokrouhlená na čitelnou hodnotu: od 10 min na celé minuty, od 2 min na půlminuty, kratší na sekundy
+ * (zdrojové tréninky mají i úseky typu 17:03 nebo 6:18 – na kole se nedají rozumně odjet).
+ */
+export const tidy = (s) => (s >= 600 ? Math.round(s / 60) * 60 : s >= 120 ? Math.round(s / 30) * 30 : Math.round(s));
 const attr = (tag, k) => { const m = new RegExp(`\\b${k}="([^"]+)"`).exec(tag); return m ? +m[1] : null; };
 
 /** ZWO → plochý seznam úseků [s, podíl FTP] */
@@ -53,7 +58,7 @@ function mainSet(segs, cat) {
   if (a < 0 || b < a) return null;
   // krátké tréninky: první těžký úsek hledat až po rozjetí (aspoň 5 min od začátku)
   if (short) { let t = 0; a = -1; for (let i = 0; i < segs.length; i++) { if (t >= 300 && segs[i][1] >= HARD) { a = i; break; } t += segs[i][0]; } if (a < 0 || b < a) return null; }
-  const m = segs.slice(a, b + 1).map(([d, p]) => [Math.round(d), Math.round(p * 100)]);
+  const m = segs.slice(a, b + 1).map(([d, p]) => [tidy(d), Math.round(p * 100)]);
   // sloučit sousední stejné úseky
   const out = [];
   for (const s of m) { const l = out[out.length - 1]; if (l && l[1] === s[1]) l[0] += s[0]; else out.push([...s]); }
