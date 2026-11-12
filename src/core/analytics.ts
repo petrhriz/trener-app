@@ -112,10 +112,12 @@ export function ctlPlan(ctl: number | null, goalCtl: number | null, goalDate: st
 
 // ---------- 4) Efficiency Factor ----------
 /** EF = NP / průměrný tep na lehkých jízdách (IF < 0,8, aspoň 40 min, venku i trenažér) */
-export function efficiency(acts: ActLite[], ftp: number | null) {
+/** `ftp` = FTP platné v den jízdy (číslo = stejné pro všechny dny). */
+export function efficiency(acts: ActLite[], ftp: number | null | ((date: string) => number | null)) {
+  const ftpOf = (d: string) => (typeof ftp === "function" ? ftp(d) : ftp);
   const pts = acts
     .filter((a) => RIDE.includes(a.sport) && (a.moving_s ?? 0) >= 2400 && (a.np ?? a.avg_power) && (a.avg_hr ?? 0) > 80)
-    .filter((a) => { const iff = a.if_garmin ?? (ftp && a.np ? a.np / ftp : null); return iff == null || iff < 0.8; })
+    .filter((a) => { const f = ftpOf(a.date); const iff = a.if_garmin ?? (f && a.np ? a.np / f : null); return iff == null || iff < 0.8; })
     .map((a) => ({ date: a.date, id: a.id, name: a.name ?? null, ef: Math.round((((a.np ?? a.avg_power)!) / a.avg_hr!) * 100) / 100 }));
   if (pts.length < 2) return { points: pts, trend: null as number | null, text: "Na trend Efficiency Factor zatím málo lehkých jízd s wattmetrem." };
   const half = Math.floor(pts.length / 2);

@@ -11,7 +11,9 @@ import { all, execAll, first, getState, lit, logEvent, setState, setStateSql, up
 import { HttpError } from "../lib/http";
 import { getSettings, setSettingSql, type Settings } from "../lib/settings";
 import { addDays, daysBetween, localNow } from "../lib/time";
-import { recomputeMetrics } from "./metrics";
+import { recomputeLoads, recomputeMetrics } from "./metrics";
+import { recordZones } from "../lib/zoneHistory";
+import { ftpChanges } from "../core/zones";
 import { refreshWeather } from "./weather";
 import { recomputeSleep } from "./sleep";
 import { computeEnergy } from "./energy";
@@ -398,6 +400,40 @@ export async function syncTick(env: Env, opts: { force?: boolean; manual?: boole
     st.cursor = addDays(from, -1);
     if (!next.length || !oldestAct?.d || st.cursor < oldestAct.d) st.done = true;
     await setState(env.DB, "icu_load_bf", st);
+  });
+
+  // 3e) FTP a zóny s datem platnosti: změna nastavení → řádek od dneška; historie FTP z jízd v intervals.icu
+  //     (icu_ftp = FTP platné v den jízdy) po nejvýš 12 jízdách dozadu, na konci jen body, kde se FTP změnilo
+  await guard("historie zón", async () => {
+    if (hourly) await recordZones(env.DB, T, s);
+    if (!icu.configured || !quarter || !batch) return;
+    const V = 1;
+    type Seed = { v: number; cursor: string; done: boolean; pts: [string, number][] };
+    const st = (await getState<Seed>(env.DB, "zone_seed")) ?? { v: V, cursor: T, done: false, pts: [] };
+    if (st.v !== V) Object.assign(st, { v: V, cursor: T, done: false, pts: [] });
+    if (st.done) return;
+    const bikes = BIKE_SPORTS.map(() => "?").join(", ");
+    const next = await all<{ date: string }>(env.DB, `SELECT date FROM activities WHERE sport IN (${bikes}) AND date <= ? ORDER BY date DESC LIMIT 12`, ...BIKE_SPORTS, st.cursor);
+    if (next.length) {
+      const oldest = next[next.length - 1]!.date;
+      const from = next.length >= 12 && oldest > addDays(st.cursor, -59) ? oldest : addDays(st.cursor, -59);
+      for (const x of await icu.activitiesRaw(from, st.cursor)) {
+        const d = String(x.start_date_local ?? "").slice(0, 10);
+        if (d && /Ride|Cycl/.test(String(x.type ?? "")) && Number(x.icu_ftp) > 0) st.pts.push([d, Number(x.icu_ftp)]);
+      }
+      st.cursor = addDays(from, -1);
+    } else {
+      st.done = true;
+      const rows = ftpChanges(st.pts.map(([date, ftp]) => ({ date, ftp })));
+      const now = new Date().toISOString();
+      await execAll(env.DB, rows.map((r) => `INSERT INTO zone_history (date, ftp, hr_zones, source, created_at) VALUES (${lit(r.date)}, ${r.ftp}, NULL, 'icu', ${lit(now)}) ON CONFLICT(date) DO NOTHING`));
+      st.pts = [];
+      // vlastní odhady zátěže znovu podle FTP platného v den jízdy
+      await recomputeLoads(env.DB, s);
+      rep.steps.push(`historie zón (${rows.length} změn FTP)`);
+    }
+    await setState(env.DB, "zone_seed", st);
+    if (!st.done) rep.steps.push(`historie zón (do ${st.cursor})`);
   });
 
   // 4) backfill aktivit (celá historie), několik stránek po 20

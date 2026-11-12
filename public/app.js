@@ -2796,6 +2796,7 @@ async function pageNastaveni(el) {
    </div><div class="btns"><button class="btn pri" type="submit">Uložit</button><span class="note" id="saved"></span></div></form>`)}
    ${card("c12", "🧭 Trenér", "hlavní sport a další sporty", `<div id="coachProf" class="loading sm">Načítám profil…</div>`)}
    ${card("c4", "Zóny tepu", s.hr_zones ? s.hr_zones.source : "", s.hr_zones ? kv([...s.hr_zones.floors.map((v, i) => [`Z${i + 1} od`, v + " bpm"]), ["Max", s.hr_zones.max + " bpm"], ["LTHR", (s.hr_zones.lthr ?? DASH) + " bpm"], ["Klidový", (s.hr_zones.rest ?? DASH) + " bpm"]]) : '<div class="empty">Nemám.</div>')}
+    ${card("c8", "FTP a zóny v čase", "od kdy platí", `<div id="zoneHist" class="loading sm">Načítám…</div>`)}
    ${st0 ? card("c6", "Stav synchronizace", st.source, kv([
      ["Aplikace stáhla data z Garminu", st.state.last_sync_ok ? `${new Date(st.state.last_sync_ok).toLocaleString("cs-CZ")} <small class="sub">(${ago(st.state.last_sync_ok)})</small>` : DASH],
      ["Hodinky → Garmin Connect", st.state.watch_data_until ? `data do ${new Date(st.state.watch_data_until).toLocaleString("cs-CZ", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" })} <small class="sub">(${ago(st.state.watch_data_until)})</small>` : `<span class="sub">zatím nezaznamenáno</span>`],
@@ -2830,6 +2831,7 @@ async function pageNastaveni(el) {
     } catch (err) { sv.textContent = `Nepovedlo se: ${err.message}`; }
   });
   coachProfileForm(el.querySelector("#coachProf"));
+  zoneHistoryCard(el.querySelector("#zoneHist"));
   // AI model: výběr a test
   api("llm-models").then((m) => {
     const box = el.querySelector("#aiModels"); if (!box) return;
@@ -2860,6 +2862,18 @@ async function pageNastaveni(el) {
 }
 
 // ---------- Nastavení: trenér (hlavní sport, další sporty) ----------
+/** Historie FTP a zón: starší aktivity se vyhodnocují podle hodnot platných v den aktivity. */
+async function zoneHistoryCard(box) {
+  if (!box) return;
+  const rows = await api("zones/history").catch(() => null);
+  box.classList.remove("loading");
+  if (!rows || !rows.length) { box.innerHTML = '<div class="empty">Zatím jen dnešní hodnoty – historie se doplní při další synchronizaci.</div>'; return; }
+  const src = { icu: "intervals.icu (jízdy)", settings: "nastavení / synchronizace" };
+  const yr = (d) => `${dm(d)}${d.slice(0, 4)}`;
+  box.innerHTML = `<table class="t"><tr><th>Platí od</th><th class="r">FTP</th><th class="r">LTHR</th><th>Zdroj</th></tr>${rows.slice().reverse().map((r, i, a) => `<tr><td>${i === a.length - 1 ? "začátek historie" : yr(r.date)}</td><td class="r">${r.ftp != null ? r.ftp + " W" : DASH}</td><td class="r">${r.lthr != null ? r.lthr + " bpm" : DASH}</td><td>${src[r.source] || esc(r.source || "")}</td></tr>`).join("")}</table>
+  <p class="note">Starší aktivity se vyhodnocují podle FTP a zón platných v den aktivity (barvy zón v grafu, výkon v Z2, EF, odhad zátěže bez intervals.icu), ne podle dnešních. Pomlčka = beze změny proti předchozímu řádku. FTP před zářím 2025 je z doby nahrání aktivit do intervals.icu, ne skutečné tehdejší.</p>`;
+}
+
 async function coachProfileForm(box) {
   if (!box) return;
   let d;

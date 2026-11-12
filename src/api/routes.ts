@@ -39,6 +39,7 @@ import { OWNER_ID, sessionUser } from "./session";
 /** uid = přihlášený uživatel (zatím vždy 1 = vlastník; příprava na víc uživatelů, viz docs/multi-user.md) */
 export const api = new Hono<{ Bindings: Env; Variables: { uid: number } }>();
 import { gearApi, loadGear, resolveGear } from "./gear";
+import { loadZoneHistory, recordZones, zonesFor } from "../lib/zoneHistory";
 import { applySecrets, encryptSecret, invalidateSecrets, secretInfo, secretsFor } from "../lib/secrets";
 const isBike = (s: string) => BIKE_SPORTS.includes(s as any);
 
@@ -307,7 +308,7 @@ async function analyticsOf(env: Env, ctx: Awaited<ReturnType<typeof loadCtx>>) {
     compliance: { ...comp, weeks },
     intensity: { weeks: intensityWeeks(ctx.acts as any, T), verdict: intensityVerdict(ctx.acts as any, T) },
     ctlPlan: ctlPlan(last?.ctl ?? null, ctx.s.goal_ctl ?? null, ctx.s.goal_date, T),
-    ef: efficiency(ctx.acts as any, ctx.s.ftp),
+    ef: efficiency(ctx.acts as any, (d) => zonesFor(ctx.zh, d, ctx.s).ftp),
     monotony: monotonyWeeks(ctx.metrics.map((m) => ({ date: m.date, load: m.load })), T),
   };
 }
@@ -467,7 +468,7 @@ api.get("/activity/:id/streams", async (c) => {
   const key = `streams:v5:${id}${part ? `:${Math.round(fromQ)}-${Math.round(toQ)}` : ""}`;
   const cached = await c.env.KV.get(key, "json");
   if (cached) return c.json(cached);
-  const row = await first<{ icu_id: string | null }>(c.env.DB, "SELECT icu_id FROM activities WHERE id = ?", id);
+  const row = await first<{ icu_id: string | null; date: string }>(c.env.DB, "SELECT icu_id, date FROM activities WHERE id = ?", id);
   if (!row) return c.json({ error: "Aktivitu nemám." }, 404);
   let get: (t: string) => (number | null)[] | null;
   // hlavní zdroj Garmin (všechny kanály vč. kadence, teploty, dechu, výkonnostního stavu a trasy, celá historie)
@@ -507,8 +508,11 @@ api.get("/activity/:id/streams", async (c) => {
     return out;
   };
   const spd = get("velocity_smooth");
-  const s = await getSettings(c.env.DB);
-  const ftp = s.ftp ?? 250;
+  // zóny platné v den aktivity (stará jízda se barví podle tehdejšího FTP, ne dnešního)
+  const s0 = await getSettings(c.env.DB);
+  const zd = zonesFor(await loadZoneHistory(c.env.DB), row.date, s0);
+  const s = { ...s0, hr_zones: zd.hr };
+  const ftp = zd.ftp ?? 250;
   const out = {
     src,
     t: pick(time),
@@ -741,7 +745,7 @@ api.get("/activity/:id", async (c) => {
     a = parseAct(r);
   }
   const raw = a as unknown as { icu_pwhr_z2: number | null; icu_pwhr_z2_min: number | null; icu_decoupling: number | null };
-  const floors = ctx.s.hr_zones?.floors;
+  const floors = zonesFor(ctx.zh, a.date, ctx.s).hr?.floors;
   const z2Top = floors && floors.length > 2 ? floors[2]! - 1 : null;
   const z2Power = raw?.icu_pwhr_z2 && z2Top ? { w: Math.round(raw.icu_pwhr_z2 * z2Top), hr: z2Top, ratio: Math.round(raw.icu_pwhr_z2 * 100) / 100, min: raw.icu_pwhr_z2_min } : null;
   const { gear, links } = await loadGear(c.env.DB);
@@ -1047,6 +1051,11 @@ api.get("/week", async (c) => {
 });
 
 api.get("/settings", async (c) => c.json(await getSettings(c.env.DB)));
+/** FTP a zóny s datem platnosti (Nastavení) */
+api.get("/zones/history", async (c) => {
+  const rows = await all<{ date: string; ftp: number | null; hr_zones: string | null; source: string | null }>(c.env.DB, "SELECT date, ftp, hr_zones, source FROM zone_history ORDER BY date").catch(() => []);
+  return c.json(rows.map((r) => { let lthr: number | null = null; try { lthr = r.hr_zones ? JSON.parse(r.hr_zones).lthr ?? null : null; } catch { lthr = null; } return { date: r.date, ftp: r.ftp, lthr, source: r.source }; }));
+});
 
 /** API klíče: stav (bez hodnot), uložení šifrovaně, test připojení. */
 api.get("/secrets", (c) => c.json(secretInfo(c.env)));
@@ -1113,7 +1122,10 @@ api.post("/settings", async (c) => {
   }
   // jiný cíl spánku → přepočítat skóre a potřebu spánku v celé historii
   if (before.sleep_goal_min !== after.sleep_goal_min) await recomputeSleep(c.env.DB, after.sleep_goal_min);
-  if (before.ftp !== after.ftp || JSON.stringify(before.hr_zones) !== JSON.stringify(after.hr_zones)) await recomputeLoads(c.env.DB, after);
+  if (before.ftp !== after.ftp || JSON.stringify(before.hr_zones) !== JSON.stringify(after.hr_zones)) {
+    await recordZones(c.env.DB, localNow(new Date(), c.env.TZ_NAME).date, after);
+    await recomputeLoads(c.env.DB, after);
+  }
   // změna cíle → hned přepočítat naplánované tréninky (návrh změn k potvrzení)
   let proposal: { id: number; count: number } | null = null;
   if (before.goal !== after.goal) {

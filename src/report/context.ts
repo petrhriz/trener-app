@@ -5,6 +5,8 @@ import type { CalItem, Constraint } from "../core/plan";
 import type { Hour } from "../core/weather";
 import { all, getState } from "../lib/db";
 import { getSettings, type Settings } from "../lib/settings";
+import { loadZoneHistory } from "../lib/zoneHistory";
+import type { ZoneHistRow } from "../core/zones";
 import { addDays, localNow, mondayOf, type LocalNow } from "../lib/time";
 
 export interface WellRow {
@@ -105,6 +107,8 @@ export interface Ctx {
   hours: Hour[];
   weatherOk: boolean;
   lastSyncOk: string | null;
+  /** FTP a zóny s datem platnosti (staré aktivity se hodnotí podle tehdejších) */
+  zh?: ZoneHistRow[];
 }
 
 export function parseAct(r: any): FullAct {
@@ -117,7 +121,7 @@ export async function loadCtx(env: Env, at?: Date): Promise<Ctx> {
   const now = localNow(at ?? new Date(), env.TZ_NAME);
   const T = now.date;
   const db = env.DB;
-  const [s, well, actsRaw, metrics, calendar, constraints, hours, wAt, lastSync] = await Promise.all([
+  const [s, well, actsRaw, metrics, calendar, constraints, hours, wAt, lastSync, zh] = await Promise.all([
     getSettings(db),
     all<WellRow>(db, "SELECT * FROM wellness WHERE date >= ? ORDER BY date", addDays(T, -90)),
     all<any>(db, "SELECT * FROM activities WHERE date >= ? ORDER BY start_local", addDays(T, -90)),
@@ -127,6 +131,7 @@ export async function loadCtx(env: Env, at?: Date): Promise<Ctx> {
     all<Hour>(db, "SELECT * FROM weather_hourly WHERE time >= ? ORDER BY time", addDays(T, -1)),
     getState<number>(db, "weather_at"),
     getState<string>(db, "last_sync_ok"),
+    loadZoneHistory(db),
   ]);
   return {
     env,
@@ -141,5 +146,6 @@ export async function loadCtx(env: Env, at?: Date): Promise<Ctx> {
     hours,
     weatherOk: !!wAt && Date.now() - wAt < 12 * 3600_000 && hours.length > 24,
     lastSyncOk: lastSync,
+    zh,
   };
 }

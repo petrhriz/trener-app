@@ -24,6 +24,7 @@ import { type EngineAct, runEngine } from "../core/coach/engine";
 import { profileFromHistory, validateProfile } from "../core/coach/profile";
 import { norm } from "../core/recovery";
 import { setSetting } from "../lib/settings";
+import { zonesFor } from "../lib/zoneHistory";
 
 const isBike = (s: string) => BIKE_SPORTS.includes(s as any);
 
@@ -479,7 +480,8 @@ export function plannedFor(ctx: Ctx, a: FullAct): PlannedForAct | null {
 }
 
 export function activityReport(ctx: Ctx, a: FullAct): ActivityAnalysis {
-  return analyzeActivity(a, plannedFor(ctx, a), ctx.s.ftp, ctx.s.hr_zones);
+  const z = zonesFor(ctx.zh, a.date, ctx.s);
+  return analyzeActivity(a, plannedFor(ctx, a), z.ftp, z.hr);
 }
 
 export function findActivity(ctx: Ctx, query?: string): FullAct[] {

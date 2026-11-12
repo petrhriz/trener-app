@@ -61,3 +61,60 @@ export function runHrZones(hz: HrZones | null): HrZones | null {
 export function hrZonesText(hz: HrZones): string {
   return hz.floors.map((_, i) => `Z${i + 1} ${hrZoneRange(hz, i + 1).join("–")}`).join(", ");
 }
+
+// ---------- FTP a zóny s datem platnosti (9. kolo) ----------
+
+/** Řádek historie: hodnoty platí od `date` do dalšího řádku; null = beze změny proti předchozímu řádku. */
+export interface ZoneHistRow {
+  date: string;
+  ftp: number | null;
+  hr: HrZones | null;
+}
+
+export interface ZonesOfDay {
+  ftp: number | null;
+  hr: HrZones | null;
+}
+
+/**
+ * FTP a zóny tepu platné v den `date`. Každá hodnota zvlášť: poslední řádek s hodnotou nejpozději v ten den;
+ * před prvním záznamem nejstarší známá hodnota (dnešní by byla ještě dál od pravdy); bez historie dnešní.
+ * `hist` musí být seřazená podle data.
+ */
+export function zonesAt(hist: ZoneHistRow[], date: string, current: ZonesOfDay): ZonesOfDay {
+  const pick = <K extends "ftp" | "hr">(k: K): ZonesOfDay[K] => {
+    let v: ZoneHistRow[K] | null = null;
+    let first: ZoneHistRow[K] | null = null;
+    for (const r of hist) {
+      if (r[k] == null) continue;
+      if (first == null) first = r[k];
+      if (r.date <= date) v = r[k];
+      else break;
+    }
+    return (v ?? first ?? current[k]) as ZonesOfDay[K];
+  };
+  return { ftp: pick("ftp"), hr: pick("hr") };
+}
+
+/**
+ * Body FTP z jednotlivých jízd (v den jízdy) → řádky historie jen tam, kde se FTP změnilo.
+ * Rozdíl do ±2 W (zaokrouhlení, dorovnání) se za další změnu nepovažuje, jen upraví poslední hodnotu.
+ */
+export function ftpChanges(points: { date: string; ftp: number }[]): { date: string; ftp: number }[] {
+  const out: { date: string; ftp: number }[] = [];
+  for (const p of [...points].sort((a, b) => a.date.localeCompare(b.date))) {
+    if (!(p.ftp > 0)) continue;
+    const last = out[out.length - 1];
+    if (!last || Math.abs(last.ftp - p.ftp) > 2) out.push({ date: p.date, ftp: Math.round(p.ftp) });
+    else last.ftp = Math.round(p.ftp); // 297 → 298: jedna změna, platí novější číslo
+  }
+  return out;
+}
+
+/** Je potřeba nový řádek historie? (dnešní nastavení se liší od hodnot platných dnes) */
+export function zonesChanged(hist: ZoneHistRow[], today: string, current: ZonesOfDay): { ftp: boolean; hr: boolean } {
+  if (!hist.length) return { ftp: current.ftp != null, hr: current.hr != null };
+  const at = zonesAt(hist, today, { ftp: null, hr: null });
+  const sameHr = (a: HrZones | null, b: HrZones | null) => JSON.stringify(a ? [a.floors, a.max, a.lthr] : null) === JSON.stringify(b ? [b.floors, b.max, b.lthr] : null);
+  return { ftp: current.ftp != null && at.ftp !== current.ftp, hr: current.hr != null && !sameHr(at.hr, current.hr) };
+}

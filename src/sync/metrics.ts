@@ -3,6 +3,7 @@ import { type Anchor, computeMetrics } from "../core/fitness";
 import { activityLoad } from "../core/load";
 import { all, execAll, upsertSql } from "../lib/db";
 import type { Settings } from "../lib/settings";
+import { loadZoneHistory, zonesFor } from "../lib/zoneHistory";
 
 export async function recomputeMetrics(db: D1Database, today: string): Promise<number> {
   const loads = await all<{ date: string; load: number }>(db, "SELECT date, SUM(COALESCE(load, 0)) AS load FROM activities GROUP BY date ORDER BY date");
@@ -31,10 +32,13 @@ export async function recomputeMetrics(db: D1Database, today: string): Promise<n
 
 /** Po změně FTP / zón: přepočítat zátěž aktivit, které na nich závisí. */
 export async function recomputeLoads(db: D1Database, s: Settings): Promise<number> {
-  const rows = await all<any>(db, "SELECT id, sport, moving_s, np, tss_garmin, hr_z, avg_hr, load FROM activities WHERE load_source IN ('np_ftp', 'hr_avg', 'hr_zones', 'none') OR load IS NULL");
+  const rows = await all<any>(db, "SELECT id, date, sport, moving_s, np, tss_garmin, hr_z, avg_hr, load FROM activities WHERE load_source IN ('np_ftp', 'hr_avg', 'hr_zones', 'none') OR load IS NULL");
   const upd: unknown[][] = [];
+  // FTP a zóny platné v den aktivity, ne dnešní
+  const hist = await loadZoneHistory(db);
   for (const r of rows) {
-    const ld = activityLoad({ ...r, hr_z: r.hr_z ? JSON.parse(r.hr_z) : null }, { ftp: s.ftp, hr: s.hr_zones });
+    const z = zonesFor(hist, r.date, s);
+    const ld = activityLoad({ ...r, hr_z: r.hr_z ? JSON.parse(r.hr_z) : null }, { ftp: z.ftp, hr: z.hr });
     if (ld.load !== r.load) upd.push([r.id, ld.load, ld.source]);
   }
   // UPDATE přes INSERT … ON CONFLICT (jen existující id)
