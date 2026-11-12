@@ -7,9 +7,9 @@ import type { PlanSport } from "../../datasource/types";
 import { daysBetween } from "../../lib/time";
 import type { Goal } from "../fitness";
 import type { Outcome } from "../qualityDesign";
-import { type EngineAct, EVAL_WAIT_DAYS, type ProgressRow, matchKey } from "../coach/engine";
-import type { Cat, WorkPlan } from "../coach/library";
-import { nextLevel, outcomeOf } from "../coach/progress";
+import { type EngineAct, EVAL_WAIT_DAYS, type ProgressRow, matchKey } from "./common";
+import type { Cat, WorkPlan } from "./library";
+import { nextLevel, outcomeOf } from "./progress";
 
 export interface KeyRecord {
   date: string;

@@ -5,7 +5,7 @@ import type { WeeklyReview } from "../core/extras";
 import { type Change, type PlanDay, type PlanResult, formText } from "../core/plan";
 import type { DayWeather } from "../core/weather";
 import { windowText } from "../core/weather";
-import { dayDm, dm, hmm, num, sleepH } from "../lib/format";
+import { dm, hmm, num, sleepH } from "../lib/format";
 import type { Readiness } from "../report/build";
 import { escapeHtml as e, type InlineButton } from "./api";
 

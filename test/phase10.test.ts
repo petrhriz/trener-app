@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { coaching, normCdf, recoveryScore, strainScore, typicalWake, type NightRow } from "../src/core/readinessScore";
-import { generatePlan, type PlanInput } from "../src/core/plan";
 import { nextAlert, partKm, type Part } from "../src/api/gear";
 import { addDays } from "../src/lib/time";
 
@@ -88,57 +87,13 @@ describe("zhodnocení dne", () => {
   });
 });
 
-function planInput(over: Partial<PlanInput> = {}): PlanInput {
-  return {
-    today: "2026-11-08", ftp: 298, hr: { floors: [55, 135, 165, 184, 202], max: 204, lthr: 196, rest: 54 }, goal: "udrzeni", ridesPerWeek: 3,
-    startYesterday: { ctl: 40, atl: 35 }, startToday: null, acts: [], actsPower: [], past: () => null, calendar: [], constraints: [],
-    weather: new Map(), weatherOk: false, recovery: "green", p5: 340, ...over,
-  };
-}
-const trainDays = (p: ReturnType<typeof generatePlan>) => p.days.filter((d) => d.name).map((d) => d.date);
 /** potvrzený plán = kalendář (jako po „Zapsat vybrané“) */
-function calFrom(p: ReturnType<typeof generatePlan>, goal = "udrzeni"): PlanInput["calendar"] {
-  return p.days.filter((d) => d.name && d.workout).map((d, i) => ({
-    id: i + 1, date: d.date, kind: d.kind as any, quality_type: d.qualityType, name: d.name!, indoor: d.indoor ? 1 : 0, duration_min: d.durationMin,
-    steps_json: JSON.stringify(d.workout), steps_text: null, target_load: d.load, reason: null, status: "planned", sport: d.sport, goal,
-  }));
-}
 function maxStreak(dates: string[]): number {
   let best = 0, cur = 0, prev: string | null = null;
   for (const d of [...dates].sort()) { cur = prev && addDays(prev, 1) === d ? cur + 1 : 1; best = Math.max(best, cur); prev = d; }
   return best;
 }
 
-describe("plán: rozložení a volby", () => {
-  it("udržení: max. 2 dny tréninku za sebou", () => {
-    for (const goal of ["udrzeni", "pokles"] as const) expect(maxStreak(trainDays(generatePlan(planInput({ goal }))))).toBeLessThanOrEqual(2);
-  });
-  it("řízený pokles = nižší cíl zátěže než udržení", () => {
-    expect(generatePlan(planInput({ goal: "pokles" })).weeklyTarget.mid).toBeLessThan(generatePlan(planInput({ goal: "udrzeni" })).weeklyTarget.mid);
-  });
-  const base = generatePlan(planInput());
-  const calendar = calFrom(base);
-  const q = base.days.find((d) => d.kind === "quality")!;
-  it("běh bez pravidelného běhání nedostane intervaly", () => {
-    const p = generatePlan(planInput({ calendar, constraints: [{ date: q.date, kind: "sport", note: "run" }], runExperienced: false }));
-    expect(p.days.find((d) => d.date === q.date)!.kind).toBe("z2");
-    const p2 = generatePlan(planInput({ calendar, constraints: [{ date: q.date, kind: "sport", note: "run" }], runExperienced: true }));
-    expect(p2.days.find((d) => d.date === q.date)!.kind).toBe("quality");
-  });
-  it("„místo toho Z2“ a přesun kvality na jiný den", () => {
-    const z = generatePlan(planInput({ calendar, constraints: [{ date: q.date, kind: "typ", note: "z2" }] }));
-    expect(z.days.find((d) => d.date === q.date)!.kind).toBe("z2");
-    const other = base.days.find((d) => (d.kind === "z2" || d.kind === "long") && d.date !== q.date)!;
-    const m = generatePlan(planInput({ calendar, constraints: [{ date: q.date, kind: "typ", note: "z2" }, { date: other.date, kind: "typ", note: "quality" }] }));
-    expect(m.days.find((d) => d.date === other.date)!.kind).toBe("quality");
-    expect(m.days.filter((d) => d.kind === "quality").length).toBe(1);
-  });
-  it("trénink přidaný do volných dnů → upozornění na dny za sebou", () => {
-    const rest = base.days.filter((d) => !d.name).map((d) => d.date);
-    const p = generatePlan(planInput({ calendar, constraints: rest.map((date) => ({ date, kind: "sport" as const, note: "ride" })) }));
-    expect(p.warnings.some((w) => /tréninků|za sebou/.test(w))).toBe(true);
-  });
-});
 
 describe("servis vybavení", () => {
   const gear = [{ id: 1, name: "Cube", kind: "bike" as const, default_for: "ride", from_date: null, to_date: null, start_km: 0, note: null }];

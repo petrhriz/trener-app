@@ -18,7 +18,7 @@ odpovídá na volné otázky nad hotovými čísly (`src/llm/`).
 | `src/datasource/` | Garmin a intervals.icu → normalizované záznamy (`normalize.ts`, `types.ts`) | nic nad touto vrstvou nezná pole Garminu |
 | `src/sync/sync.ts` | synchronizace po malých dávkách | **free plán: 10 ms CPU, 50 fetchů, 50 D1 dotazů na spuštění** |
 | `src/core/` | trenérské jádro – čisté funkce bez I/O | vše testované v `test/` |
-| `src/core/coach/`, `src/coach/` | Trenér v2 (profil, rozpočet týdne, kostra, knihovna, engine) a uložení plánu | popis v `docs/trener-v2/`; zapíná `settings.coach_v2` |
+| `src/core/coach/` | Trenér (cíl týdne, kostra, délky, knihovna tréninků, vyhodnocení kvalit) | popis a zdroje v `docs/trener/` |
 | `src/report/` | skládá data pro zprávy a dashboard | |
 | `src/api/` | JSON pro dashboard (`routes.ts`, `coach.ts`, …) | |
 | `src/llm/` | AI: `providers.ts` (Gemma / Nemotron / Workers AI), `llm.ts` (kontrola čísel) | číslo, které není v datech → šablona |

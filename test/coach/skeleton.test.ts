@@ -1,6 +1,6 @@
 // Trenér v3: kostra týdne.
 import { describe, expect, it } from "vitest";
-import { MAX_STREAK, type SkDay, solveWeek } from "../../src/core/coach3/skeleton";
+import { MAX_STREAK, type SkDay, solveWeek } from "../../src/core/coach/skeleton";
 import { addDays } from "../../src/lib/time";
 
 const MON = "2026-11-16";

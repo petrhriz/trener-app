@@ -1,13 +1,13 @@
-// Spuštění: npx vite-node scripts/coach3-sim.ts <výstup.json>
+// Spuštění: npx vite-node scripts/coach-sim.ts <výstup.json>
 // Simulace Trenéra v3: modelový sportovec každý den odjede přesně plán, kondice se přepočítá, trenér plánuje znovu.
 import { writeFileSync } from "node:fs";
-import { type Coach3Input, runCoach3 } from "../src/core/coach3/engine";
+import { type CoachInput, runCoach } from "../src/core/coach/engine";
 import { computeMetrics, type Goal } from "../src/core/fitness";
 import { DEFAULT_PROFILE, type CoachProfile } from "../src/core/coach/profile";
 import { NO_FATIGUE } from "../src/core/coach/target";
 import { addDays, dow, mondayOf } from "../src/lib/time";
 
-type Act = Coach3Input["acts"][number];
+type Act = CoachInput["acts"][number];
 const HZ = { floors: [55, 135, 165, 184, 202], max: 204, lthr: 196, rest: 55 };
 
 interface Scenario {
@@ -56,9 +56,9 @@ function simulate(sc: Scenario) {
     const by = new Map(m.map((x) => [x.date, x]));
     const W0 = mondayOf(T);
     const weekLoads = [4, 3, 2, 1].map((k) => { const f = addDays(W0, -7 * k); return Math.round(acts.filter((a) => a.date >= f && a.date < addDays(f, 7)).reduce((t, a) => t + (a.load ?? 0), 0)); });
-    const constraints: Coach3Input["constraints"] = [];
+    const constraints: CoachInput["constraints"] = [];
     if (sc.runWed) for (let i = 0; i < 10; i++) { const d = addDays(W0, 2 + 7 * i); constraints.push({ date: d, kind: "sport", note: "run" }); }
-    const plan = runCoach3({
+    const plan = runCoach({
       today: T, goal: sc.goal, raceDate: sc.raceDate ?? null, profile, zones: { ftp: 260, hr: HZ }, acts: acts.filter((a) => a.date > addDays(T, -90)), power: [],
       metric: (d) => by.get(d) ?? null, calendar: [], constraints, weather: new Map(), weatherOk: false, recovery: "green", fatigue: NO_FATIGUE,
       weekLoads, offDays: [], progress: {},

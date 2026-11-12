@@ -1,4 +1,4 @@
-// Závěrečná kontrola týdne Trenéra v2 – běží nad celým týdnem až po všech úpravách (řešič, počasí, zotavení,
+// Závěrečná kontrola týdne – běží nad celým týdnem až po všech úpravách (řešič, počasí, zotavení,
 // vyvážení formy, výběr z knihovny). Plán, který porušuje vlastní pravidla, se nesmí tvářit jako v pořádku.
 //  - error: porušené pravidlo, které nikdo nezvolil (plán není v pořádku),
 //  - warn: požadavek týdne se nesplnil (dlouhý trénink, počet kvalit, 80/20) – plán jde, ale říká to,
@@ -6,7 +6,7 @@
 import { dayDm, num } from "../../lib/format";
 import { addDays } from "../../lib/time";
 import type { PlanSport } from "../../datasource/types";
-import { MAX_STREAK, type PastDay, type Role, type SolveReport, isHardRole } from "./week";
+import { MAX_STREAK, type PastDay, type Role, isHardRole } from "./common";
 
 export type ValidationLevel = "error" | "warn" | "exception";
 export type ValidationCode = "streak" | "key_after_hard" | "tsb_floor" | "tiz" | "cap" | "long_missing" | "keys_short";
@@ -55,7 +55,6 @@ export interface ValidateInput {
   tsbFloor: number | null;
   /** výhled formy na plánované dny */
   forms: { date: string; form: number }[];
-  solver?: SolveReport;
 }
 
 /** Tolerance délky: knihovna zaokrouhluje dojezd na 5 min a přidává rozjetí. */
@@ -122,11 +121,11 @@ export function validateWeek(v: ValidateInput): WeekValidation {
   if (v.long && !longDone) {
     const why = v.days.find((d) => d.downgraded)?.downgraded;
     if (why) add("long_missing", "exception", null, `Dlouhý trénink tento týden není (${why}).`);
-    else add("long_missing", "warn", null, v.solver?.violations.find((x) => x.code === "long_missing")?.text ?? "Dlouhý trénink se do týdne nevešel.");
+    else add("long_missing", "warn", null, "Dlouhý trénink se do týdne nevešel.");
   }
   if (keysDone < v.keys) {
     if (downKey) add("keys_short", "exception", null, `Kvalita ${keysDone}× místo ${v.keys}× (${downKey.downgraded}).`);
-    else add("keys_short", "warn", null, v.solver?.violations.find((x) => x.code === "keys_short")?.text ?? `Kvalita ${keysDone}× místo ${v.keys}×.`);
+    else add("keys_short", "warn", null, `Kvalita ${keysDone}× místo ${v.keys}×.`);
   }
 
   return { ok: !items.some((i) => i.level === "error"), items };

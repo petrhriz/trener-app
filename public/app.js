@@ -1186,7 +1186,7 @@ function stepEditor(x, mine) {
       <p class="note">Mění hlavní část (zvýrazněná v grafu). Pracovní čas jde zvednout nejvýš o polovinu, intenzita ±10 %. Trenér přepočítá zátěž a den bere jako tvoji volbu.</p>`;
 }
 
-/** Pravidla Trenéra v3 – krátce, se zdroji (docs/trener-v3/zdroje.md). */
+/** Pravidla Trenéra v3 – krátce, se zdroji (docs/trener/zdroje.md). */
 const RULES3 = `<ul class="rules3">
   <li><b>Cíl týdne</b> = 7 × kondice + 45,6 × růst. Zlepšit +3 za týden (nad kondicí 45 +4), Udržet 0, Zima k zimnímu základu (vrchol sezóny − 42,5 %), ladění −2. <small>TrainingPeaks, Friel</small></li>
   <li><b>Přidávání</b> nejvýš +30 % proti obvyklým 4 týdnům, pak +15 % za týden. Každý 4. týden lehčí, o 40–50 % méně. <small>Friel 3:1</small></li>
@@ -3027,9 +3027,7 @@ async function coachProfileForm(box) {
   const verOf = (x) => (x.v3 ? 3 : x.v2 ? 2 : 1);
   const draw = (p, ver, msg = "") => {
     box.innerHTML = `
-      <div class="sl" style="margin:0 0 6px">Trenér</div>
-      <div class="seg" id="cpVer">${[[3, "v3 – nový (zkušební)"], [2, "v2"], [1, "původní"]].map(([k, l]) => `<button type="button" class="${ver === k ? "on" : ""}" data-ver="${k}">${l}</button>`).join("")}</div>
-      <p class="note">v3 počítá cíl a výhled od dnešní kondice, délky ze zátěže (změna sportu drží zátěž), plán na 4 týdny. Popis: docs/trener-v3.</p>
+
       <div class="sl" style="margin:14px 0 6px">Hlavní sport</div>
       <div class="seg" id="cpPrim">${[["ride", "Kolo"], ["run", "Běh"]].map(([k, l]) => `<button type="button" class="${p.primary === k ? "on" : ""}" data-prim="${k}">${l}</button>`).join("")}</div>
       <div class="sl" style="margin:14px 0 6px">Další sporty</div>
@@ -3053,7 +3051,7 @@ async function coachProfileForm(box) {
       btn.disabled = true; m.textContent = "Ukládám a skládám plán…";
       try {
         const v = curVer();
-        const r = await api("coach/profile", { method: "POST", body: JSON.stringify({ profile: read(), v2: v === 2, v3: v === 3 }) });
+        const r = await api("coach/profile", { method: "POST", body: JSON.stringify({ profile: read() }) });
         cache.clear();
         draw(r.profile, verOf(r), r.proposal && r.proposal.changes ? `Uloženo. ${r.proposal.changes} změn v plánu čeká na potvrzení v Trenérovi.` : "Uloženo.");
       } catch (e) { m.textContent = `Nepovedlo se: ${e.message}`; btn.disabled = false; }

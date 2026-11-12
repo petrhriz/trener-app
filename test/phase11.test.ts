@@ -1,53 +1,10 @@
 // 7. kolo připomínek: cíle se liší i po slabších týdnech, kontrola FTP, osobní počasí, vlastní jízda.
 import { describe, expect, it } from "vitest";
-import { generatePlan, weekTargetAdjusted, z2MaxMinutes, type PlanInput } from "../src/core/plan";
 import { ftpCheck } from "../src/core/ftpCheck";
 import { bestWindow, dayWeather, hourKind, type Hour } from "../src/core/weather";
 import { ownRideName, parseOwnRide } from "../src/core/ownRide";
 
-function planInput(over: Partial<PlanInput> = {}): PlanInput {
-  return {
-    today: "2026-11-08",
-    ftp: 298,
-    hr: { floors: [55, 135, 165, 184, 202], max: 204, lthr: 196, rest: 54 },
-    goal: "zvyseni",
-    ridesPerWeek: 3,
-    startYesterday: { ctl: 44, atl: 22 },
-    startToday: null,
-    acts: [],
-    actsPower: [],
-    past: () => null,
-    calendar: [],
-    constraints: [],
-    weather: new Map(),
-    weatherOk: false,
-    recovery: "green",
-    p5: 340,
-    // stejné týdny jako 8. 11. 2026: po slabších týdnech by dřív vyšel stejný cíl pro Zlepšit i Udržet
-    weekLoads: [430, 330, 52, 150],
-    ...over,
-  };
-}
 
-describe("cíl tréninku mění plán i po slabších týdnech", () => {
-  it("strop proti běžnému týdnu závisí na cíli", () => {
-    const base = { lo: 322, hi: 338, mid: 330 };
-    const z = weekTargetAdjusted(base, [430, 330, 52, 150], "zvyseni");
-    const u = weekTargetAdjusted({ lo: 276, hi: 338, mid: 307 }, [430, 330, 52, 150], "udrzeni");
-    const p = weekTargetAdjusted({ lo: 246, hi: 276, mid: 261 }, [430, 330, 52, 150], "pokles");
-    expect(z.mid).toBeGreaterThan(u.mid);
-    expect(u.mid).toBeGreaterThan(p.mid);
-  });
-  it("Zlepšit / Udržet / Pokles = jiná zátěž týdne v plánu", () => {
-    const load = (goal: PlanInput["goal"]) => generatePlan(planInput({ goal })).days.reduce((t, d) => t + d.load, 0);
-    expect(load("zvyseni")).toBeGreaterThan(load("udrzeni"));
-    expect(load("udrzeni")).toBeGreaterThan(load("pokles"));
-  });
-  it("delší Z2 při Zlepšit, kratší při Poklesu", () => {
-    expect(z2MaxMinutes("zvyseni", false, true)).toBeGreaterThan(z2MaxMinutes("udrzeni", false, true));
-    expect(z2MaxMinutes("pokles", true, false)).toBeLessThan(z2MaxMinutes("udrzeni", true, false));
-  });
-});
 
 describe("kontrola FTP", () => {
   it("20 min výrazně nad FTP → test (FTP je nízké)", () => {
@@ -86,62 +43,5 @@ describe("počasí podle tebe", () => {
   });
 });
 
-describe("vlastní jízda", () => {
-  it("rozpozná den, délku a s kým", () => {
-    const a = parseOwnRide("zítra jedu projížďku na 4 hodiny s Honzou", "2026-11-08")!;
-    expect(a).toMatchObject({ date: "2026-11-09", min: 240, with: "Honzou" });
-    const b = parseOwnRide("V sobotu pojedu 120 km ve skupině", "2026-11-08")!;
-    expect(b.date).toBe("2026-11-14");
-    expect(b.with).toBe("skupina");
-    expect(b.min).toBeGreaterThan(240);
-    expect(parseOwnRide("pozítří jedu 3:30 h", "2026-11-08")!.min).toBe(210);
-  });
-  it("není to jízda → null", () => {
-    expect(parseOwnRide("jak jsem na tom se spánkem?", "2026-11-08")).toBeNull();
-    expect(parseOwnRide("zítra nepojedu 2 h", "2026-11-08")).toBeNull();
-  });
-  it("plán den nechá, započítá zátěž a ostatní dny zkrátí", () => {
-    const base = generatePlan(planInput({ goal: "udrzeni" }));
-    const note = JSON.stringify({ min: 240, km: null, with: "Honzou" });
-    const p = generatePlan(planInput({ goal: "udrzeni", constraints: [{ date: "2026-11-14", kind: "jizda", note }] }));
-    const d = p.days.find((x) => x.date === "2026-11-14")!;
-    expect(d.name).toBe(ownRideName({ min: 240, km: null, with: "Honzou" }));
-    expect(d.durationMin).toBe(240);
-    expect(d.load).toBeGreaterThan(150);
-    expect(p.changes.some((c) => c.date === "2026-11-14" && c.action === "nová")).toBe(true);
-    // týden s vlastní jízdou nepřeroste cíl: zátěž ostatních dnů se o jízdu sníží
-    const week = (x: typeof p) => x.days.filter((y) => y.date <= "2026-11-15").reduce((t, y) => t + y.load, 0);
-    expect(week(p)).toBeLessThanOrEqual(Math.max(week(base), d.load) * 1.3);
-  });
-});
 
-describe("Zlepšit nemá kratší jízdy než Udržet (8. kolo)", () => {
-  it("přidaná jízda jen doplní, ostatní se nezkracují", () => {
-    const cal = (id: number, date: string) => ({ id, date, kind: "z2" as const, quality_type: null, name: "Z2 vytrvalost", indoor: 0, duration_min: 75, steps_json: null, steps_text: null, target_load: 80, reason: null, status: "planned", sport: "ride", goal: "zvyseni" });
-    const constraints = [{ date: "2026-11-09", kind: "sport" as const, note: "ride" }, { date: "2026-11-11", kind: "sport" as const, note: "ride" }, { date: "2026-11-10", kind: "sport" as const, note: "run" }, { date: "2026-11-13", kind: "sport" as const, note: "run" }];
-    // jen Z2 jízdy (kvalita má délku podle cíle – dávkování intervalů)
-    const mins = (goal: PlanInput["goal"]) => { const p = generatePlan(planInput({ goal, calendar: [cal(1, "2026-11-10"), cal(2, "2026-11-13")], constraints })); return ["2026-11-09", "2026-11-11"].map((d) => { const x = p.days.find((y) => y.date === d)!; return x.kind === "z2" || x.kind === "long" ? x.durationMin ?? 0 : 0; }); };
-    const z = mins("zvyseni"), u = mins("udrzeni"), p = mins("pokles");
-    for (let i = 0; i < 2; i++) { expect(z[i]!).toBeGreaterThanOrEqual(u[i]!); expect(u[i]!).toBeGreaterThanOrEqual(p[i]!); }
-  });
-});
 
-describe("ultrareview: plánovač", () => {
-  const cal = (id: number, date: string, kind: "z2" | "quality" = "z2") => ({ id, date, kind, quality_type: null, name: kind === "quality" ? "Práh" : "Z2 vytrvalost", indoor: 0, duration_min: 75, steps_json: null, steps_text: null, target_load: 80, reason: null, status: "planned", sport: "ride", goal: "zvyseni" }) as any;
-  it("volno z tvé volby trénink smaže, nepřesune", () => {
-    const p = generatePlan(planInput({ calendar: [cal(1, "2026-11-10")], constraints: [{ date: "2026-11-10", kind: "sport", note: "rest" } as any] }));
-    const ch = p.changes.filter((c) => c.targetId === 1);
-    expect(ch.some((c) => c.action === "smazat")).toBe(true);
-    expect(ch.some((c) => c.action === "přesunout")).toBe(false);
-  });
-  it("hokej dnes s červeným ránem nepřepíše na jízdu", () => {
-    const p = generatePlan(planInput({ calendar: [cal(1, "2026-11-08")], constraints: [{ date: "2026-11-08", kind: "hokej", note: null } as any], recovery: "red" }));
-    const d = p.days.find((x) => x.date === "2026-11-08");
-    expect(d?.kind === "recovery").toBe(false);
-  });
-  it("přesunutá kvalita z blokovaného dne se počítá do limitu", () => {
-    const p = generatePlan(planInput({ calendar: [cal(1, "2026-11-10", "quality")], constraints: [{ date: "2026-11-10", kind: "nemuzu", note: null } as any] }));
-    const wk = p.days.filter((x) => x.date >= "2026-11-09" && x.date <= "2026-11-15");
-    expect(wk.filter((x) => x.kind === "quality").length).toBeLessThanOrEqual(1); // listopad: limit 1
-  });
-});

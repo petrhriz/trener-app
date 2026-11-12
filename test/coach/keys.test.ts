@@ -1,7 +1,7 @@
 // Trenér v3: uložení a vyhodnocení kvalit, posun stupně náročnosti.
 import { describe, expect, it } from "vitest";
-import { type KeyRecord, evaluateKeys, recordKeys } from "../../src/core/coach3/progress3";
-import type { EngineAct } from "../../src/core/coach/engine";
+import { type KeyRecord, evaluateKeys, recordKeys } from "../../src/core/coach/keys";
+import type { EngineAct } from "../../src/core/coach/common";
 
 const plan = { reps: 4, work_s: 480, lo: 240, hi: 255 };
 const key = (date: string, level = 2): Omit<KeyRecord, "state"> => ({ date, sport: "ride", cat: "thr", level, plan, minutes: 60, name: "4×8 min práh" });

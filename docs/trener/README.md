@@ -1,7 +1,7 @@
 # Trenér v3
 
 Nový trenér od nuly (13. 11. 2026). Běží vedle v2, zapíná se v Nastavení → Trenér (`settings.coach_v3`).
-Kód: `src/core/coach3/` (čisté funkce, testy v `test/coach3/`). Z v2 převzaté jen ověřené kusy: knihovna tréninků
+Kód: `src/core/coach/` (čisté funkce, testy v `test/coach/`). Z v2 převzaté jen ověřené kusy: knihovna tréninků
 (`coach/library.ts`), fáze a rovnice kondice (`coach/target.ts`), únava, pravidla kontroly týdne (`coach/validate.ts`).
 
 ## Proč znovu
@@ -44,8 +44,8 @@ Hlášené chyby měly společnou příčinu – v2 míchal různé výchozí bo
 ## Jak vyzkoušet
 
 - Zapnout: Nastavení → Trenér → „v3 – nový (zkušební)“ → Uložit. Vypnout stejně (v2 / původní).
-- Bez přepnutí, jen čtení: `GET /admin/coach3?goal=udrzeni` (admin klíč) – plán v3 na ostrých datech
-  i pro jiný cíl. Testy: `test/coach3/`.
+- Bez přepnutí, jen čtení: `GET /admin/coach?goal=udrzeni` (admin klíč) – plán v3 na ostrých datech
+  i pro jiný cíl. Testy: `test/coach/`.
 
 ## Ostrá data 12. 11. 2026 (kondice 41,8, VST pod normou → únava −10 %)
 
@@ -60,7 +60,7 @@ souhrn v plánu říká.
 
 ## Simulace (modeloví sportovci)
 
-`npx vite-node scripts/coach3-sim.ts vystup.json` – 7 situací po 8 týdnů (pokles, udržet, zlepšit v zimě i v sezóně,
+`npx vite-node scripts/coach-sim.ts vystup.json` – 7 situací po 8 týdnů (pokles, udržet, zlepšit v zimě i v sezóně,
 závod, běh ve středu, návrat). Sportovec každý den odjede přesně plán, kondice se přepočítá, trenér plánuje znovu.
 Výsledek 12. 11. 2026 (po opravě „týden od pondělí“): pokles 40 → 32,5, udržet 40 → 40,0, zlepšit v zimě 40 → 38,6
 (zimní délky nepustí víc), zlepšit v sezóně 42,9 → 48,2, pravidla drží ve všech situacích.

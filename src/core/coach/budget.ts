@@ -2,9 +2,9 @@
 // a výhled nikdy nejdou proti sobě: pokles kondici snižuje, udržet drží, zlepšit zvedá – pokud to nepustí omezení,
 // a pak to výsledek řekne čísly.
 import { K_CTL, type Goal } from "../fitness";
-import { type Phase, isWinter, phaseFor } from "../coach/target";
+import { type Phase, isWinter, phaseFor } from "./target";
 
-// ---------- pravidla podle zdrojů (docs/trener-v3/zdroje.md) ----------
+// ---------- pravidla podle zdrojů (docs/trener/zdroje.md) ----------
 /** Zima: kondice klesá k zimnímu základu = vrchol sezóny × (1 − pokles). Trenéři uvádějí pokles 30–40 % od vrcholu
  *  (TrainRight), uživatel chce 35–50 % (jeho dřívější zimy byly −64 až −88 %) → střed 42,5 %. */
 export const WINTER_DROP = 0.425;

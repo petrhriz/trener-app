@@ -6,23 +6,22 @@ import { ftpCheck } from "../core/ftpCheck";
 import { workoutFromIcu } from "../core/workout";
 import { acwr, lthrSanity, sleepRegularity, weeklyReview, type WeeklyReview } from "../core/extras";
 import { FORM_ZONE_RANGE, formZone, rampLabel, weeklyLoadTarget } from "../core/fitness";
-import { type ActDay, type Change, type PlanDay, type PlanResult, generatePlan } from "../core/plan";
+import type { Change, PlanDay, PlanResult } from "../core/plan";
 import { bestIn, eftp } from "../core/power";
 import type { PastQuality } from "../core/qualityDesign";
 import type { QualityType } from "../core/quality";
-import { type RecoveryResult, decisionFor, evaluateRecovery } from "../core/recovery";
+import { type RecoveryResult, evaluateRecovery } from "../core/recovery";
 import { recoveryScore } from "../core/readinessScore";
 import { type DayWeather, dayWeather } from "../core/weather";
 import type { Workout } from "../core/workout";
 import { all, getState, run, setState } from "../lib/db";
-import { type KeyRecord, evaluateKeys, recordKeys } from "../core/coach3/progress3";
+import { type KeyRecord, evaluateKeys, recordKeys } from "../core/coach/keys";
 import { dayDm, dm, hmm, num, signed } from "../lib/format";
 import { addDays, dateRange, mondayOf } from "../lib/time";
 import type { Ctx, FullAct, MetricRow } from "./context";
-import { loadCoachState, saveCoachState } from "../coach/store";
 import type { Fatigue } from "../core/coach/target";
-import { type EngineAct, runEngine } from "../core/coach/engine";
-import { runCoach3 } from "../core/coach3/engine";
+import type { EngineAct, ProgressRow } from "../core/coach/common";
+import { runCoach } from "../core/coach/engine";
 import { profileFromHistory, validateProfile } from "../core/coach/profile";
 import { norm } from "../core/recovery";
 import { setSetting } from "../lib/settings";
@@ -239,47 +238,8 @@ export function offDaysOf(ctx: Ctx): string[] {
   return [...out];
 }
 
-/** Trenér v2: uložený plán po týdnech; přepočet jen při změně vstupů (src/core/coach/engine.ts). */
-export async function planForV2(ctx: Ctx, rec: RecoveryResult): Promise<PlanResult> {
-  const T = ctx.T;
-  const db = ctx.env.DB;
-  let profile = ctx.s.coach_profile ? validateProfile(ctx.s.coach_profile).profile : null;
-  if (!profile) {
-    // první spuštění: profil odhadnutý z historie se uloží, ať se plán nemění s každou novou aktivitou
-    profile = profileFromHistory(ctx.acts, T);
-    await setSetting(db, "coach_profile", profile);
-    ctx.s.coach_profile = profile;
-  }
-  const constraints = [...ctx.constraints, ...statusConstraints(ctx)];
-  const acts: EngineAct[] = ctx.acts.map((a) => ({ id: a.id, date: a.date, sport: a.sport, load: a.load, moving_s: a.moving_s, quality: !!a.is_quality && a.sport !== "skate" && a.sport !== "padel", hr_z: a.hr_z, pwr_z: a.pwr_z, laps: a.laps, compliance: a.icu_compliance != null && a.icu_compliance > 0 ? a.icu_compliance : null }));
-  const power = ctx.acts.filter((a) => isBike(a.sport)).map((a) => ({ id: a.id, date: a.date, mmp: a.mmp, max20: a.max20, pwr_z: a.pwr_z }));
-  const state = await loadCoachState(db, T);
-  const out = runEngine({
-    today: T,
-    goal: ctx.s.goal,
-    raceDate: ctx.s.goal === "zavod" ? ctx.s.goal_date : null,
-    profile,
-    zones: { ftp: ctx.s.ftp ?? null, hr: ctx.s.hr_zones },
-    acts,
-    power,
-    metric: (d) => metricOn(ctx, d),
-    calendar: ctx.calendar,
-    constraints,
-    weather: weatherMap(ctx, T, 14),
-    weatherOk: ctx.weatherOk,
-    recovery: rec.state,
-    fatigue: fatigueOf(ctx, rec, constraints),
-    weekLoads: await weekLoads(ctx),
-    offDays: offDaysOf(ctx),
-    stored: state.stored,
-    progress: state.progress,
-  });
-  if (out.save.length || out.progress.length) await saveCoachState(db, out);
-  return out.plan;
-}
-
-/** Trenér v3: plán od dnešní kondice, 4 týdny dopředu, bez uložených týdnů (src/core/coach3/, docs/trener-v3/). */
-export async function planForV3(ctx: Ctx, rec: RecoveryResult): Promise<PlanResult> {
+/** Trenér v3: plán od dnešní kondice, 4 týdny dopředu, bez uložených týdnů (src/core/coach/, docs/trener/). */
+export async function planForCoach(ctx: Ctx, rec: RecoveryResult): Promise<PlanResult> {
   const T = ctx.T;
   let profile = ctx.s.coach_profile ? validateProfile(ctx.s.coach_profile).profile : null;
   if (!profile) {
@@ -290,7 +250,8 @@ export async function planForV3(ctx: Ctx, rec: RecoveryResult): Promise<PlanResu
   const constraints = [...ctx.constraints, ...statusConstraints(ctx)];
   const acts: EngineAct[] = ctx.acts.map((a) => ({ id: a.id, date: a.date, sport: a.sport, load: a.load, moving_s: a.moving_s, quality: !!a.is_quality && a.sport !== "skate" && a.sport !== "padel", hr_z: a.hr_z, pwr_z: a.pwr_z, laps: a.laps ?? null, compliance: (a as any).icu_compliance ?? null }));
   const power = ctx.acts.filter((a) => isBike(a.sport)).map((a) => ({ id: a.id, date: a.date, mmp: a.mmp, max20: a.max20, pwr_z: a.pwr_z }));
-  const state = await loadCoachState(ctx.env.DB, T);
+  const state: { progress: Record<string, ProgressRow> } = { progress: {} };
+  for (const r of await all<{ key: string; level: number; last_date: string | null }>(ctx.env.DB, "SELECT key, level, last_date FROM coach_progress")) state.progress[r.key] = { level: r.level, last: r.last_date };
   // kvality: vyhodnotit odjeté (stupeň náročnosti nahoru / dolů), pak plánovat s aktuálními stupni a historií kategorií
   const keys0 = (await getState<KeyRecord[]>(ctx.env.DB, "coach3_keys")) ?? [];
   const ev = evaluateKeys(keys0, acts, T, ctx.s.goal, state.progress);
@@ -298,7 +259,7 @@ export async function planForV3(ctx: Ctx, rec: RecoveryResult): Promise<PlanResu
     await run(ctx.env.DB, "INSERT INTO coach_progress (key, level, last_date, last_outcome) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET level = excluded.level, last_date = excluded.last_date, last_outcome = excluded.last_outcome", u.key, u.level, u.last, u.outcome.slice(0, 200));
     state.progress[u.key] = { level: u.level, last: u.last };
   }
-  const plan = runCoach3({
+  const plan = runCoach({
     today: T,
     goal: ctx.s.goal,
     raceDate: ctx.s.goal === "zavod" ? ctx.s.goal_date : null,
@@ -325,48 +286,9 @@ export async function planForV3(ctx: Ctx, rec: RecoveryResult): Promise<PlanResu
   return plan;
 }
 
+/** Plán trenéra (src/core/coach/, docs/trener/). */
 export async function planFor(ctx: Ctx, rec?: RecoveryResult): Promise<PlanResult> {
-  const T = ctx.T;
-  const recovery = rec ?? recoveryFor(ctx);
-  if (ctx.s.coach_v3) return planForV3(ctx, recovery);
-  if (ctx.s.coach_v2) return planForV2(ctx, recovery);
-  const ftp = ctx.s.ftp ?? 250;
-  const acts: ActDay[] = ctx.acts
-    .filter((a) => a.date >= addDays(T, -42))
-    .map((a) => ({
-      date: a.date,
-      sport: a.sport,
-      load: a.load,
-      moving_s: a.moving_s,
-      is_quality: a.is_quality,
-      counts: !!a.is_quality && a.sport !== "skate" && a.sport !== "padel",
-      quality_type: a.quality_type,
-      name: a.name,
-    }));
-  const power = ctx.acts.filter((a) => isBike(a.sport)).map((a) => ({ id: a.id, date: a.date, mmp: a.mmp, max20: a.max20, pwr_z: a.pwr_z }));
-  const y = metricOn(ctx, addDays(T, -1));
-  const t = metricOn(ctx, T);
-  return generatePlan({
-    today: T,
-    ftp,
-    hr: ctx.s.hr_zones,
-    goal: ctx.s.goal,
-    // počet tréninků je automatický: základ podle cíle, další jízdy plán přidá, když se zátěž týdne nevejde
-    ridesPerWeek: ctx.s.goal === "pokles" ? 2 : 3,
-    startYesterday: y ? { ctl: y.ctl, atl: y.atl } : { ctl: 0, atl: 0 },
-    startToday: t ? { ctl: t.ctl, atl: t.atl } : null,
-    acts,
-    actsPower: power,
-    past: (q) => pastQuality(ctx, q),
-    calendar: ctx.calendar,
-    constraints: [...ctx.constraints, ...statusConstraints(ctx)],
-    runExperienced: ctx.acts.filter((a) => a.sport === "run" && a.date >= addDays(T, -60) && (a.moving_s ?? 0) >= 15 * 60).length >= 6,
-    weather: weatherMap(ctx, T, 9),
-    weatherOk: ctx.weatherOk,
-    recovery: recovery.state,
-    p5: bestIn(power, addDays(T, -42), T, 300)?.w ?? null,
-    weekLoads: await weekLoads(ctx),
-  });
+  return planForCoach(ctx, rec ?? recoveryFor(ctx));
 }
 
 /**
@@ -417,42 +339,22 @@ export async function readiness(ctx: Ctx): Promise<Readiness> {
   const day = plan.days.find((d) => d.isToday) ?? null;
   const done = todayActs(ctx).map((a) => ({ name: a.name ?? "aktivita", load: a.load, id: a.id, sport: a.sport, unit: ["ride", "mtb", "indoor"].includes(a.sport) && a.np ? "TSS" : "HRSS", compliance: (a as any).icu_compliance != null ? Math.round((a as any).icu_compliance) : null }));
   const cal = ctx.calendar.find((c) => c.date === T && c.status !== "skipped") ?? null;
-  const kind = (cal?.kind ?? null) as any;
-  const dec = decisionFor(rec.state, kind);
   let decision: string;
   let why: string;
   // Trenér v3: dnešek jen z plánu trenéra (ranní stav už v plánu je) – kalendář intervals.icu je jen zápis
-  const v3 = !!ctx.s.coach_v3;
+  // dnešek jen z plánu trenéra (ranní stav už v plánu je) – kalendář intervals.icu je jen zápis
   if (done.length) {
     decision = "Odtrénováno";
     why = `${done.map((d) => `${d.name} (zátěž ${num(d.load)})`).join(", ")}.`;
-  } else if (v3) {
-    if (!day || !day.name) {
-      decision = "Volno";
-      why = day?.kind === "blocked" ? day.note || "Dnes nelze." : "Volno podle plánu.";
-    } else if (day.indoor) {
-      decision = "Trenažér";
-      why = day.note || "Kvalita na trenažéru.";
-    } else {
-      decision = rec.state === "yellow" ? "Jet lehčeji" : "Jet podle plánu";
-      why = day.note || "Zotavení v normě.";
-    }
-  } else if (!cal || cal.kind === "rest") {
+  } else if (!day || !day.name) {
     decision = "Volno";
-    why = "Volno podle plánu.";
-    if (rec.state === "green" && fit.load7 < (weeklyLoadTarget(fit.ctl ?? 0, ctx.s.goal).lo)) why += " Zátěž je pod pásmem, můžeš dát lehkou Z2 do 1:30, nic víc.";
-  } else if (rec.state === "red") {
-    decision = "Volno";
-    why = `${rec.emoji} ${rec.stateLabel.toLowerCase()}: volno, nebo Z1 do 45 min / procházka.`;
-  } else if (day?.indoor && !cal.indoor) {
+    why = day?.kind === "blocked" ? day.note || "Dnes nelze." : "Volno podle plánu.";
+  } else if (day.indoor) {
     decision = "Trenažér";
-    why = day.note || "Špatné počasí.";
-  } else if (rec.state === "yellow") {
-    decision = dec.label;
-    why = kind === "quality" ? "🟡 částečně zotavený: kvalitu změň na Z2." : "🟡 částečně zotavený: zkrať o třetinu.";
+    why = day.note || "Kvalita na trenažéru.";
   } else {
-    decision = "Jet beze změny";
-    why = "Zotavení v normě.";
+    decision = rec.state === "yellow" ? "Jet lehčeji" : "Jet podle plánu";
+    why = day.note || "Zotavení v normě.";
   }
   const tomorrowDay = plan.days.find((d) => d.date === addDays(T, 1));
   const tomorrow = tomorrowDay
@@ -476,7 +378,7 @@ export async function readiness(ctx: Ctx): Promise<Readiness> {
     time: `${String(ctx.now.hh).padStart(2, "0")}:${String(ctx.now.mm).padStart(2, "0")}`,
     recovery: rec,
     fitness: fit,
-    today: { title: done.length ? done[0]!.name : v3 ? day?.name ?? "Volno" : day?.name ?? cal?.name ?? "Volno", decision, decisionWhy: why, day, done, calendarName: cal?.name ?? null },
+    today: { title: done.length ? done[0]!.name : day?.name ?? "Volno", decision, decisionWhy: why, day, done, calendarName: cal?.name ?? null },
     tomorrow,
     tomorrowInfo: tomorrowDay ? { date: tomorrowDay.date, name: tomorrowDay.name ?? null, tag: tomorrowDay.tag ?? null, minutes: tomorrowDay.durationMin ?? null, tmax: tomorrowDay.weather?.tmax ?? null, tmin: tomorrowDay.weather?.tmin ?? null, rainProb: tomorrowDay.weather?.rainProb ?? null, gust: tomorrowDay.weather?.gustMax ?? null } : null,
     changes,

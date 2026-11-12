@@ -3,7 +3,6 @@ import { Hono } from "hono";
 import type { Env } from "../env";
 import { BIKE_SPORTS } from "../datasource/types";
 import { fuelPlan, SWEAT_TEST_HINT, sleepRegularity } from "../core/extras";
-import { trainingBalanceOf } from "../core/balance";
 import { GOAL_LABEL, type Goal, formZone, project } from "../core/fitness";
 import { carbsFor } from "../core/nutrition";
 import { bestIn } from "../core/power";
@@ -16,13 +15,11 @@ import { sleepReport } from "../core/sleep";
 import { dayDm, dm } from "../lib/format";
 import { DEFAULTS, getSettings, setSetting, statusOn, type Settings } from "../lib/settings";
 import { STATUS_LABEL, coaching, strainScore, typicalWake, type StatusKind } from "../core/readinessScore";
-import { weeklyLoadTarget } from "../core/fitness";
 import { round6 } from "./round6";
 import { addDays, dow, localNow, mondayOf, tzOffsetMin, daysBetween } from "../lib/time";
-import { constraintNoteOk } from "../core/coach/engine";
+import { constraintNoteOk } from "../core/coach/common";
 import { addConstraint, applyChanges, claimProposal, finishProposal, getProposal, openProposal, removeConstraint, saveProposal } from "../plan/proposals";
-import { activityReport, eftpOf, ftpCheckOf, fitnessTable, recoveryFor, plannedFor, planFor, readiness, weatherMap, weekLoads, weekly } from "../report/build";
-import { weekTargetAdjusted, z2MaxMinutes } from "../core/plan";
+import { activityReport, eftpOf, ftpCheckOf, fitnessTable, recoveryFor, plannedFor, planFor, readiness, weatherMap, weekly } from "../report/build";
 import { loadCtx } from "../report/context";
 import { compliance, ctlPlan, efficiency, intensityVerdict, intensityWeeks, monotonyWeeks, weeklyCompliance } from "../core/analytics";
 import { recomputeLoads } from "../sync/metrics";
@@ -30,7 +27,6 @@ import { recomputeSleep } from "../sync/sleep";
 import { geocode } from "../sync/weather";
 import { syncTick } from "../sync/sync";
 import { listModels, modelChain } from "../llm/providers";
-import { runChat } from "../llm/llm";
 import { verifyAccess } from "./access";
 import { accountsApi } from "./accounts";
 import { coachApi } from "./coach";
@@ -39,7 +35,7 @@ import { OWNER_ID, sessionUser } from "./session";
 /** uid = přihlášený uživatel (zatím vždy 1 = vlastník; příprava na víc uživatelů, viz docs/multi-user.md) */
 export const api = new Hono<{ Bindings: Env; Variables: { uid: number } }>();
 import { gearApi, loadGear, resolveGear } from "./gear";
-import { zones28 } from "../core/coach3/zones28";
+import { zones28 } from "../core/coach/zones28";
 import { loadZoneHistory, recordZones, zonesFor } from "../lib/zoneHistory";
 import { applySecrets, encryptSecret, invalidateSecrets, secretInfo, secretsFor } from "../lib/secrets";
 const isBike = (s: string) => BIKE_SPORTS.includes(s as any);
@@ -417,7 +413,7 @@ api.get("/coach", async (c) => {
     weeks: weekLoadsView(ctx, r.plan),
     goalLabel: GOAL_LABEL[ctx.s.goal as Goal],
     goal: ctx.s.goal,
-    goals: ctx.s.coach_v2 || ctx.s.coach_v3 ? goalsViewV2(ctx, r.plan) : goalsView(ctx, await weekLoads(ctx)),
+    goals: goalsView(ctx, r.plan),
     coach: (r.plan as { coach?: unknown }).coach ?? null,
     eftp: eftpOf(ctx),
     ftpCheck: ftpCheckOf(ctx, await getState<string>(c.env.DB, "ftp_set_at")),
@@ -427,27 +423,7 @@ api.get("/coach", async (c) => {
 type CtxT = Awaited<ReturnType<typeof loadCtx>>;
 
 /** Cíle s konkrétními čísly pro dnešní kondici – ať je vidět rozdíl mezi Zlepšit / Udržet / Pokles. */
-function goalsView(ctx: CtxT, wl: number[]) {
-  const ctl = ctx.metrics.find((m) => m.date === addDays(ctx.T, -1))?.ctl ?? 0;
-  const rpw = ctx.s.rides_per_week;
-  // stejný výpočet jako plán: cíl podle CTL a strop proti běžnému týdnu podle cíle
-  const t = (g: Goal) => weekTargetAdjusted(weeklyLoadTarget(ctl, g), wl, g);
-  const mo = +ctx.T.slice(5, 7);
-  const lim = mo >= 3 && mo <= 9 ? 2 : 1;
-  const off = lim === 1;
-  const z = t("zvyseni"), u = t("udrzeni"), p = t("pokles");
-  const mx = (g: Goal) => `${z2MaxMinutes(g, false, off)} / ${z2MaxMinutes(g, true, off)} min`;
-  const capNote = (x: { note: string | null }) => (x.note ? ` ${x.note}` : "");
-  return [
-    { key: "zvyseni", label: "Zlepšit", lo: z.lo, hi: z.hi, rides: rpw, quality: lim, maxRun: 3, z2Max: mx("zvyseni"), text: `Kondice (CTL) má růst o 1–3 body týdně: zátěž ${z.lo}–${z.hi} za týden, ${rpw} tréninky, kvalita ${lim}× týdně, Z2 až ${mx("zvyseni")} (všední / víkend). Max. 3 dny tréninku za sebou.${capNote(z)}` },
-    { key: "udrzeni", label: "Udržet", lo: u.lo, hi: u.hi, rides: rpw, quality: lim, maxRun: 2, z2Max: mx("udrzeni"), text: `Kondice zůstává: zátěž ${u.lo}–${u.hi} za týden, ${rpw} tréninky, kvalita ${lim}× týdně ve stejné dávce, Z2 až ${mx("udrzeni")}. Max. 2 dny tréninku za sebou.${capNote(u)}` },
-    { key: "pokles", label: "Zima", lo: p.lo, hi: p.hi, rides: Math.max(2, rpw - 1), quality: 1, maxRun: 2, z2Max: mx("pokles"), text: `Konec sezóny / zima: zátěž ${p.lo}–${p.hi} za týden, o trénink méně (${Math.max(2, rpw - 1)} týdně), jedna kratší kvalita drží intenzitu, Z2 až ${mx("pokles")}. Kondice klesá pomalu, forma roste.${capNote(p)}` },
-    { key: "zavod", label: "Závod", lo: z.lo, hi: z.hi, rides: rpw, quality: lim, maxRun: 3, z2Max: mx("zavod"), text: `Příprava na ${ctx.s.goal_name || "závod"}${ctx.s.goal_date ? ` (${dm(ctx.s.goal_date)})` : ""}: zátěž jako Zlepšit (${z.lo}–${z.hi}).` },
-  ];
-}
-
-/** Trenér v2: popis cílů; u zvoleného cíle čísla tohoto týdne z rozpočtu. */
-function goalsViewV2(ctx: CtxT, plan: Awaited<ReturnType<typeof planFor>>) {
+function goalsView(ctx: CtxT, plan: Awaited<ReturnType<typeof planFor>>) {
   const co = (plan as { coach?: { hours: number; keys: number; keepLoad: number; recentLoad: number } }).coach;
   const t = plan.weeklyTarget;
   const now = co ? ` Tento týden: ${String(co.hours).replace(".", ",")} h, zátěž ${t.lo}–${t.hi}, kvalita ${co.keys}×.` : "";
@@ -1114,7 +1090,6 @@ api.post("/settings", async (c) => {
     if (["morning_from", "morning_to", "evening_time", "weekly_time"].includes(k)) return typeof v === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? null : "čas ve tvaru HH:MM";
     if (k === "rides_per_week") return Number.isInteger(v) && (v as number) >= 2 && (v as number) <= 5 ? null : "tréninky týdně 2–5";
     if (k === "sleep_goal_min") return Number.isInteger(v) && (v as number) >= 360 && (v as number) <= 600 ? null : "cíl spánku 6:00–10:00";
-    if (k === "coach_v2" || k === "coach_v3") return typeof v === "boolean" ? null : "přepínač trenéra";
     if (k === "place_name") return typeof v === "string" && v.trim() ? null : "místo nesmí být prázdné";
     if (k === "goal") return ["udrzeni", "zvyseni", "pokles", "zavod"].includes(v as string) ? null : "neznámý cíl";
     if (k === "goal_date") return v == null || (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) ? null : "datum cíle";

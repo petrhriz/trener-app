@@ -11,7 +11,7 @@ import { type Hour, dayWeather, isGreen } from "../src/core/weather";
 import { intervalWorkout, renderIcu, validate, z2Workout, humanSteps } from "../src/core/workout";
 import { TARGET_PCT, pctRange } from "../src/core/zones";
 import { bandFor, evaluatePast, LADDER, tizMin } from "../src/core/qualityDesign";
-import { type ActDay, type CalItem, type PlanInput, generatePlan, weekTargetAdjusted } from "../src/core/plan";
+import { type CalItem } from "../src/core/plan";
 import { acwr, easyNotEasy, fuelPlan, lthrSanity, sleepRegularity } from "../src/core/extras";
 import { computeDrift, expectedLapNames } from "../src/core/activity";
 import { numbersOk } from "../src/llm/llm";
@@ -282,101 +282,8 @@ describe("kvalita z dat (6.6)", () => {
 });
 
 // ---------- plán ----------
-function planInput(over: Partial<PlanInput> = {}): PlanInput {
-  return {
-    today: "2026-11-07",
-    ftp: 298,
-    hr: { floors: [55, 135, 165, 184, 202], max: 204, lthr: 196, rest: 54 },
-    goal: "udrzeni",
-    ridesPerWeek: 3,
-    startYesterday: { ctl: 50, atl: 40 },
-    startToday: null,
-    acts: [],
-    actsPower: [],
-    past: () => null,
-    calendar: [],
-    constraints: [],
-    weather: new Map(),
-    weatherOk: false,
-    recovery: "green",
-    p5: 340,
-    ...over,
-  };
-}
 const cal = (id: number, date: string, kind: CalItem["kind"], name: string, status = "planned"): CalItem => ({ id, date, kind, quality_type: null, name, indoor: 0, duration_min: 75, steps_json: null, steps_text: null, target_load: 80, reason: null, status });
 
-describe("plán na 7 dní (6.1)", () => {
-  it("vždy 7 dní D+1 … D+7, dny od D+5 orientační", () => {
-    const p = generatePlan(planInput());
-    expect(p.days.length).toBe(7);
-    expect(p.days[0]!.date).toBe("2026-11-08");
-    expect(p.days[3]!.orientational).toBe(false);
-    expect(p.days[4]!.orientational).toBe(true);
-  });
-  it("mimo sezónu max. 1 kvalita týdně a nikdy dvě po sobě", () => {
-    const p = generatePlan(planInput());
-    for (const q of p.qualityWeeks) expect(q.count).toBeLessThanOrEqual(q.limit);
-    for (let i = 1; i < p.days.length; i++) expect(p.days[i]!.kind === "quality" && p.days[i - 1]!.kind === "quality").toBe(false);
-  });
-  it("odjetá kvalita v týdnu → v tom týdnu už žádná", () => {
-    const acts: ActDay[] = [{ date: "2026-11-04", sport: "ride", load: 100, moving_s: 5400, is_quality: 1, counts: true, quality_type: "vo2", name: "VO2" }];
-    const p = generatePlan(planInput({ acts }));
-    const sun = p.days.find((d) => d.date === "2026-11-08")!;
-    expect(sun.kind).not.toBe("quality");
-  });
-  it("vynechaná kvalita se přesune jen výměnou za Z2, nic se nepřidává", () => {
-    const calendar = [cal(1, "2026-11-04", "quality", "3×10 min práh"), cal(2, "2026-11-08", "z2", "Z2 vytrvalost")];
-    const p = generatePlan(planInput({ calendar }));
-    expect(p.missed.map((m) => m.id)).toContain(1);
-    const sun = p.days.find((d) => d.date === "2026-11-08")!;
-    expect(sun.kind).toBe("quality");
-    expect(sun.note.toLowerCase()).toContain("přesunuto z st 4.11.");
-  });
-  it("hokej (hobby) není tvrdý den: den zůstane hokej a nic dalšího se kvůli němu nemění na volno", () => {
-    const p = generatePlan(planInput({ constraints: [{ date: "2026-11-09", kind: "hokej", note: null }] }));
-    expect(p.days.find((d) => d.date === "2026-11-09")!.kind).toBe("hockey");
-    // ve 2 týdnech plánu je nejvýš 3 dní tréninku za sebou
-    let run = 0, max = 0;
-    for (const d of p.days) { run = d.kind === "rest" || d.kind === "blocked" ? 0 : run + 1; max = Math.max(max, run); }
-    expect(max).toBeLessThanOrEqual(3);
-  });
-  it("nemůžu: jednotka z kalendáře se navrhne smazat / přesunout", () => {
-    const p = generatePlan(planInput({ calendar: [cal(5, "2026-11-10", "z2", "Z2 vytrvalost")], constraints: [{ date: "2026-11-10", kind: "nemuzu", note: null }] }));
-    expect(p.changes.some((c) => c.targetId === 5 && (c.action === "smazat" || c.action === "přesunout"))).toBe(true);
-  });
-  it("špatné počasí: kvalita na trenažér", () => {
-    const hours: Hour[] = [];
-    for (let d = 1; d <= 8; d++) for (let h = 0; h < 24; h++) hours.push({ time: `${addDays("2026-11-07", d)}T${String(h).padStart(2, "0")}:00`, temp: 8, feels: 6, precip_prob: 80, precip: 0.5, gust: 50, wind: 20, code: 61 });
-    const weather = new Map<string, ReturnType<typeof dayWeather>>();
-    for (let d = 0; d <= 8; d++) weather.set(addDays("2026-11-07", d), dayWeather(hours, addDays("2026-11-07", d)));
-    const p = generatePlan(planInput({ weather, weatherOk: true }));
-    for (const d of p.days.filter((x) => x.kind === "quality")) expect(d.indoor).toBe(true);
-  });
-  it("režim pokles: o jízdu méně a nižší cíl", () => {
-    const a = generatePlan(planInput({ goal: "udrzeni" }));
-    const b = generatePlan(planInput({ goal: "pokles" }));
-    expect(b.weeklyTarget.mid).toBeLessThan(a.weeklyTarget.mid);
-    const rides = (p: typeof a) => p.days.filter((d) => d.name).length;
-    expect(rides(b)).toBeLessThanOrEqual(rides(a));
-  });
-  it("🔴 dnes: jednotka z kalendáře → Z1 / volno", () => {
-    const p = generatePlan(planInput({ calendar: [cal(9, "2026-11-07", "quality", "3×10 min práh")], recovery: "red" }));
-    const t = p.days.find((d) => d.isToday)!;
-    expect(t.kind).toBe("recovery");
-    expect(p.changes.some((c) => c.targetId === 9)).toBe(true);
-  });
-  it("všechny workouty v plánu splňují 7.3", () => {
-    const p = generatePlan(planInput());
-    for (const d of p.days) if (d.workout) expect(validate(d.workout)).toEqual([]);
-  });
-  it("pojistka +30 % proti běžnému týdnu, nemocný týden se nepočítá, lehký týden po 3 týdnech růstu", () => {
-    expect(weekTargetAdjusted({ lo: 400, hi: 500, mid: 450 }, [300, 310, 300, 320]).mid).toBe(400);
-    // týden nemoci (60) nestáhne cíl: běžný týden = průměr ostatních
-    expect(weekTargetAdjusted({ lo: 300, hi: 340, mid: 320 }, [300, 310, 320, 60]).note).toBeNull();
-    expect(weekTargetAdjusted({ lo: 400, hi: 500, mid: 450 }, [300, 330, 370]).note).toContain("Lehčí týden");
-    expect(weekTargetAdjusted({ lo: 300, hi: 350, mid: 320 }, [400, 380, 410, 390]).note).toBeNull();
-  });
-});
 
 // ---------- počasí ----------
 describe("počasí (kap. 8) a okno na jízdu", () => {

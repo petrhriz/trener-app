@@ -1,6 +1,6 @@
 // Trenér v3: celý plán na simulované historii.
 import { describe, expect, it } from "vitest";
-import { type Coach3Input, runCoach3 } from "../../src/core/coach3/engine";
+import { type CoachInput, runCoach } from "../../src/core/coach/engine";
 import { computeMetrics } from "../../src/core/fitness";
 import { DEFAULT_PROFILE } from "../../src/core/coach/profile";
 import { NO_FATIGUE } from "../../src/core/coach/target";
@@ -10,8 +10,8 @@ const T = "2026-11-12"; // čtvrtek
 const HZ = { floors: [55, 135, 165, 184, 202], max: 204, lthr: 196, rest: 55 };
 
 /** 10 týdnů historie: út Z2 75 min, čt kvalita 60 min, so dlouhá 150 min (ne dnes). */
-function input(o: Partial<Coach3Input> = {}, perWeek = 1): Coach3Input {
-  const acts: Coach3Input["acts"] = [];
+function input(o: Partial<CoachInput> = {}, perWeek = 1): CoachInput {
+  const acts: CoachInput["acts"] = [];
   for (let i = 1; i <= 70; i++) {
     const d = addDays(T, -i);
     const w = dow(d);
@@ -36,7 +36,7 @@ function input(o: Partial<Coach3Input> = {}, perWeek = 1): Coach3Input {
 describe("Trenér v3 – plán", () => {
   it("pokles snižuje, udržet drží, zlepšit zvedá kondici – proti dnešní hodnotě", () => {
     // v pondělí (rozběhnutý týden bez dohánění porovnává test níž)
-    const mon = (goal: "pokles" | "udrzeni" | "zvyseni") => { const x = input({ goal }); return runCoach3({ ...x, today: "2026-11-09", acts: x.acts.filter((y) => y.date < "2026-11-09") }).coach; };
+    const mon = (goal: "pokles" | "udrzeni" | "zvyseni") => { const x = input({ goal }); return runCoach({ ...x, today: "2026-11-09", acts: x.acts.filter((y) => y.date < "2026-11-09") }).coach; };
     const p = mon("pokles"), u = mon("udrzeni"), z = mon("zvyseni");
     // cíl týdne se měří od kondice na začátku týdne (neděle večer)
     expect(p.ctlTarget).toBeLessThan(p.ctlWeekStart);
@@ -45,7 +45,7 @@ describe("Trenér v3 – plán", () => {
     expect(p.ctlWeekStart).toBe(u.ctlWeekStart);
   });
   it("4 týdny: tento a příští s tréninky, další dva orientačně; navazují kondicí", () => {
-    const h = runCoach3(input()).coach.horizon;
+    const h = runCoach(input()).coach.horizon;
     expect(h).toHaveLength(4);
     expect(h.map((w) => w.detail)).toEqual([true, true, false, false]);
     expect(h[2]!.days.every((d) => d.name == null)).toBe(true);
@@ -54,7 +54,7 @@ describe("Trenér v3 – plán", () => {
   });
   it("pravidla přes celý horizont: nejvýš 3 dny za sebou, kvalita ne po kvalitě ani po dlouhém", () => {
     for (const goal of ["pokles", "udrzeni", "zvyseni"] as const) {
-      const days = runCoach3(input({ goal }, 1.4)).coach.horizon.flatMap((w) => w.days);
+      const days = runCoach(input({ goal }, 1.4)).coach.horizon.flatMap((w) => w.days);
       let run = 0;
       days.forEach((d, i) => {
         run = d.role === "rest" ? 0 : run + 1;
@@ -64,10 +64,10 @@ describe("Trenér v3 – plán", () => {
     }
   });
   it("kolo → běh: den drží zátěž, délka se přepočítá podle běhu, texty jsou běžecké", () => {
-    const base = runCoach3(input());
+    const base = runCoach(input());
     const z2 = base.days.find((d) => d.kind === "z2" && !d.isToday)!;
     expect(z2).toBeTruthy();
-    const swapped = runCoach3(input({ constraints: [{ date: z2.date, kind: "sport", note: "run" }] }));
+    const swapped = runCoach(input({ constraints: [{ date: z2.date, kind: "sport", note: "run" }] }));
     const r = swapped.days.find((d) => d.date === z2.date)!;
     expect(r.sport).toBe("run");
     expect(r.durationMin!).toBeLessThan(z2.durationMin!);
@@ -76,14 +76,14 @@ describe("Trenér v3 – plán", () => {
     expect(txt).not.toMatch(/Rozjetí|Vyjetí|jízda|dojezd/);
   });
   it("🔴 ráno: dnes nelze trénovat; 🟡: dnes bez kvality", () => {
-    const red = runCoach3(input({ recovery: "red" }));
+    const red = runCoach(input({ recovery: "red" }));
     const t = red.days.find((d) => d.isToday);
     expect(!t || t.kind === "blocked" || t.kind === "rest").toBe(true);
-    const ye = runCoach3(input({ recovery: "yellow" }));
+    const ye = runCoach(input({ recovery: "yellow" }));
     expect(ye.days.find((d) => d.isToday)?.kind).not.toBe("quality");
   });
   it("výstup sedí pro dashboard: dny 7–8, cíl týdne, změny pro zápis, kontrola týdne", () => {
-    const p = runCoach3(input());
+    const p = runCoach(input());
     expect(p.days.length).toBeGreaterThanOrEqual(7);
     expect(p.weeklyTarget.mid).toBe(p.coach.load);
     expect(p.changes.every((c) => c.action === "nová")).toBe(true);
@@ -92,7 +92,7 @@ describe("Trenér v3 – plán", () => {
   });
 });
 
-import { horizonSummary } from "../../src/core/coach3/engine";
+import { horizonSummary } from "../../src/core/coach/engine";
 describe("souhrn za 4 týdny", () => {
   const wk = (ramp: number, planned: number, ctlEnd: number) => ({ planned, ctlEnd, target: { ramp, done: 0 } as any });
   it("udržet nejde hned: vyjmenuje jen omezení, která zasáhla, a kdy se kondice usadí", () => {
@@ -114,9 +114,9 @@ describe("souhrn za 4 týdny", () => {
 
 describe("kvalita a tvůj sport dne", () => {
   it("tvoje volba běžky + kvalita platí (žádná další kvalita v týdnu navíc)", () => {
-    const w1 = runCoach3(input()).coach.horizon[1]!;
+    const w1 = runCoach(input()).coach.horizon[1]!;
     const d = w1.days.find((x) => x.role === "endurance")!.date;
-    const out = runCoach3(input({ constraints: [{ date: d, kind: "sport", note: "xc_ski" }, { date: d, kind: "typ", note: "quality" }] }));
+    const out = runCoach(input({ constraints: [{ date: d, kind: "sport", note: "xc_ski" }, { date: d, kind: "typ", note: "quality" }] }));
     const day = out.days.find((x) => x.date === d) ?? null;
     const h = out.coach.horizon[1]!.days.find((x) => x.date === d)!;
     expect(h.role).toBe("key");
@@ -128,10 +128,10 @@ describe("kvalita a tvůj sport dne", () => {
     expect(Math.abs(h.load - rideKey.load) / rideKey.load).toBeLessThan(0.5);
   });
   it("den s běžkami (bez intervalů) kvalitu nedostane – přesune se na jiný den, týden ji má", () => {
-    const base = runCoach3(input());
+    const base = runCoach(input());
     const w1 = base.coach.horizon[1]!;
     const key = w1.days.find((d) => d.role === "key")!;
-    const out = runCoach3(input({ constraints: [{ date: key.date, kind: "bezky", note: null }] }));
+    const out = runCoach(input({ constraints: [{ date: key.date, kind: "bezky", note: null }] }));
     const h1 = out.coach.horizon[1]!;
     expect(h1.days.find((d) => d.date === key.date)!.role).not.toBe("key");
     expect(h1.days.filter((d) => d.role === "key").length).toBe(w1.days.filter((d) => d.role === "key").length);
@@ -141,10 +141,10 @@ describe("kvalita a tvůj sport dne", () => {
 describe("rozběhnutý týden: plán z pondělí, nedohání se", () => {
   it("odjeto míň než v pondělním plánu → zbytek týdne stejný jako v pondělí, ne víc", () => {
     const x = input({ goal: "udrzeni" });
-    const monday = runCoach3({ ...x, today: "2026-11-09", acts: x.acts.filter((y) => y.date < "2026-11-09") }).coach.horizon[0]!;
+    const monday = runCoach({ ...x, today: "2026-11-09", acts: x.acts.filter((y) => y.date < "2026-11-09") }).coach.horizon[0]!;
     const planRest = monday.days.filter((d) => d.date >= "2026-11-12").reduce((t, d) => t + d.load, 0);
     // čtvrtek: od pondělí odjeto jen úterý (55)
-    const thu = runCoach3({ ...x, acts: x.acts.filter((y) => y.date < "2026-11-09" || y.date === "2026-11-10") }).coach.horizon[0]!;
+    const thu = runCoach({ ...x, acts: x.acts.filter((y) => y.date < "2026-11-09" || y.date === "2026-11-10") }).coach.horizon[0]!;
     expect(Math.abs(thu.load - planRest)).toBeLessThanOrEqual(planRest * 0.1);
   });
 });
@@ -152,7 +152,7 @@ describe("rozběhnutý týden: plán z pondělí, nedohání se", () => {
 describe("závod", () => {
   it("den závodu je rezervovaný, žádný trénink", () => {
     const race = addDays(T, 4);
-    const p = runCoach3(input({ goal: "zavod", raceDate: race }));
+    const p = runCoach(input({ goal: "zavod", raceDate: race }));
     const d = p.days.find((x) => x.date === race)!;
     expect(d.kind).toBe("blocked");
     expect(d.note).toMatch(/Závod/);

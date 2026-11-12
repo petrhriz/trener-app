@@ -42,7 +42,7 @@ describe("zóny s datem platnosti", () => {
 });
 
 import { EDIT_LIMITS, applyStepEdit, buildWorkout, editableBlock, readStepEdit } from "../src/core/coach/library";
-import { constraintNoteOk, fixedFromConstraints } from "../src/core/coach/engine";
+import { constraintNoteOk, fixedFromConstraints } from "../src/core/coach/common";
 
 describe("editor tréninku: úprava kvality", () => {
   const ftp = 250;

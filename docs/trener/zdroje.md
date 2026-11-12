@@ -1,6 +1,6 @@
 # Trenér v3 – odkud jsou pravidla
 
-Každé tréninkové pravidlo v `src/core/coach3/` má zdroj. Kde zdroj konkrétní číslo nedává, je to výslovně
+Každé tréninkové pravidlo v `src/core/coach/` má zdroj. Kde zdroj konkrétní číslo nedává, je to výslovně
 označené jako vlastní volba.
 
 | Pravidlo | Hodnota v kódu | Zdroj |

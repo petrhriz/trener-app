@@ -1,7 +1,7 @@
 // Trenér v3 – čas v zónách za posledních 28 dní (součet aktivit), zvlášť kolo s wattmetrem, kolo podle tepu a běh.
 // Zóny různých sportů a metod nejsou totéž, proto se nesčítají dohromady. Rozdělení na lehce / středně / intenzivně
 // je tříbodový model Seilera (pod 1. prahem = Z1–Z2, mezi prahy = Z3, nad 2. prahem = Z4 a výš), na kterém stojí
-// pravidlo 80/20 – zdroj v docs/trener-v3/zdroje.md.
+// pravidlo 80/20 – zdroj v docs/trener/zdroje.md.
 import { BIKE_SPORTS, type Sport } from "../../datasource/types";
 import { addDays } from "../../lib/time";
 import { HR_COLORS, PWR_COLORS, type ZoneRow, zoneRows } from "../activity";

@@ -1,6 +1,6 @@
 // Trenér v3: cíl zátěže a výhled kondice od dnešní kondice.
 import { describe, expect, it } from "vitest";
-import { ctlAfter, cycleIndex, loadToReach, usualLoad, weekTargets } from "../../src/core/coach3/budget";
+import { ctlAfter, cycleIndex, loadToReach, usualLoad, weekTargets } from "../../src/core/coach/budget";
 import { computeMetrics } from "../../src/core/fitness";
 import { addDays } from "../../src/lib/time";
 
@@ -94,7 +94,7 @@ describe("cíl od kondice na stránce (včera 41,8, dnes bez tréninku 40,8, čt
   });
 });
 
-import { WINTER_DROP, rampOf } from "../../src/core/coach3/budget";
+import { WINTER_DROP, rampOf } from "../../src/core/coach/budget";
 describe("zima: k zimnímu základu (vrchol − 42,5 %)", () => {
   it("vysoko nad základem klesá rychle (nejvýš 5 za týden), blízko pomalu, na základu drží", () => {
     const peak = 58.9, floor = peak * (1 - WINTER_DROP);
