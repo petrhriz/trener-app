@@ -18,7 +18,7 @@ import { resetCoachWeeks } from "../coach/store";
 import { profileFromHistory, profileSummary, validateProfile } from "../core/coach/profile";
 import { constraintNoteOk } from "../core/coach/engine";
 import { MAX_OWN_MIN } from "../core/coach/week";
-import type { ValidationItem, WeekValidation } from "../core/coach/validate";
+import { type ValidationItem, type WeekValidation, newViolations } from "../core/coach/validate";
 import { getSettings, setSetting } from "../lib/settings";
 
 export const coachApi = new Hono<{ Bindings: Env; Variables: { uid: number } }>();
@@ -56,12 +56,10 @@ export async function shiftDay(env: Env, days: Day[], from: string, to: string):
   return b ? `${A.name} ⇄ ${B.name}: ${dayDm(from)} ↔ ${dayDm(to)}` : `${A.name}: ${dayDm(from)} → ${dayDm(to)}`;
 }
 
-/** Porušení pravidel v plánu (Trenér v2), která AI nesmí nově způsobit: chyby i výjimky „tvoje volba“. */
+/** Výsledek závěrečné kontroly týdne (Trenér v2); co z toho AI nesmí nově způsobit, řeší `newViolations`. */
 function guardItems(p: unknown): ValidationItem[] {
-  const items = (p as { coach?: { validation?: WeekValidation } }).coach?.validation?.items ?? [];
-  return items.filter((v) => v.level === "error" || v.level === "exception");
+  return (p as { coach?: { validation?: WeekValidation } }).coach?.validation?.items ?? [];
 }
-const itemKey = (v: ValidationItem) => `${v.code}|${v.date ?? ""}`;
 
 async function proposalAfter(env: Env) {
   const p = await planFor(await loadCtx(env));
@@ -136,9 +134,9 @@ ZPRÁVA: ${q}`;
   const applied: string[] = [];
   const moved = new Set<string>();
   // AI nesmí obejít pravidla trenéra: co bylo před akcemi, se uloží; když akce přinesou nové porušení
-  // (kvalita po těžkém dni, délka nad strop…), dny se vrátí do původního stavu
+  // kdekoli v týdnu (kvalita po těžkém dni, řada dní, propad formy, délka nad strop…), dny se vrátí
   const guard = !!ctx.s.coach_v2;
-  const before = new Set(guardItems(p).map(itemKey));
+  const before = guardItems(p);
   const planDates = p.days.map((d) => d.date).sort();
   const snap = guard && planDates.length ? await all<{ date: string; kind: string; note: string | null; created_at: string | null }>(c.env.DB, `SELECT date, kind, note, created_at FROM constraints WHERE date >= ? AND date <= ? AND kind IN ('sport', 'typ', 'delka', 'jizda')`, planDates[0], planDates[planDates.length - 1]) : [];
   const touched = new Set<string>();
@@ -167,7 +165,7 @@ ZPRÁVA: ${q}`;
   let reply = String(parsed.reply ?? "").slice(0, 600);
   if (guard && touched.size && applied.some((x) => !x.startsWith("✗"))) {
     const np = await planFor(await loadCtx(c.env));
-    const bad = guardItems(np).filter((v) => v.date && touched.has(v.date) && !before.has(itemKey(v)));
+    const bad = newViolations(before, guardItems(np));
     if (bad.length) {
       for (const d of touched) {
         await run(c.env.DB, `DELETE FROM constraints WHERE date = ? AND kind IN ('sport', 'typ', 'delka', 'jizda')`, d);

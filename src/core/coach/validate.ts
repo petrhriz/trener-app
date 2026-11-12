@@ -131,3 +131,26 @@ export function validateWeek(v: ValidateInput): WeekValidation {
 
   return { ok: !items.some((i) => i.level === "error"), items };
 }
+
+/** Kódy, u kterých se datum může jen posunout se stejným porušením (řada dní, propad formy) → počítá se počet. */
+const COUNTED: ReadonlySet<ValidationCode> = new Set(["streak", "tsb_floor"]);
+
+/**
+ * Porušení pravidel, která úprava plánu (AI trenér) nově způsobila – v celém týdnu, nejen na upravených dnech:
+ * přesun může vytvořit řadu dní za sebou, kvalitu po nově těžkém dni nebo propad formy o pár dní dál.
+ * Hlídají se chyby a výjimky (upozornění ne). U řady dní a propadu formy rozhoduje počet výskytů, ne datum,
+ * aby posun už existujícího porušení nezablokoval jinak neškodnou úpravu.
+ */
+export function newViolations(before: ValidationItem[], after: ValidationItem[]): ValidationItem[] {
+  const guarded = (v: ValidationItem) => v.level === "error" || v.level === "exception";
+  const key = (v: ValidationItem) => (COUNTED.has(v.code) ? v.code : `${v.code}|${v.date ?? ""}`);
+  const left = new Map<string, number>();
+  for (const v of before.filter(guarded)) left.set(key(v), (left.get(key(v)) ?? 0) + 1);
+  const out: ValidationItem[] = [];
+  for (const v of after.filter(guarded)) {
+    const n = left.get(key(v)) ?? 0;
+    if (n > 0) left.set(key(v), n - 1);
+    else out.push(v);
+  }
+  return out;
+}

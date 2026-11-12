@@ -12,7 +12,7 @@ import { type Cat, type Zones, CATS, buildWorkout, pickLib } from "../../src/cor
 import { type CoachProfile, profileFromHistory, validateProfile } from "../../src/core/coach/profile";
 import { distribution, outcomeOf } from "../../src/core/coach/progress";
 import { runReadiness } from "../../src/core/coach/run";
-import { type ValDay, validateWeek } from "../../src/core/coach/validate";
+import { type ValDay, newViolations, validateWeek } from "../../src/core/coach/validate";
 import { type PastDay, type SolveInput, MAX_DAY_MIN, MAX_OWN_MIN, runCapOf, solveWeekFull } from "../../src/core/coach/week";
 import { LIBRARY } from "../../src/core/coach/workouts.data";
 
@@ -286,6 +286,34 @@ describe("audit: závěrečná kontrola týdne", () => {
     expect(out.plan.coach.validation).toBeTruthy();
     expect(typeof out.plan.coach.validation.ok).toBe("boolean");
     for (const x of out.plan.days) if (x.form != null && x.form < -20) expect(out.plan.warnings.join(" ")).toMatch(/pod hranicí|Vysokého rizika/);
+  });
+  // kolo 9: AI trenér (/coach/ask) – úprava se vrátí při novém porušení kdekoli v týdnu, ne jen na upravených dnech
+  it("AI úprava: nové porušení na neupraveném dni se pozná (řada dní, kvalita po nově těžkém dni)", () => {
+    const before = V(week(["rest", "key", "rest", "endurance", "rest", "long", "rest"])).items;
+    // AI přesune volno ze středy na čtvrtek → út–pá 4 dny za sebou; chyba „streak“ padne na pátek, který AI nezměnila
+    const streak = V(week(["rest", "key", "endurance", "endurance", "endurance", "long", "rest"])).items;
+    expect(newViolations(before, streak).map((i) => i.code)).toContain("streak");
+    // AI dá dlouhý na čtvrtek → pátek (kvalita, AI se jí nedotkla) je den po těžkém dni
+    const b2 = V(week(["rest", "endurance", "rest", "endurance", "key", "long", "rest"])).items;
+    const kah = V(week(["rest", "endurance", "rest", "long", "key", "rest", "rest"])).items;
+    expect(newViolations(b2, kah).find((i) => i.code === "key_after_hard")?.date).toBe("2026-11-20");
+  });
+  it("AI úprava: propad formy pod hranici se počítá jako nový, posun už existujícího ne", () => {
+    const w = week(["rest", "key", "rest", "endurance", "rest", "long", "rest"]);
+    const ok = V(w).items;
+    const low = V(w, { forms: [{ date: "2026-11-21", form: -24 }] }).items;
+    expect(newViolations(ok, low).map((i) => i.code)).toEqual(["tsb_floor"]);
+    const moved = V(w, { forms: [{ date: "2026-11-22", form: -23 }] }).items;
+    expect(newViolations(low, moved)).toEqual([]);
+  });
+  it("AI úprava: existující porušení, upozornění a odstraněná chyba úpravu nezablokují", () => {
+    const bad = V(week(["rest", "long", "key", "rest", "rest", "rest", "rest"])).items;
+    expect(newViolations(bad, bad)).toEqual([]);
+    expect(newViolations(bad, V(week(["rest", "long", "rest", "key", "rest", "rest", "rest"])).items)).toEqual([]);
+    // chybějící dlouhý je jen upozornění → nevrací se
+    const noLong = V(week(["rest", "key", "rest", "endurance", "rest", "endurance", "rest"])).items;
+    expect(noLong.some((i) => i.code === "long_missing")).toBe(true);
+    expect(newViolations(V(week(["rest", "key", "rest", "endurance", "rest", "long", "rest"])).items, noLong)).toEqual([]);
   });
 });
 
