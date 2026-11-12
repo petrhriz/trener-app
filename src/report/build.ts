@@ -2,6 +2,7 @@
 import { BIKE_SPORTS } from "../datasource/types";
 import { type ActivityAnalysis, type PlannedForAct, analyzeActivity } from "../core/activity";
 import { hrQuality, qualityFromName } from "../core/quality";
+import { hardEasyDays } from "../core/rpe";
 import { ftpCheck } from "../core/ftpCheck";
 import { workoutFromIcu } from "../core/workout";
 import { acwr, lthrSanity, sleepRegularity, weeklyReview, type WeeklyReview } from "../core/extras";
@@ -224,7 +225,8 @@ export function fatigueOf(ctx: Ctx, rec: RecoveryResult, cons: { date: string; k
   // stejná hranice jako normální rozsah na stránce (průměr − 1 SD) – „trochu pod průměrem“ ještě není únava
   const hrvLow = hist.n >= 21 && last7.n >= 4 && last7.mean < hist.mean - hist.sd;
   const illnessDays = new Set(cons.filter((c) => c.kind === "nemoc" && c.date > addDays(T, -10) && c.date <= T).map((c) => c.date)).size;
-  return { form: y ? y.ctl - y.atl : null, badMornings: bad, hrvLow, illnessDays };
+  const hardEasy = hardEasyDays(ctx.acts.map((a) => ({ date: a.date, rpe: (a as any).rpe ?? null, quality: !!a.is_quality, moving_s: a.moving_s })), T);
+  return { form: y ? y.ctl - y.atl : null, badMornings: bad, hrvLow, illnessDays, hardEasy };
 }
 
 /** Dny za posledních 5 týdnů se stavem Nemocný / Zraněný / Dovolená (ukončená období + právě běžící stav). */
@@ -249,7 +251,7 @@ export async function planForCoach(ctx: Ctx, rec: RecoveryResult, opt: { dryRun?
   }
   const constraints = [...ctx.constraints, ...statusConstraints(ctx)];
   const acts: EngineAct[] = ctx.acts.map((a) => ({ id: a.id, date: a.date, sport: a.sport, load: a.load, moving_s: a.moving_s, // kvalita podle tepu i u aktivit uložených dřív (běh a kolo bez wattmetru se dřív za kvalitu nepočítaly)
-    quality: (!!a.is_quality || ((a.sport === "run" || (isBike(a.sport) && !a.np)) && !!hrQuality(a.hr_z))) && a.sport !== "skate" && a.sport !== "padel", hr_z: a.hr_z, pwr_z: a.pwr_z, laps: a.laps ?? null, compliance: (a as any).icu_compliance ?? null }));
+    quality: (!!a.is_quality || ((a.sport === "run" || (isBike(a.sport) && !a.np)) && !!hrQuality(a.hr_z))) && a.sport !== "skate" && a.sport !== "padel", hr_z: a.hr_z, pwr_z: a.pwr_z, laps: a.laps ?? null, compliance: (a as any).icu_compliance ?? null, rpe: (a as any).rpe ?? null }));
   const power = ctx.acts.filter((a) => isBike(a.sport)).map((a) => ({ id: a.id, date: a.date, mmp: a.mmp, max20: a.max20, pwr_z: a.pwr_z }));
   const state: { progress: Record<string, ProgressRow> } = { progress: {} };
   for (const r of await all<{ key: string; level: number; last_date: string | null }>(ctx.env.DB, "SELECT key, level, last_date FROM coach_progress")) state.progress[r.key] = { level: r.level, last: r.last_date };

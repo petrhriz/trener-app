@@ -62,6 +62,8 @@ export interface EngineAct {
   pwr_z: number[] | null;
   laps: NLap[] | null;
   compliance: number | null;
+  /** hodnocení náročnosti 1–10 (0 = přeskočeno), src/core/rpe.ts */
+  rpe?: number | null;
 }
 
 export interface ProgressRow {

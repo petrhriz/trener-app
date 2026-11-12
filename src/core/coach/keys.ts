@@ -8,6 +8,7 @@ import { daysBetween } from "../../lib/time";
 import type { Goal } from "../fitness";
 import type { Outcome } from "../qualityDesign";
 import { type EngineAct, EVAL_WAIT_DAYS, type ProgressRow, matchKey } from "./common";
+import { RPE_KEY_MAX } from "../rpe";
 import type { Cat, WorkPlan } from "./library";
 import { nextLevel, outcomeOf } from "./progress";
 
@@ -53,7 +54,10 @@ export function evaluateKeys(records: KeyRecord[], acts: EngineAct[], today: str
     if (r.state !== "pending" || r.date >= today) continue;
     const m = matchKey({ sport: r.sport, minutes: r.minutes, plan: r.plan }, acts.filter((a) => a.date === r.date));
     if (m.kind === "one") {
-      const o = outcomeOf({ date: r.date, plan: r.plan, laps: m.act.laps, compliance: m.act.compliance });
+      let o = outcomeOf({ date: r.date, plan: r.plan, laps: m.act.laps, compliance: m.act.compliance });
+      // zvládnuto: počkat den na hodnocení náročnosti; RPE 9+ = na hraně → stupeň drží
+      if (o.outcome === "posun" && m.act.rpe == null && daysBetween(r.date, today) < 2) continue;
+      if (o.outcome === "posun" && (m.act.rpe ?? 0) >= RPE_KEY_MAX) o = { outcome: "zopakovat", text: `${o.text}, ale RPE ${m.act.rpe} – stupeň drží` };
       const key = `${r.sport}:${r.cat}`;
       // posun se počítá od základního stupně kategorie: neúspěch ho sníží i na sníženém stupni, úspěch na
       // sníženém stupni ho nezvýší (byl to lehčí trénink, než kategorie má)

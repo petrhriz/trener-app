@@ -18,6 +18,7 @@ import { STATUS_LABEL, coaching, strainScore, typicalWake, type StatusKind } fro
 import { round6 } from "./round6";
 import { addDays, dow, localNow, mondayOf, tzOffsetMin, daysBetween } from "../lib/time";
 import { constraintNoteOk } from "../core/coach/common";
+import { RPE_ASK_DAYS, RPE_LABEL, rpeOk, rpeToAsk } from "../core/rpe";
 import { addConstraint, applyChanges, claimProposal, finishProposal, getProposal, openProposal, removeConstraint, saveProposal } from "../plan/proposals";
 import { activityReport, eftpOf, ftpCheckOf, fitnessTable, recoveryFor, plannedFor, planFor, readiness, weatherMap, weekly } from "../report/build";
 import { loadCtx } from "../report/context";
@@ -748,7 +749,7 @@ api.get("/activity/:id", async (c) => {
   const { gear, links } = await loadGear(c.env.DB);
   const gearId = resolveGear(a as any, gear, links);
   const extra = (() => { try { return typeof (a as any).extra === "string" ? JSON.parse((a as any).extra) : (a as any).extra ?? null; } catch { return null; } })();
-  const tag = await first<{ company: string | null }>(c.env.DB, "SELECT company FROM activity_tags WHERE activity_id = ?", a.id).catch(() => null);
+  const tag = await first<{ company: string | null; rpe: number | null }>(c.env.DB, "SELECT company, rpe FROM activity_tags WHERE activity_id = ?", a.id).catch(() => null);
   const company = tag?.company ?? null;
   const rep = activityReport(ctx, a);
   if (company) {
@@ -758,7 +759,7 @@ api.get("/activity/:id", async (c) => {
     if (!rep.goal.includes("jel jsi")) rep.goal += a.sport === "run" ? ` 👥 Běh ${who}.` : ` 👥 Jízda ${who}.`;
   }
   return c.json({
-    ...rep, company, id: a.id, sport: a.sport, hasStreams: (a.moving_s ?? 0) > 60, strain: a.icu_strain, calories: a.calories, drift: a.drift, icuDecoupling: raw?.icu_decoupling ?? null, z2Power,
+    ...rep, company, rpe: tag?.rpe ?? null, id: a.id, sport: a.sport, hasStreams: (a.moving_s ?? 0) > 60, strain: a.icu_strain, calories: a.calories, drift: a.drift, icuDecoupling: raw?.icu_decoupling ?? null, z2Power,
     extra, aerobicTe: (a as any).aerobic_te ?? null, avgPower: a.avg_power ?? null, np: a.np ?? null, avgCad: a.avg_cad, minTemp: a.min_temp, maxTemp: a.max_temp, elevGain: a.elev_gain, distance: a.distance_m, moving: a.moving_s,
     gear: { id: gearId, manual: links.has(a.id), list: gear.filter((g) => !g.to_date || g.to_date >= a.date).map((g) => ({ id: g.id, name: g.name, kind: g.kind })) },
   });
@@ -804,9 +805,25 @@ api.get("/activity/:id/ai", async (c) => {
 api.post("/activity/:id/company", async (c) => {
   const { company } = (await c.req.json()) as { company: string | null };
   const v = (company ?? "").trim().slice(0, 40);
-  if (!v) await c.env.DB.prepare("DELETE FROM activity_tags WHERE activity_id = ?").bind(c.req.param("id")).run();
-  else await c.env.DB.prepare("INSERT INTO activity_tags (activity_id, company, created_at) VALUES (?, ?, ?) ON CONFLICT(activity_id) DO UPDATE SET company = excluded.company").bind(c.req.param("id"), v, new Date().toISOString()).run();
+  // řádek se nemaže – nese i hodnocení náročnosti (rpe)
+  await c.env.DB.prepare("INSERT INTO activity_tags (activity_id, company, created_at) VALUES (?, ?, ?) ON CONFLICT(activity_id) DO UPDATE SET company = excluded.company").bind(c.req.param("id"), v || null, new Date().toISOString()).run();
   return c.json({ ok: true, company: v || null });
+});
+
+/** Hodnocení náročnosti (RPE 1–10, 0 = přeskočeno, null = smazat) – src/core/rpe.ts */
+api.post("/activity/:id/rpe", async (c) => {
+  const { rpe } = (await c.req.json()) as { rpe: unknown };
+  if (!rpeOk(rpe)) return c.json({ error: "Hodnocení musí být 1–10 (0 = přeskočit)." }, 400);
+  await c.env.DB.prepare("INSERT INTO activity_tags (activity_id, rpe, created_at) VALUES (?, ?, ?) ON CONFLICT(activity_id) DO UPDATE SET rpe = excluded.rpe").bind(c.req.param("id"), rpe, new Date().toISOString()).run();
+  return c.json({ ok: true, rpe });
+});
+
+/** Na kterou aktivitu se po otevření stránky zeptat (jeden dotaz do D1). */
+api.get("/rpe", async (c) => {
+  const T = localNow(new Date(), c.env.TZ_NAME).date;
+  const rows = await all<{ id: string; date: string; start_local: string | null; sport: string; name: string | null; moving_s: number | null; is_quality: number; rpe: number | null }>(c.env.DB, "SELECT a.id, a.date, a.start_local, a.sport, a.name, a.moving_s, a.is_quality, (SELECT rpe FROM activity_tags t WHERE t.activity_id = a.id) AS rpe FROM activities a WHERE a.date > ? AND a.date <= ?", addDays(T, -RPE_ASK_DAYS), T).catch(() => []);
+  const a = rpeToAsk(rows, T);
+  return c.json({ ask: a ? { id: a.id, date: a.date, sport: a.sport, name: a.name, min: Math.round((a.moving_s ?? 0) / 60), quality: !!a.is_quality } : null, labels: RPE_LABEL });
 });
 
 /** Měsíce: celá historie po sportech (počet, čas, km, převýšení, zátěž) – souhrn měsíce a graf 12 měsíců v Aktivitách. */

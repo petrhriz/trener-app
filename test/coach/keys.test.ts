@@ -21,12 +21,13 @@ describe("kvality: uložení", () => {
 
 describe("kvality: vyhodnocení a stupeň", () => {
   const rec = recordKeys([], [key("2026-11-10")], "2026-11-10");
+  // vyhodnocení až druhý den po kvalitě: zvládnutá kvalita bez hodnocení náročnosti (RPE) den čeká na hodnocení
   it("zvládnuto čistě → Zlepšit o stupeň výš; Udržet stupeň drží", () => {
     const acts = [act("2026-11-10", [1, 2, 3, 4].map((i) => lap(i, 248, 160 + i)))];
-    const z = evaluateKeys(rec, acts, "2026-11-11", "zvyseni", {});
+    const z = evaluateKeys(rec, acts, "2026-11-12", "zvyseni", {});
     expect(z.records[0]).toMatchObject({ state: "done", outcome: "posun", newLevel: 3 });
     expect(z.updates).toEqual([expect.objectContaining({ key: "ride:thr", level: 3 })]);
-    expect(evaluateKeys(rec, acts, "2026-11-11", "udrzeni", {}).records[0]!.newLevel).toBe(2);
+    expect(evaluateKeys(rec, acts, "2026-11-12", "udrzeni", {}).records[0]!.newLevel).toBe(2);
   });
   it("dokončeno 2 ze 4 → o stupeň níž", () => {
     const acts = [act("2026-11-10", [lap(1, 248), lap(2, 245)])];
@@ -43,7 +44,7 @@ describe("kvality: vyhodnocení a stupeň", () => {
     const low = recordKeys([], [{ ...key("2026-11-10", 1), base: 2 }], "2026-11-10");
     const levels = { "ride:thr": { level: 2, last: "2026-11-01" } };
     const ok = [act("2026-11-10", [1, 2, 3, 4].map((i) => lap(i, 248, 160 + i)))];
-    const z = evaluateKeys(low, ok, "2026-11-11", "zvyseni", levels);
+    const z = evaluateKeys(low, ok, "2026-11-12", "zvyseni", levels);
     expect(z.records[0]).toMatchObject({ state: "done", outcome: "posun", newLevel: 2 });
     const bad = [act("2026-11-10", [lap(1, 248), lap(2, 245)])];
     const f = evaluateKeys(low, bad, "2026-11-11", "zvyseni", levels);
@@ -59,7 +60,7 @@ describe("kvality: vyhodnocení a stupeň", () => {
   });
   it("stupeň se mezitím změnil jinou kvalitou → nepřičítá se dvakrát", () => {
     const acts = [act("2026-11-10", [1, 2, 3, 4].map((i) => lap(i, 248)))];
-    const z = evaluateKeys(rec, acts, "2026-11-11", "zvyseni", { "ride:thr": { level: 3, last: "2026-11-09" } });
+    const z = evaluateKeys(rec, acts, "2026-11-12", "zvyseni", { "ride:thr": { level: 3, last: "2026-11-09" } });
     expect(z.records[0]!.newLevel).toBe(3);
   });
 });

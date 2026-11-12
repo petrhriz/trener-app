@@ -2055,7 +2055,8 @@ async function pageAktivita(el, id) {
   const endur = ["ride", "mtb", "run", "xc_ski"].includes(a.sport);
   const verb = a.sport === "run" ? ["Běžel", "běžel"] : ["Jel", "jel"];
   const compSel = endur ? `<div class="gearsel">👥 <select id="compSel"><option value="">${verb[0]} jsem sám</option><option value="skupina" ${a.company === "skupina" ? "selected" : ""}>Ve skupině</option>${a.company && a.company !== "skupina" ? `<option value="${esc(a.company)}" selected>S: ${esc(a.company)}</option>` : ""}<option value="__new">S někým… (jméno)</option></select><span class="sub" id="compMsg">${a.company ? "přetažená Z2 se nebere jako chyba" : ""}</span></div>` : "";
-  el.innerHTML = `<div class="head"><div><a class="back" href="#/aktivity" data-back>← Zpět</a><h1>${a.emoji} ${esc(a.title)}</h1><div class="sub">${dayDm(a.date)}${a.date.slice(0, 4)} · start ${a.start}${a.unitType ? " · " + esc(a.unitType) : ""}${a.envLabel ? " · " + esc(a.envLabel) : ""}${a.tempText ? " · " + esc(a.tempText) : ""}</div><div class="actsel">${gearSel}${compSel}</div></div></div>
+  const rpeSel = (a.moving || 0) >= 1200 ? `<div class="gearsel">💪 <select id="rpeSel" title="Jak těžký byl trénink (1–10)"><option value="">Náročnost: neohodnoceno</option>${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => `<option value="${n}" ${a.rpe === n ? "selected" : ""}>Náročnost ${n} – ${RPE_TXT[n]}</option>`).join("")}</select><span class="sub" id="rpeMsg"></span></div>` : "";
+  el.innerHTML = `<div class="head"><div><a class="back" href="#/aktivity" data-back>← Zpět</a><h1>${a.emoji} ${esc(a.title)}</h1><div class="sub">${dayDm(a.date)}${a.date.slice(0, 4)} · start ${a.start}${a.unitType ? " · " + esc(a.unitType) : ""}${a.envLabel ? " · " + esc(a.envLabel) : ""}${a.tempText ? " · " + esc(a.tempText) : ""}</div><div class="actsel">${gearSel}${compSel}${rpeSel}</div></div></div>
   <div class="verdict goal" id="actAi"><span class="ai-t">🎯 ${esc(a.goal)}</span>${a.compliance != null ? `<span class="pill ok">splnění ${a.compliance} %</span>` : ""}<small class="ai-m"></small></div>
   <div class="grid">
    ${card("c12", "", "", `<div class="abasics">${statsTop}</div>${a.basicsNote ? `<p class="note">${esc(a.basicsNote)}</p>` : ""}`)}
@@ -2084,6 +2085,13 @@ async function pageAktivita(el, id) {
     }).catch(() => { clearTimeout(slow); m.remove(); });
   };
   loadAi(false);
+  const rs = el.querySelector("#rpeSel");
+  if (rs) rs.addEventListener("change", async () => {
+    const msg = el.querySelector("#rpeMsg");
+    msg.textContent = "Ukládám…";
+    try { await api(`activity/${a.id}/rpe`, { method: "POST", body: JSON.stringify({ rpe: rs.value ? +rs.value : null }) }); cache.clear(); msg.textContent = "Uloženo"; }
+    catch (e) { msg.textContent = `Nepovedlo se: ${e.message}`; }
+  });
   const cs = el.querySelector("#compSel");
   if (cs) cs.addEventListener("change", async () => {
     let v = cs.value;
@@ -3570,5 +3578,41 @@ window.addEventListener("hashchange", route);
 const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
 try { if (standalone && !sessionStorage.getItem("started")) { sessionStorage.setItem("started", "1"); if (!location.hash.startsWith("#/aktivita/")) history.replaceState(null, "", "#/prehled"); } } catch {}
 document.documentElement.classList.toggle("standalone", standalone);
+
+// ---------- hodnocení náročnosti (RPE 1–10, src/core/rpe.ts) ----------
+const RPE_TXT = { 1: "velmi lehce", 2: "lehce", 3: "lehce", 4: "středně", 5: "středně", 6: "trochu těžce", 7: "těžce", 8: "těžce", 9: "velmi těžce", 10: "maximum" };
+/** Bublina po otevření stránky: poslední neohodnocená aktivita (za 3 dny). „Později“ platí do zavření karty. */
+async function rpeAsk() {
+  if (document.querySelector(".rpeb")) return;
+  const r = await api("rpe").catch(() => null);
+  const a = r && r.ask;
+  if (!a) return;
+  try { if (sessionStorage.getItem("rpeLater") === a.id) return; } catch {}
+  const b = document.createElement("div");
+  b.className = "rpeb";
+  b.setAttribute("role", "dialog");
+  b.setAttribute("aria-label", "Hodnocení tréninku");
+  b.innerHTML = `<div class="rpeb-h"><b>Jak těžký byl trénink?</b><button class="btn sm" data-later aria-label="Později">✕</button></div>
+    <div class="sub">${SPORT_ICON[a.sport] || "🏅"} ${esc(a.name || SPORT_NAME[a.sport] || a.sport)} · ${dayDm(a.date)} · ${a.min} min</div>
+    <div class="rpeb-s">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => `<button type="button" data-rpe="${n}" title="${n} – ${RPE_TXT[n]}">${n}</button>`).join("")}</div>
+    <div class="rpeb-l"><span>lehce</span><span>středně</span><span>maximum</span></div>
+    <div class="rpeb-f"><button type="button" class="btn sm" data-rpe="0">Neptat se</button><span class="sub">Trenér to použije u únavy a stupňů kvalit.</span></div>`;
+  document.body.appendChild(b);
+  requestAnimationFrame(() => b.classList.add("on"));
+  const close = () => { b.classList.remove("on"); setTimeout(() => b.remove(), 250); };
+  b.querySelector("[data-later]").addEventListener("click", () => { try { sessionStorage.setItem("rpeLater", a.id); } catch {} close(); });
+  b.querySelectorAll("[data-rpe]").forEach((x) => x.addEventListener("click", async () => {
+    const n = +x.dataset.rpe;
+    b.querySelectorAll("button").forEach((y) => (y.disabled = true));
+    try {
+      await api(`activity/${a.id}/rpe`, { method: "POST", body: JSON.stringify({ rpe: n }) });
+      cache.clear();
+      toast(n ? `Uloženo: ${n} – ${RPE_TXT[n]}` : "Dobře, na tenhle trénink se už nezeptám");
+      close();
+      setTimeout(rpeAsk, 400); // další neohodnocená aktivita
+    } catch (e) { fail(e); b.querySelectorAll("button").forEach((y) => (y.disabled = false)); }
+  }));
+}
 route();
+rpeAsk();
 api("settings").then((s) => { document.getElementById("brandName").textContent = s.first_name || "Trenér"; }).catch(() => {});

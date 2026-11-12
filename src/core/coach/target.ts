@@ -40,6 +40,8 @@ export interface Fatigue {
   hrvLow: boolean;
   /** dny nemoci za posledních 10 dní */
   illnessDays: number;
+  /** dny za posledních 5 s lehkým tréninkem hodnoceným RPE 7+ (src/core/rpe.ts) */
+  hardEasy?: number;
 }
 export const NO_FATIGUE: Fatigue = { form: null, badMornings: 0, hrvLow: false, illnessDays: 0 };
 
@@ -53,6 +55,8 @@ export function fatigueFactor(f: Fatigue): { factor: number; keysMax: number; no
   if (f.badMornings >= 3) cut(0.8, `${f.badMornings} horší rána za 5 dní`);
   else if (f.badMornings >= 2) cut(0.9, `${f.badMornings} horší rána za 5 dní`);
   if (f.hrvLow) cut(0.9, "VST týdenní průměr pod normou");
+  // lehké tréninky šly těžko (RPE 7+ u Z2) dva dny z pěti – stejně jako dvě horší rána
+  if ((f.hardEasy ?? 0) >= 2) cut(0.9, `${f.hardEasy} lehké tréninky za 5 dní šly těžko (RPE 7+)`);
   if (f.illnessDays >= 4) { cut(0.7, "návrat po nemoci"); keysMax = 0; }
   else if (f.illnessDays >= 1) { cut(0.85, "po nemoci postupně"); keysMax = 1; }
   if (factor <= 0.8) keysMax = Math.min(keysMax, 1);
