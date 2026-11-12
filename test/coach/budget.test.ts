@@ -199,3 +199,14 @@ describe("forma podle pásem intervals.icu (−10 až −30 optimální)", () =>
     expect(formFloor("taper")).toBeNull();
   });
 });
+
+import { phaseFor } from "../../src/core/coach/target";
+describe("fáze před závodem (Friel: Rozvoj 6–8 týdnů)", () => {
+  it("Rozvoj 8 týdnů před laděním, dřív Základ", () => {
+    const race = "2027-06-27"; // neděle
+    const ph = (weeksBefore: number) => phaseFor("zavod", addDays("2027-06-21", -7 * weeksBefore), race);
+    expect([0, 1, 2].map(ph)).toEqual(["taper", "taper", "build"]);
+    expect(ph(9)).toBe("build");
+    expect(ph(10)).toBe("base");
+  });
+});

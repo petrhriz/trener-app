@@ -7,6 +7,10 @@ export type Phase = "offseason" | "maintain" | "base" | "build" | "taper" | "pos
 export const WINTER_MONTHS = [11, 12, 1, 2];
 export const isWinter = (date: string) => WINTER_MONTHS.includes(month(date));
 
+/** Rozvoj před závodem: 8 týdnů před laděním (Friel: Rozvoj 6–8 týdnů, Základ 8–12, vrchol 1–2 – TrainingPeaks,
+ *  průvodce ročním plánem). Bereme horní hranu, ať je čas na dvě kvality týdně a 2 bloky 3+1. */
+export const BUILD_WEEKS = 8;
+
 /** Fáze z cíle a ročního období (uživatel ji mění přepínačem cíle, nic dalšího se nenastavuje). */
 export function phaseFor(goal: Goal, weekStart: string, raceDate: string | null): Phase {
   if (goal === "pokles") return "offseason";
@@ -16,7 +20,7 @@ export function phaseFor(goal: Goal, weekStart: string, raceDate: string | null)
     if (d >= 0 && d <= 14) return "taper";
     // týden po závodním týdnu: přechod – lehce, bez kvality (Friel: zotavení po závodě 1 týden u kratších závodů)
     if (d >= -7 && d < 0) return "post";
-    if (d > 84) return "base";
+    if (d > 14 + 7 * BUILD_WEEKS) return "base";
     if (d >= 0) return "build";
   }
   return isWinter(weekStart) ? "base" : "build";
