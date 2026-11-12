@@ -34,14 +34,13 @@ export const USER_SECRETS: readonly EditableSecret[] = ["GARMIN_API_KEY", "INTER
 export const secretsFor = (env: Env): readonly EditableSecret[] => (uidOf(env) === 1 ? EDITABLE_SECRETS : USER_SECRETS);
 const fileValues = new WeakMap<object, Partial<Record<EditableSecret, string>>>();
 
-/** Načte klíče z D1 a přepíše jimi env pro tento běh (cache 5 min v isolate). */
-export async function applySecrets(env: Env): Promise<void> {
-  if (!fileValues.has(env as object)) fileValues.set(env as object, Object.fromEntries(EDITABLE_SECRETS.map((k) => [k, (env as any)[k]])));
-  let cache = caches.get(uidOf(env));
+/** Klíče jednoho uživatele z jeho tabulky app_secrets (cache 5 min v isolate). */
+async function valuesOf(env: Env, db: D1Database, uid: number): Promise<Partial<Record<EditableSecret, string>>> {
+  let cache = caches.get(uid);
   if (!cache || Date.now() - cache.at > 5 * 60_000) {
     const values: Partial<Record<EditableSecret, string>> = {};
     try {
-      const rows = await env.DB.prepare("SELECT key, value FROM app_secrets").all<{ key: string; value: string }>();
+      const rows = await db.prepare("SELECT key, value FROM app_secrets").all<{ key: string; value: string }>();
       for (const r of rows.results ?? []) {
         if ((EDITABLE_SECRETS as readonly string[]).includes(r.key)) {
           try { values[r.key as EditableSecret] = await decryptSecret(env, r.value); } catch { /* jiný ADMIN_TOKEN → ignorovat */ }
@@ -49,11 +48,24 @@ export async function applySecrets(env: Env): Promise<void> {
       }
     } catch { /* tabulka ještě není */ }
     cache = { at: Date.now(), values };
-    caches.set(uidOf(env), cache);
+    caches.set(uid, cache);
   }
+  return cache.values;
+}
+
+/**
+ * Načte klíče z D1 a přepíše jimi env pro tento běh. Další uživatelé zadávají jen svoje klíče k datům (Garmin,
+ * intervals.icu); společné klíče (AI – Gemini, NVIDIA – a mapy) berou od vlastníka.
+ */
+export async function applySecrets(env: Env): Promise<void> {
+  if (!fileValues.has(env as object)) fileValues.set(env as object, Object.fromEntries(EDITABLE_SECRETS.map((k) => [k, (env as any)[k]])));
+  const uid = uidOf(env);
+  const own = await valuesOf(env, env.DB, uid);
+  const base = (env as any).__base as Env | undefined;
+  const owner = uid !== 1 && base ? await valuesOf(base, base.DB, 1) : own;
   // klíč z dashboardu má přednost; smazaný se vrátí na původní hodnotu (soubor / wrangler secret)
   const orig = fileValues.get(env as object) ?? {};
-  for (const k of EDITABLE_SECRETS) (env as any)[k] = cache.values[k] || orig[k];
+  for (const k of EDITABLE_SECRETS) (env as any)[k] = (USER_SECRETS.includes(k) ? own[k] : owner[k]) || orig[k];
 }
 
 export function invalidateSecrets() {
