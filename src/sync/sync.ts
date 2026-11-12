@@ -382,7 +382,7 @@ export async function syncTick(env: Env, opts: { force?: boolean; manual?: boole
     const from = oldest12 && oldest12 > addDays(st.cursor, -59) ? oldest12 : addDays(st.cursor, -59);
     const rows = await all<{ id: string; date: string }>(env.DB, "SELECT id, date FROM activities WHERE icu_load IS NULL AND date >= ? AND date <= ?", from, st.cursor);
     if (rows.length) {
-      const list = await icu.activitiesRaw(from, st.cursor);
+      const list = await icu.activitiesFields(from, st.cursor, ["id", "start_date_local", "external_id", "icu_training_load", "decoupling", "icu_intensity"]);
       const sqls: string[] = [];
       for (const a of rows) {
         const sameDay = list.filter((x) => String(x.start_date_local ?? "").slice(0, 10) === a.date);
@@ -417,7 +417,7 @@ export async function syncTick(env: Env, opts: { force?: boolean; manual?: boole
     if (next.length) {
       const oldest = next[next.length - 1]!.date;
       const from = next.length >= 12 && oldest > addDays(st.cursor, -59) ? oldest : addDays(st.cursor, -59);
-      for (const x of await icu.activitiesRaw(from, st.cursor)) {
+      for (const x of await icu.activitiesFields(from, st.cursor, ["start_date_local", "type", "icu_ftp"])) {
         const d = String(x.start_date_local ?? "").slice(0, 10);
         if (d && /Ride|Cycl/.test(String(x.type ?? "")) && Number(x.icu_ftp) > 0) st.pts.push([d, Number(x.icu_ftp)]);
       }

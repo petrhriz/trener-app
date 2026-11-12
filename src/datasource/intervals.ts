@@ -60,6 +60,11 @@ export class IntervalsClient implements DataSource {
     return this.req<J[]>("GET", `${this.ath}/activities?oldest=${from}&newest=${to}`);
   }
 
+  /** Jen vybraná pole (odpověď ~50× menší – dočítání historie se vejde do limitu CPU). */
+  activitiesFields(from: string, to: string, fields: string[]) {
+    return this.req<J[]>("GET", `${this.ath}/activities?oldest=${from}&newest=${to}&fields=${fields.join(",")}`);
+  }
+
   async laps(icuId: string): Promise<NLap[]> {
     const r = await this.req<{ icu_intervals?: J[] }>("GET", `/activity/${icuId}/intervals`);
     return (r?.icu_intervals ?? []).map((x, i) => ({
