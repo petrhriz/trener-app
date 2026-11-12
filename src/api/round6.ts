@@ -2,6 +2,7 @@
 import { pageAllowedPrivate, stripHealth } from "../core/privacy";
 import { Hono } from "hono";
 import type { Env } from "../env";
+import { noteKey } from "../report/aiBackground";
 import { STATUS_LABEL, type StatusKind } from "../core/readinessScore";
 import { AI_DAILY_NEURONS, aiUsedToday, answerChat } from "../llm/llm";
 import { all } from "../lib/db";
@@ -206,7 +207,7 @@ async function yearSums(env: Env) {
 
 /**
  * Krátké AI shrnutí pro stránku (Přehled, Trenér, Zotavení): 2–3 věty nad stejnými daty jako chat.
- * Cache v KV po 3 hodinách (a znovu po nové aktivitě); ?force=1 = napsat znovu.
+ * Cache v KV podle dat (nová aktivita, ranní spánek a VST; Přehled i podle části dne); ?force=1 = napsat znovu.
  */
 const NOTE_ASK: Record<string, string> = {
   prehled: "Napiš krátké shrnutí dne pro hlavní přehled: jak na tom tělo je (zotavení, spánek, energie, stres) a co z toho plyne pro zbytek dne. Večer shrň den a co udělat pro dobrý spánek.",
@@ -217,20 +218,26 @@ round6.get("/ai-note", async (c) => {
   const page = c.req.query("page") ?? "";
   if (!NOTE_ASK[page]) return c.json({ error: "bad page" }, 400);
   const ctx = await loadCtx(c.env);
-  const key = `ainote:v1:${page}:${ctx.T}:${Math.floor(ctx.now.hh / 3)}:${ctx.acts.length}`;
-  if (c.req.query("force") !== "1") {
-    const hit = await c.env.KV.get<{ text: string; model: string | null }>(key, "json").catch(() => null);
-    if (hit?.text) return c.json(hit);
+  return c.json((await pageNote(c.env, ctx, page, c.req.query("force") === "1")) ?? { text: null });
+});
+
+/** AI shrnutí stránky (cache v KV podle dat – noteKey v src/report/aiBackground.ts); píše ho i cron na pozadí. */
+export async function pageNote(env: Env, ctx: Awaited<ReturnType<typeof loadCtx>>, page: string, force: boolean): Promise<{ text: string; model: string | null } | null> {
+  if (!NOTE_ASK[page]) return null;
+  const key = noteKey(page, ctx);
+  if (!force) {
+    const hit = await env.KV.get<{ text: string; model: string | null }>(key, "json").catch(() => null);
+    if (hit?.text) return hit;
   }
   const llm = await import("../llm/llm");
   const { llmAvailable, numbersOk, runChat } = llm;
-  if (!(await llmAvailable(c.env))) return c.json({ text: null });
-  const context = await aiContext(c.env, ctx);
+  if (!(await llmAvailable(env))) return null;
+  const context = await aiContext(env, ctx);
   const sys = `Jsi osobní trenér vytrvalostních sportů a zdraví. Česky, tykej, 2–3 krátké věty, max. 55 slov, bez nadpisů, odrážek a emoji.
 Neopisuj čísla, která uživatel vidí na stránce – max. jedno nebo dvě klíčová. Řekni, co z dat plyne a co udělat. Používej POUZE fakta z JSON kontextu. Aktuální čas je v poli „cas“.`;
-  const out = await runChat(c.env, [{ role: "system", content: sys }, { role: "user", content: `KONTEXT (JSON):\n${JSON.stringify(context)}\n\n${NOTE_ASK[page]}` }], 260, 0.3);
-  if (!out || !numbersOk(out, context)) return c.json({ text: null });
+  const out = await runChat(env, [{ role: "system", content: sys }, { role: "user", content: `KONTEXT (JSON):\n${JSON.stringify(context)}\n\n${NOTE_ASK[page]}` }], 260, 0.3);
+  if (!out || !numbersOk(out, context)) return null;
   const res = { text: out.trim(), model: llm.getLastModel() };
-  await c.env.KV.put(key, JSON.stringify(res), { expirationTtl: 12 * 3600 }).catch(() => {});
-  return c.json(res);
-});
+  await env.KV.put(key, JSON.stringify(res), { expirationTtl: 24 * 3600 }).catch(() => {});
+  return res;
+}

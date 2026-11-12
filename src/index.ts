@@ -236,13 +236,23 @@ export default {
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
     const run = async () => {
       await applySecrets(env);
-      const uid = userForTick(await activeUsers(env), Math.floor(Date.now() / 60_000));
-      if (uid == null) return;
-      const e = await envFor(env, uid);
+      const ids = await activeUsers(env);
+      const minute = Math.floor(Date.now() / 60_000);
+      const uid = userForTick(ids, minute);
+      const { aiBackground } = await import("./report/aiBackground");
+      // volná minuta (nikdo se nesynchronizuje): AI shrnutí na pozadí, uživatelé se střídají – po otevření stránky
+      // už čekají hotová
+      const aiUid = uid == null ? ids[Math.floor(minute / 5) % ids.length]! : null;
+      const who = uid ?? aiUid;
+      if (who == null) return;
+      const e = await envFor(env, who);
       if (!e) return;
       await applySecrets(e);
-      if (uid !== OWNER_ID && !e.GARMIN_API_KEY && !e.INTERVALS_API_KEY) return; // ještě nezadal klíče
+      if (who !== OWNER_ID && !e.GARMIN_API_KEY && !e.INTERVALS_API_KEY) return; // ještě nezadal klíče
+      if (aiUid != null) { await aiBackground(e); return; }
       await runScheduler(e);
+      // 4 a víc dalších uživatelů = žádná volná minuta → AI úloha hned po synchronizaci
+      if (ids.filter((x) => x !== OWNER_ID).length >= 4) await aiBackground(e);
     };
     ctx.waitUntil(run().catch((e) => logEvent(env.DB, "error", `cron: ${(e as Error).message}`)));
   },

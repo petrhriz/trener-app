@@ -782,22 +782,8 @@ api.get("/activity/:id/ai", async (c) => {
     const { parseAct } = await import("../report/context");
     a = parseAct(r);
   }
-  const tag = await first<{ company: string | null }>(c.env.DB, "SELECT company FROM activity_tags WHERE activity_id = ?", a.id).catch(() => null);
-  const rep = activityReport(ctx, a);
-  const x = ((a as any).extra ?? {}) as Record<string, unknown>;
-  const { activityComment } = await import("../llm/activityAi");
-  const out = await activityComment(c.env, rep, {
-    sport: a.sport,
-    company: tag?.company ?? null,
-    aerobni_efekt: (a as any).aerobic_te ?? null,
-    anaerobni_efekt: x.ana_te ?? null,
-    hlavni_prinos_garmin: x.te_label ?? null,
-    dopad_body_battery: x.bb_diff ?? null,
-    aerobni_drift_pct: a.drift ?? null,
-    ftp: ctx.s.ftp,
-    cil_treninku: ctx.s.goal,
-  }, force);
-  if (!out) await c.env.KV.put(`actai:fail:${id}`, "1", { expirationTtl: 6 * 3600 }).catch(() => {});
+  const { activityAiFor } = await import("../report/aiBackground");
+  const out = await activityAiFor(c.env, ctx, a, force);
   return c.json(out ?? { text: null, model: null });
 });
 
