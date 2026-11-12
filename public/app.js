@@ -16,6 +16,7 @@ const ICONS = {
   kalendar: '<rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M8 3v4M16 3v4M3 10h18"/><circle cx="8" cy="14.5" r="1"/><circle cx="12" cy="14.5" r="1"/><circle cx="16" cy="14.5" r="1"/><circle cx="8" cy="18" r="1"/>',
   chat: '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 4v-4h0A2.5 2.5 0 0 1 3 13.5"/><path d="M8 8.5h8M8 12h5"/>',
   vybaveni: '<circle cx="6" cy="16" r="3.6"/><circle cx="18" cy="16" r="3.6"/><path d="M6 16l4-7h5l3 7M10 9l3 7h-7M14 6h3"/>',
+  profil: '<circle cx="12" cy="8" r="4"/><path d="M4 21c.8-4 4.2-6.5 8-6.5s7.2 2.5 8 6.5"/>',
   vice: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
 };
 const icon = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[k] || ""}</svg>`;
@@ -29,6 +30,7 @@ const MAIN = [
   ["zotaveni", "Zotavení"],
 ];
 const MORE = [
+  ["profil", "Profil"],
   ["kalendar", "Kalendář"],
   ["chat", "Chat s AI"],
   ["vybaveni", "Vybavení"],
@@ -3448,7 +3450,54 @@ async function pagePocasi(el, keep = false) {
   // po přepnutí modelu / místa zůstane tabulka posunutá tam, kde byla
   requestAnimationFrame(() => { const sc = el.querySelector("#wxScroll"); if (keep && wxKeepLeft != null && sc) sc.scrollLeft = wxKeepLeft; else scrollDay(false); wxKeepLeft = null; });
 }
-const ROUTES = { pocasi: pagePocasi, kalendar: pageKalendar, chat: pageChat, prehled: pagePrehled, trener: pageTrener, aktivity: pageAktivity, kolo: pageAktivity, zotaveni: pageZotaveni, kondice: pageKondice, telo: pageTelo, vybaveni: pageVybaveni, sila: pageSila, chuze: pageChuze, vyziva: pageVyziva, nastaveni: pageNastaveni };
+
+// ---------- Profil sportovce (src/report/profile.ts) ----------
+async function pageProfil(el) {
+  const p = await api("profile");
+  const dash = "–";
+  const w = (x, u = "") => (x == null ? dash : `${num(x)}${u}`);
+  const date = (d) => (d ? ` <span class="sub">${dm(d)}</span>` : "");
+  const zoneTable = (rows, colors, unit) => rows ? `<table class="t pz">${rows.map((z, i) => `<tr><td><span class="sw" style="background:${colors[i] || "var(--muted)"}"></span>${esc(z.name)}</td><td class="r num">${z.lo}${z.hi != null ? `–${z.hi}` : "+"} ${unit}</td></tr>`).join("")}</table>` : `<div class="empty">Zatím nemám.</div>`;
+  const bests = [["5 s", p.best.s5], ["1 min", p.best.m1], ["5 min", p.best.m5], ["20 min", p.best.m20]];
+  el.innerHTML = `<div class="head"><div><h1>Profil</h1><div class="sub">Co o tobě aplikace ví – z Garminu, nastavení a výpočtů</div></div></div>
+  <div class="grid">
+   ${card("c6", "👤 O mně", "", `<form id="pfForm" class="form-grid">
+      <label>Jméno<input name="name" value="${esc(p.name || "")}" maxlength="40" required></label>
+      <label>Rok narození<input name="birthYear" type="number" min="1920" max="2015" inputmode="numeric" value="${p.birthYear || ""}" placeholder="např. 1980"></label>
+    </form>
+    <div class="btns"><button class="btn pri" id="pfSave">Uložit</button><span class="note" id="pfMsg"></span></div>
+    ${kv([
+      ["Věk", p.age != null ? `${p.age} let` : dash],
+      ["Lehčí týden", `po ${p.blockWeeks} zátěžových${p.age != null && p.age >= 40 ? " (od 40 let)" : ""}`],
+      ["Váha", p.weight ? `${num(p.weight.kg, 1)} kg${date(p.weight.date)}` : `${dash} <span class="sub">zapiš v Garminu nebo /vaha v Telegramu</span>`],
+      ["Cíl", `${esc(p.goal.label)}${p.goal.date ? ` · ${dm(p.goal.date)}${p.goal.date.slice(0, 4)}` : ""}`],
+    ])}`)}
+   ${card("c6", "⚡ Výkon na kole", "", kv([
+      ["FTP", p.ftp ? `${p.ftp} W${p.wkg ? ` · <b>${num(p.wkg, 2)} W/kg</b>` : ""}` : `${dash} <span class="sub">nastav v Nastavení</span>`],
+      ["eFTP", p.eftp ? `${p.eftp.w} W${date(p.eftp.date)}` : dash],
+      ...bests.map(([l, b]) => [`Nejlepší ${l}`, b ? `${b.w} W${b.wkg ? ` · ${num(b.wkg, 2)} W/kg` : ""}${date(b.date)}` : dash]),
+    ]) + `<p class="note">Nejlepší výkony za 90 dní. Křivka výkonu je na stránce <a href="#/kondice">Kondice</a>.</p>`)}
+   ${card("c4", "❤️ Tep", p.hr.source || "", kv([["Maximální", w(p.hr.max, " bpm")], ["Na prahu (LTHR)", w(p.hr.lthr, " bpm")], ["Klidový (7 dní)", w(p.hr.rest, " bpm")]]))}
+   ${card("c4", "🫁 VO2max", "Garmin", kv([["Kolo", p.vo2.ride ? `${p.vo2.ride.v}${date(p.vo2.ride.date)}` : dash], ["Běh", p.vo2.run ? `${p.vo2.run.v}${date(p.vo2.run.date)}` : dash], ["Garmin (celkově)", p.vo2.garmin ? `${num(p.vo2.garmin.v)}${date(p.vo2.garmin.date)}` : dash]]))}
+   ${card("c4", "💪 Kondice dnes", "", p.fitness ? kv([["Kondice (CTL)", num(p.fitness.ctl, 1)], ["Únava (ATL)", num(p.fitness.atl, 1)], ["Forma (TSB)", signed(p.fitness.form, 1)]]) : `<div class="empty">Zatím nemám.</div>`)}
+   ${card("c4", "⚡ Zóny výkonu", p.ftp ? `z FTP ${p.ftp} W` : "", zoneTable(p.powerZones, PWR_ZC, "W"))}
+   ${card("c4", "🚴 Zóny tepu · kolo", p.hr.source || "", zoneTable(p.hrBike, HR_ZC, "bpm"))}
+   ${card("c4", "🏃 Zóny tepu · běh", p.hr.lthr ? `z LTHR ${p.hr.lthr} bpm` : "", zoneTable(p.hrRun, HR_ZC, "bpm") + `<p class="note">Běh má zóny posunuté proti kolu (podle prahového tepu) – tep při běhu bývá vyšší.</p>`)}
+   ${card("c12", "🧭 Trenér", "", p.coach ? `<ul class="plain">${p.coach.summary.map((s) => `<li>${esc(s)}</li>`).join("")}</ul><p class="note">Sporty a sníh změníš v <a href="#/nastaveni">Nastavení → Trenér</a>, FTP a zóny v <a href="#/nastaveni">Nastavení</a>.</p>` : `<div class="empty">Profil trenéra se vytvoří při prvním plánu.</div>`)}
+  </div>`;
+  el.querySelector("#pfSave").addEventListener("click", async (ev) => {
+    const btn = ev.currentTarget, msg = el.querySelector("#pfMsg"), f = el.querySelector("#pfForm");
+    const name = f.name.value.trim(), by = f.birthYear.value.trim();
+    btn.disabled = true; msg.textContent = "Ukládám…";
+    try {
+      if (name !== (p.name || "")) await api("settings", { method: "POST", body: JSON.stringify({ first_name: name }) });
+      if ((by ? +by : null) !== (p.birthYear || null)) await api("coach/profile", { method: "POST", body: JSON.stringify({ profile: { birthYear: by ? +by : null } }) });
+      cache.clear(); toast("Uloženo"); document.getElementById("brandName").textContent = name || "Trenér"; await route();
+    } catch (e) { msg.textContent = `Nepovedlo se: ${e.message}`; btn.disabled = false; }
+  });
+}
+
+const ROUTES = { profil: pageProfil, pocasi: pagePocasi, kalendar: pageKalendar, chat: pageChat, prehled: pagePrehled, trener: pageTrener, aktivity: pageAktivity, kolo: pageAktivity, zotaveni: pageZotaveni, kondice: pageKondice, telo: pageTelo, vybaveni: pageVybaveni, sila: pageSila, chuze: pageChuze, vyziva: pageVyziva, nastaveni: pageNastaveni };
 
 let routeSeq = 0;
 let prevHash = null, detailOrigin = null; // „← Zpět“ z detailu vede tam, odkud jsem do detailů přišel (Přehled / Zotavení / Trenér)

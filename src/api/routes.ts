@@ -1055,6 +1055,13 @@ api.get("/week", async (c) => {
 });
 
 api.get("/settings", async (c) => c.json(await getSettings(c.env.DB)));
+
+/** Profil sportovce: osobní údaje, výkon, zóny wattů a tepu (kolo i běh), VO2max, trenér – src/report/profile.ts */
+api.get("/profile", async (c) => {
+  const ctx = await loadCtx(c.env);
+  const { athleteProfile } = await import("../report/profile");
+  return c.json(athleteProfile(ctx));
+});
 /** FTP a zóny s datem platnosti (Nastavení) */
 api.get("/zones/history", async (c) => {
   const rows = await all<{ date: string; ftp: number | null; hr_zones: string | null; source: string | null }>(c.env.DB, "SELECT date, ftp, hr_zones, source FROM zone_history ORDER BY date").catch(() => []);
@@ -1098,6 +1105,7 @@ api.post("/settings", async (c) => {
     if (k === "rides_per_week") return Number.isInteger(v) && (v as number) >= 2 && (v as number) <= 5 ? null : "tréninky týdně 2–5";
     if (k === "sleep_goal_min") return Number.isInteger(v) && (v as number) >= 360 && (v as number) <= 600 ? null : "cíl spánku 6:00–10:00";
     if (k === "place_name") return typeof v === "string" && v.trim() ? null : "místo nesmí být prázdné";
+    if (k === "first_name") return typeof v === "string" && v.trim() && v.length <= 40 ? null : "jméno 1–40 znaků";
     if (k === "goal") return ["udrzeni", "zvyseni", "pokles", "zavod"].includes(v as string) ? null : "neznámý cíl";
     if (k === "goal_date") return v == null || (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) ? null : "datum cíle";
     if (k === "goal_ctl" || k === "ftp" || k === "year_km_goal") return v == null || (typeof v === "number" && isFinite(v) && v > 0) ? null : "kladné číslo";

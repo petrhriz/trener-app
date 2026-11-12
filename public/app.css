@@ -2190,6 +2190,11 @@ table, .tip, .chip, .astats, .tabbar, .seg, .btn { overflow-wrap: normal; }
 .sh-theme button.on { background: var(--acc); color: #fff; }
 .chipl.on { background: var(--acc); color: #fff; border-color: var(--acc); }
 
+/* profil sportovce: tabulky zón */
+.pz td { padding: 5px 4px; }
+.pz .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 8px; vertical-align: -1px; }
+ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+
 /* detail aktivity: vybavení, s kým, náročnost v jednom řádku (dřív 2 řádky a posunutý text hodnocení) */
 .actsel { grid-template-columns: repeat(auto-fit, minmax(0, 1fr)) !important; gap: 6px !important; }
 .actsel .gearsel { padding: 0 2px 0 8px !important; gap: 0 2px !important; font-size: 15px; border-radius: 999px !important; }
