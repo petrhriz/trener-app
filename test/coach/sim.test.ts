@@ -61,3 +61,20 @@ describe("simulace 8 týdnů", () => {
     if (first >= 0) expect(first).toBeGreaterThanOrEqual(3);
   });
 });
+
+import { OUTLOOK_WEEKS, runCoach } from "../../src/core/coach/engine";
+import { simInput } from "../../scripts/coach-sim-lib";
+describe("výhled kondice na 12 týdnů", () => {
+  it("4 týdny podle plánu, dalších 8 odhad; po denních zátěžích bez mezer, lehčí týdny i v odhadu", () => {
+    const sc = scenario("sezona-zlepsit");
+    const o = runCoach(simInput(sc, simHistory(sc), "2027-04-08")).coach.outlook;
+    expect(o.weeks).toHaveLength(OUTLOOK_WEEKS);
+    expect(o.weeks.map((w) => w.exact)).toEqual([...Array(4).fill(true), ...Array(8).fill(false)]);
+    const days = o.days.map((d) => d.date);
+    for (let i = 1; i < days.length; i++) expect(days[i]).toBe(addDays(days[i - 1]!, 1));
+    expect(days[days.length - 1]).toBe(addDays(o.weeks[11]!.weekStart, 6));
+    const rec = o.weeks.map((w, i) => (w.recoveryWeek ? i : -1)).filter((i) => i >= 0);
+    expect(rec.length).toBeGreaterThanOrEqual(2);
+    expect(o.weeks[11]!.ctlEnd).toBeGreaterThan(o.weeks[3]!.ctlEnd);
+  });
+});

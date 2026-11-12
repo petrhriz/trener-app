@@ -894,9 +894,13 @@ api.get("/fitness", async (c) => {
   const done = ctx.acts.some((a) => a.date === T);
   const startDate = done ? T : addDays(T, -1);
   const st = ctx.metrics.find((m) => m.date === startDate);
+  // výhled na 12 týdnů z trenéra (4 týdny plán, dál odhad z cíle týdne); bez trenéra 7 dní z plánu
+  const out = ((p as any).coach?.outlook?.days ?? []) as { date: string; load: number }[];
+  const outBy = new Map(out.map((x) => [x.date, x.load]));
+  const end = out.length ? out[out.length - 1]!.date : addDays(T, 7);
   const dates: string[] = [];
-  for (let d = addDays(startDate, 1); d <= addDays(T, 7); d = addDays(d, 1)) dates.push(d);
-  const proj = st ? project({ ctl: st.ctl, atl: st.atl }, startDate, dates.map((d) => p.days.find((x) => x.date === d)?.load ?? 0)) : [];
+  for (let d = addDays(startDate, 1); d <= end; d = addDays(d, 1)) dates.push(d);
+  const proj = st ? project({ ctl: st.ctl, atl: st.atl }, startDate, dates.map((d) => outBy.get(d) ?? p.days.find((x) => x.date === d)?.load ?? 0)) : [];
   const ytd = c.req.query("range") === "ytd";
   const metrics = ytd
     ? await all<any>(c.env.DB, "SELECT * FROM daily_metrics WHERE date >= ? AND date <= ? ORDER BY date", `${T.slice(0, 4)}-01-01`, startDate)

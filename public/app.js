@@ -1388,7 +1388,7 @@ async function pageTrener(el) {
       { name: "výhled CTL", values: pre([m[li].ctl, ...pr.map((q) => q.ctl)]), color: "var(--z2)", dash: true, noLegend: true },
       { name: "výhled ATL", values: pre([m[li].atl, ...pr.map((q) => q.atl)]), color: "var(--z7)", dash: true, noLegend: true },
       { name: "výhled formy", values: pre([m[li].form, ...pr.map((q) => q.form)]), color: "var(--fg)", dash: true, opacity: 0.45, noLegend: true },
-    ] }) + '<p class="note">Čárkovaně = výhled, když odjedeš plán. Delší historie na stránce <a href="#/kondice">Kondice</a>.</p>';
+    ] }) + '<p class="note">Čárkovaně = výhled na 12 týdnů, když budeš trénovat podle trenéra: 4 týdny podle plánu, dál odhad z cíle týdne. Delší historie na stránce <a href="#/kondice">Kondice</a>.</p>';
   }).catch(() => el.querySelector("#tKond")?.remove());
   const keepScroll = async () => { const y = scrollY; cache.clear(); await route(); requestAnimationFrame(() => scrollTo(0, y)); };
   const post = async (path, body, msgEl) => { try { await api(path, { method: "POST", body: JSON.stringify(body) }); await keepScroll(); } catch (e) { if (msgEl) msgEl.textContent = e.message; else alert(e.message); } };
@@ -2631,12 +2631,12 @@ async function pageKondice(el) {
     ${stat("⚡ FTP", num(d.ftp), " W", d.ftpCheck?.suggest ? `<span class="warn">⚠️ ${esc(d.ftpCheck.title)}</span>` : d.eftp ? `eFTP ${d.eftp.w} W (intervals.icu)` : "test 20 min", d.ftpCheck?.suggest ? "warn" : "")}
   </div>
   <div class="grid">
-   ${card("c12", `📈 Kondice a únava · ${kondRange === "ytd" ? "od 1. 1." : "90 dní"} + výhled 7 dní`, "intervals.icu", lineChart({ x, xfmt: dm, height: 250, markIndex: lastIdx, series: [
+   ${card("c12", `📈 Kondice a únava · ${kondRange === "ytd" ? "od 1. 1." : "90 dní"} + výhled ${proj.length > 14 ? "12 týdnů" : "7 dní"}`, "intervals.icu", lineChart({ x, xfmt: dm, height: 250, markIndex: lastIdx, series: [
      { name: "Kondice (CTL)", values: pad(m.map((r) => r.ctl), proj.length), color: "var(--z2)", width: 2.6, area: true },
      { name: "Únava (ATL)", values: pad(m.map((r) => r.atl), proj.length), color: "var(--z7)", width: 1.8 },
      { name: "výhled CTL", values: ctlP, color: "var(--z2)", dash: true, noLegend: true },
      { name: "výhled ATL", values: atlP, color: "var(--z7)", dash: true, noLegend: true },
-   ] }) + `<p class="note">Čárkovaně = výhled podle plánu.</p>`)}
+   ] }) + `<p class="note">Čárkovaně = výhled, když budeš trénovat podle trenéra: 4 týdny podle plánu, dál odhad z cíle týdne (lehčí týdny, ladění, postupné přidávání).</p>`)}
    ${card("c8", "🎯 Forma (TSB)", "intervals.icu", lineChart({ x, xfmt: dm, height: 205, markIndex: lastIdx, include: [-35, 25], bands: FORM_BANDS, yticks: [-30, -10, 5, 20], yfmt: (v) => signed(v), bandsLegend: false, legend: false, series: [
      { name: "Forma", values: pad(m.map((r) => r.form), proj.length), color: "var(--fg)", width: 3, bandColors: true },
      { name: "výhled", values: formP, color: "var(--fg)", dash: true, opacity: 0.6 },

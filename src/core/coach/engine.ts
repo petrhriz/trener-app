@@ -153,12 +153,16 @@ export interface CoachInfo {
   validation: WeekValidation;
   /** kvality v plánu (tento a příští týden) – uloží se v den tréninku a po odjetí vyhodnotí */
   keyDays: { date: string; sport: PlanSport; cat: Cat; level: number; base: number; wid: string | null; plan: WorkPlan | null; minutes: number; name: string | null }[];
+  /** výhled na 12 týdnů: 4 týdny podle plánu, dalších 8 odhad z cíle týdne (stejná pravidla, bez kostry) */
+  outlook: { days: { date: string; load: number }[]; weeks: { weekStart: string; load: number; ctlEnd: number; recoveryWeek: boolean; phaseLabel: string; exact: boolean }[] };
   /** pondělní plán tohoto týdne k uložení (nebo ten uložený) */
   mondayPlan: MondayPlan | null;
   horizon: { weekStart: string; detail: boolean; load: number; done: number; need: number; target: number; notes: string[]; limit: WeekTarget["limit"]; ctlStart: number; ctlEnd: number; ctlGoal: number; phaseLabel: string; recoveryWeek: boolean; days: { date: string; role: Role; sport: PlanSport; minutes: number; load: number; name: string | null; blocked: boolean }[] }[];
 }
 
 export type CoachPlan = PlanResult & { coach: CoachInfo };
+/** Výhled kondice na tolik týdnů (graf na Trenérovi a Kondici). */
+export const OUTLOOK_WEEKS = 12;
 
 const KIND: Record<Role, Kind> = { rest: "rest", easy: "recovery", endurance: "z2", key: "quality", long: "long" };
 const isBike = (s: Sport) => BIKE_SPORTS.includes(s);
@@ -564,7 +568,24 @@ export function runCoach(inp: CoachInput): CoachPlan {
 
   // v pondělí před prvním tréninkem je pondělním plánem tento plán (week doplní toPlan)
   const mp: MondayPlan | null = mondayPlan ?? (inp.mondayMode || from !== W0 ? null : { weekStart: W0, goal: inp.goal, fatigue: fat.factor, monday: true, week: null as unknown as MondayPlan["week"] });
-  return toPlan(inp, weeks, { mondayPlan: mp, from, todayDone, startState, history, usual: historyBase(history).usual, ctlRef, fat, longest, typical, runLongest: run.longest, runExperienced: run.experienced });
+  // výhled 12 týdnů: po 4 týdnech plánu už jen cíl týdne rozložený rovnoměrně po dnech (levné – bez kostry a délek);
+  // stejné pořadí pravidel: lehčí týden po bloku, ladění, týden po závodě, strop přidávání
+  const outlook: CoachInfo["outlook"] = { days: weeks.flatMap((w) => w.days.map((x) => ({ date: x.date, load: x.load }))), weeks: weeks.map((w) => ({ weekStart: w.weekStart, load: Math.round(w.target.done + w.planned), ctlEnd: w.ctlEnd, recoveryWeek: w.target.recoveryWeek, phaseLabel: w.target.phaseLabel, exact: true })) };
+  if (!inp.mondayMode) {
+    let st = { ...state }, b = blk;
+    for (let k = weeks.length; k < OUTLOOK_WEEKS; k++) {
+      const tg = weekTarget(binp, k, st.ctl, b);
+      const per = tg.load / 7;
+      const dd = [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(tg.weekStart, i));
+      const pr = project(st, addDays(tg.weekStart, -1), dd.map(() => per));
+      for (const d of dd) outlook.days.push({ date: d, load: Math.round(per) });
+      const end = pr[pr.length - 1]!;
+      outlook.weeks.push({ weekStart: tg.weekStart, load: tg.load, ctlEnd: Math.round(end.ctl * 10) / 10, recoveryWeek: tg.recoveryWeek, phaseLabel: tg.phaseLabel, exact: false });
+      st = { ctl: end.ctl, atl: end.atl };
+      b = nextBlock(b, tg, tg.load);
+    }
+  }
+  return toPlan(inp, weeks, { outlook, mondayPlan: mp, from, todayDone, startState, history, usual: historyBase(history).usual, ctlRef, fat, longest, typical, runLongest: run.longest, runExperienced: run.experienced });
 }
 
 // ---------- výstup ve tvaru plánu (dashboard, zápis do intervals.icu, Telegram) ----------
@@ -598,7 +619,7 @@ export function horizonSummary(weeks: Pick<Week3, "planned" | "ctlEnd" | "target
   return `${head}. Na ${ramp === 0 ? "udržení" : "růst"} by to chtělo víc, ale ${why.join(", ")}.${settled ? ` Od ${weeks.length}. týdne už zátěž cíli odpovídá a kondice ${ramp === 0 ? "drží" : "roste"}.` : ""}`;
 }
 
-function toPlan(inp: CoachInput, weeks: Week3[], o: { mondayPlan: MondayPlan | null; from: string; todayDone: boolean; startState: { ctl: number; atl: number }; history: { weekLoads: number[] }; usual: number; ctlRef: number; fat: { notes: string[] }; longest: number; typical: number; runLongest: number; runExperienced: boolean }): CoachPlan {
+function toPlan(inp: CoachInput, weeks: Week3[], o: { outlook: CoachInfo["outlook"]; mondayPlan: MondayPlan | null; from: string; todayDone: boolean; startState: { ctl: number; atl: number }; history: { weekLoads: number[] }; usual: number; ctlRef: number; fat: { notes: string[] }; longest: number; typical: number; runLongest: number; runExperienced: boolean }): CoachPlan {
   const T = inp.today;
   const all = weeks.flatMap((w) => w.days);
   const dayOf = (d: string) => all.find((x) => x.date === d) ?? null;
@@ -776,6 +797,7 @@ function toPlan(inp: CoachInput, weeks: Week3[], o: { mondayPlan: MondayPlan | n
     validation,
     keyDays: weeks.filter((w) => w.detail).flatMap((w) => w.days).filter((x) => x.role === "key" && x.cat && x.level != null).map((x) => ({ date: x.date, sport: x.sport, cat: x.cat!, level: x.level!, base: x.base ?? x.level!, wid: x.wid ?? null, plan: x.wplan ?? null, minutes: x.minutes, name: x.name })),
     mondayPlan: null,
+    outlook: o.outlook,
     horizon: weeks.map((w) => ({ weekStart: w.weekStart, detail: w.detail, load: w.planned, done: w.target.done, need: w.target.need, target: w.target.load, notes: w.target.notes, limit: w.target.limit, ctlStart: w.target.ctlStart, ctlEnd: w.ctlEnd, ctlGoal: w.target.ctlGoal, phaseLabel: w.target.phaseLabel, recoveryWeek: w.target.recoveryWeek, days: w.days.map((x) => ({ date: x.date, role: x.role, sport: x.sport, minutes: x.minutes, load: x.load, name: x.name, blocked: !!x.blocked })) })),
   };
   coach.mondayPlan = o.mondayPlan && !o.mondayPlan.week ? { ...o.mondayPlan, week: coach.horizon[0]! } : o.mondayPlan;
