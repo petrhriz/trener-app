@@ -21,6 +21,7 @@ import type { Ctx, FullAct, MetricRow } from "./context";
 import { loadCoachState, saveCoachState } from "../coach/store";
 import type { Fatigue } from "../core/coach/target";
 import { type EngineAct, runEngine } from "../core/coach/engine";
+import { runCoach3 } from "../core/coach3/engine";
 import { profileFromHistory, validateProfile } from "../core/coach/profile";
 import { norm } from "../core/recovery";
 import { setSetting } from "../lib/settings";
@@ -275,9 +276,44 @@ export async function planForV2(ctx: Ctx, rec: RecoveryResult): Promise<PlanResu
   return out.plan;
 }
 
+/** Trenér v3: plán od dnešní kondice, 4 týdny dopředu, bez uložených týdnů (src/core/coach3/, docs/trener-v3/). */
+export async function planForV3(ctx: Ctx, rec: RecoveryResult): Promise<PlanResult> {
+  const T = ctx.T;
+  let profile = ctx.s.coach_profile ? validateProfile(ctx.s.coach_profile).profile : null;
+  if (!profile) {
+    profile = profileFromHistory(ctx.acts, T);
+    await setSetting(ctx.env.DB, "coach_profile", profile);
+    ctx.s.coach_profile = profile;
+  }
+  const constraints = [...ctx.constraints, ...statusConstraints(ctx)];
+  const acts: EngineAct[] = ctx.acts.map((a) => ({ id: a.id, date: a.date, sport: a.sport, load: a.load, moving_s: a.moving_s, quality: !!a.is_quality && a.sport !== "skate" && a.sport !== "padel", hr_z: a.hr_z, pwr_z: a.pwr_z, laps: a.laps ?? null, compliance: (a as any).icu_compliance ?? null }));
+  const power = ctx.acts.filter((a) => isBike(a.sport)).map((a) => ({ id: a.id, date: a.date, mmp: a.mmp, max20: a.max20, pwr_z: a.pwr_z }));
+  const state = await loadCoachState(ctx.env.DB, T);
+  return runCoach3({
+    today: T,
+    goal: ctx.s.goal,
+    raceDate: ctx.s.goal === "zavod" ? ctx.s.goal_date : null,
+    profile,
+    zones: { ftp: ctx.s.ftp ?? null, hr: ctx.s.hr_zones },
+    acts,
+    power,
+    metric: (d) => metricOn(ctx, d),
+    calendar: ctx.calendar,
+    constraints,
+    weather: weatherMap(ctx, T, 35),
+    weatherOk: ctx.weatherOk,
+    recovery: rec.state,
+    fatigue: fatigueOf(ctx, rec, constraints),
+    weekLoads: await weekLoads(ctx),
+    offDays: offDaysOf(ctx),
+    progress: state.progress,
+  });
+}
+
 export async function planFor(ctx: Ctx, rec?: RecoveryResult): Promise<PlanResult> {
   const T = ctx.T;
   const recovery = rec ?? recoveryFor(ctx);
+  if (ctx.s.coach_v3) return planForV3(ctx, recovery);
   if (ctx.s.coach_v2) return planForV2(ctx, recovery);
   const ftp = ctx.s.ftp ?? 250;
   const acts: ActDay[] = ctx.acts
@@ -370,9 +406,22 @@ export async function readiness(ctx: Ctx): Promise<Readiness> {
   const dec = decisionFor(rec.state, kind);
   let decision: string;
   let why: string;
+  // Trenér v3: dnešek jen z plánu trenéra (ranní stav už v plánu je) – kalendář intervals.icu je jen zápis
+  const v3 = !!ctx.s.coach_v3;
   if (done.length) {
     decision = "Odtrénováno";
     why = `${done.map((d) => `${d.name} (zátěž ${num(d.load)})`).join(", ")}.`;
+  } else if (v3) {
+    if (!day || !day.name) {
+      decision = "Volno";
+      why = day?.kind === "blocked" ? day.note || "Dnes nelze." : "Volno podle plánu.";
+    } else if (day.indoor) {
+      decision = "Trenažér";
+      why = day.note || "Kvalita na trenažéru.";
+    } else {
+      decision = rec.state === "yellow" ? "Jet lehčeji" : "Jet podle plánu";
+      why = day.note || "Zotavení v normě.";
+    }
   } else if (!cal || cal.kind === "rest") {
     decision = "Volno";
     why = "Volno podle plánu.";
@@ -412,7 +461,7 @@ export async function readiness(ctx: Ctx): Promise<Readiness> {
     time: `${String(ctx.now.hh).padStart(2, "0")}:${String(ctx.now.mm).padStart(2, "0")}`,
     recovery: rec,
     fitness: fit,
-    today: { title: done.length ? done[0]!.name : day?.name ?? cal?.name ?? "Volno", decision, decisionWhy: why, day, done, calendarName: cal?.name ?? null },
+    today: { title: done.length ? done[0]!.name : v3 ? day?.name ?? "Volno" : day?.name ?? cal?.name ?? "Volno", decision, decisionWhy: why, day, done, calendarName: cal?.name ?? null },
     tomorrow,
     tomorrowInfo: tomorrowDay ? { date: tomorrowDay.date, name: tomorrowDay.name ?? null, tag: tomorrowDay.tag ?? null, minutes: tomorrowDay.durationMin ?? null, tmax: tomorrowDay.weather?.tmax ?? null, tmin: tomorrowDay.weather?.tmin ?? null, rainProb: tomorrowDay.weather?.rainProb ?? null, gust: tomorrowDay.weather?.gustMax ?? null } : null,
     changes,

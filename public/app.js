@@ -2927,9 +2927,12 @@ async function coachProfileForm(box) {
   box.classList.remove("loading", "sm");
   const OTHER = { ride: [["run", "🏃 Občas běhám"], ["xc_ski", "🎿 V zimě běžky"]], run: [["ride", "🚴 Občas jezdím na kole"], ["xc_ski", "🎿 V zimě běžky"]] };
   const hTxt = (x) => String(x).replace(".", ",");
-  const draw = (p, v2, msg = "") => {
+  const verOf = (x) => (x.v3 ? 3 : x.v2 ? 2 : 1);
+  const draw = (p, ver, msg = "") => {
     box.innerHTML = `
-      <label class="chk"><input type="checkbox" id="cpV2" ${v2 ? "checked" : ""}> <b>Nový trenér</b> – pestré tréninky z knihovny, plán se sám přeskládá (vypnuto = původní trenér)</label>
+      <div class="sl" style="margin:0 0 6px">Trenér</div>
+      <div class="seg" id="cpVer">${[[3, "v3 – nový (zkušební)"], [2, "v2"], [1, "původní"]].map(([k, l]) => `<button type="button" class="${ver === k ? "on" : ""}" data-ver="${k}">${l}</button>`).join("")}</div>
+      <p class="note">v3 počítá cíl a výhled od dnešní kondice, délky ze zátěže (změna sportu drží zátěž), plán na 4 týdny. Popis: docs/trener-v3.</p>
       <div class="sl" style="margin:14px 0 6px">Hlavní sport</div>
       <div class="seg" id="cpPrim">${[["ride", "Kolo"], ["run", "Běh"]].map(([k, l]) => `<button type="button" class="${p.primary === k ? "on" : ""}" data-prim="${k}">${l}</button>`).join("")}</div>
       <div class="sl" style="margin:14px 0 6px">Další sporty</div>
@@ -2945,18 +2948,21 @@ async function coachProfileForm(box) {
       q.snow = box.querySelector("#cpSnow").checked;
       return q;
     };
-    box.querySelectorAll("#cpPrim button").forEach((b) => b.addEventListener("click", () => { const q = read(); q.primary = b.dataset.prim; draw(q, box.querySelector("#cpV2").checked); }));
+    const curVer = () => +(box.querySelector("#cpVer .on")?.dataset.ver || ver);
+    box.querySelectorAll("#cpVer button").forEach((b) => b.addEventListener("click", () => { box.querySelectorAll("#cpVer button").forEach((x) => x.classList.toggle("on", x === b)); }));
+    box.querySelectorAll("#cpPrim button").forEach((b) => b.addEventListener("click", () => { const q = read(); q.primary = b.dataset.prim; draw(q, curVer()); }));
     box.querySelector("#cpSave").addEventListener("click", async () => {
       const m = box.querySelector("#cpMsg"), btn = box.querySelector("#cpSave");
       btn.disabled = true; m.textContent = "Ukládám a skládám plán…";
       try {
-        const r = await api("coach/profile", { method: "POST", body: JSON.stringify({ profile: read(), v2: box.querySelector("#cpV2").checked }) });
+        const v = curVer();
+        const r = await api("coach/profile", { method: "POST", body: JSON.stringify({ profile: read(), v2: v === 2, v3: v === 3 }) });
         cache.clear();
-        draw(r.profile, r.v2, r.proposal && r.proposal.changes ? `Uloženo. ${r.proposal.changes} změn v plánu čeká na potvrzení v Trenérovi.` : "Uloženo.");
+        draw(r.profile, verOf(r), r.proposal && r.proposal.changes ? `Uloženo. ${r.proposal.changes} změn v plánu čeká na potvrzení v Trenérovi.` : "Uloženo.");
       } catch (e) { m.textContent = `Nepovedlo se: ${e.message}`; btn.disabled = false; }
     });
   };
-  draw(d.profile, d.v2);
+  draw(d.profile, verOf(d));
 }
 
 // ---------- kalendář ----------

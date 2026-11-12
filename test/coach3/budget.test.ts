@@ -1,0 +1,81 @@
+// Trenér v3: cíl zátěže a výhled kondice od dnešní kondice.
+import { describe, expect, it } from "vitest";
+import { ctlAfter, cycleIndex, loadToReach, usualLoad, weekTargets } from "../../src/core/coach3/budget";
+import { computeMetrics } from "../../src/core/fitness";
+import { addDays } from "../../src/lib/time";
+
+const hist = (weekLoads: number[]) => ({ weekLoads, weekSessions: weekLoads.map(() => 3), weekOff: weekLoads.map(() => 0), provenRamp: null });
+
+describe("rovnice kondice", () => {
+  it("udržení = 7 × kondice za týden; výpočet souhlasí s denní řadou (jako intervals.icu)", () => {
+    expect(loadToReach(40, 40, 7)).toBeCloseTo(280, 5);
+    const L = loadToReach(40, 41.5, 5);
+    const loads = new Map<string, number>();
+    for (let i = 1; i <= 5; i++) loads.set(addDays("2026-11-12", i), L / 5);
+    const s = computeMetrics(loads, "2026-11-12", "2026-11-17", { ctl: 40, atl: 40 });
+    // první den řady je výchozí den (zátěž 0) → kondice v něm klesne; porovnávám od jeho konce
+    const c0 = s[0]!.ctl;
+    expect(ctlAfter(c0, loadToReach(c0, 41.5, 5), 5)).toBeCloseTo(41.5, 6);
+  });
+});
+
+describe("cíl týdne od dnešní kondice (tvůj případ 12. 11.: v pondělí 44, dnes 40,8)", () => {
+  const base = { raceDate: null, from: "2026-11-13", ctlNow: 40.8, doneLoad: 60, history: hist([330, 52, 150, 43]), fatigue: 1, weeks: 4 };
+  it("s dostatečnou historií: pokles kondici snižuje, udržet drží, zlepšit zvedá – proti dnešní hodnotě", () => {
+    const b = { ...base, history: hist([300, 300, 300, 300]) };
+    const p = weekTargets({ ...b, goal: "pokles" })[0]!;
+    const u = weekTargets({ ...b, goal: "udrzeni" })[0]!;
+    const z = weekTargets({ ...b, goal: "zvyseni" })[0]!;
+    expect(p.ctlStart).toBe(40.8);
+    expect(p.ctlEnd).toBeLessThan(40.8);
+    expect(u.ctlEnd).toBeCloseTo(40.8, 1);
+    expect(z.ctlEnd).toBeGreaterThan(40.8);
+    expect(p.load).toBeLessThan(u.load);
+    expect(u.load).toBeLessThan(z.load);
+  });
+  it("tvoje skutečná historie (330 / 52 / 150 / 43): udržet nejde, výsledek to řekne; pokles nikdy neroste", () => {
+    const p = weekTargets({ ...base, goal: "pokles" })[0]!;
+    const u = weekTargets({ ...base, goal: "udrzeni" })[0]!;
+    expect(p.ctlEnd).toBeLessThan(40.8);
+    expect(u.ctlEnd).toBeLessThan(40.8);
+    expect(u.limit).toBe("historie");
+    expect(u.notes[0]).toContain("udržení kondice 40,8 by bylo potřeba");
+    expect(u.notes[0]).toContain("→ kondice 40,0");
+  });
+  it("zbývající dny: růst se krátí poměrem dní (pá–ne = 3/7 týdne)", () => {
+    const z = weekTargets({ ...base, goal: "zvyseni", history: hist([300, 300, 300, 300]) })[0]!;
+    expect(z.days).toBe(3);
+    expect(z.ctlGoal).toBeCloseTo(40.8 + (1 * 3) / 7, 1);
+  });
+  it("strop podle historie: když se cíl nevejde, poznámka říká potřebu, strop i výsledek", () => {
+    const t = weekTargets({ ...base, goal: "udrzeni", history: hist([100, 100, 100, 100]), doneLoad: 0, from: "2026-11-16" })[0]!;
+    expect(t.need).toBeGreaterThan(t.load);
+    expect(t.limit).toBe("historie");
+    expect(t.load).toBe(140);
+    expect(t.notes[0]).toMatch(/potřeba \d+ zátěže.*140 → kondice/);
+  });
+  it("další týdny navazují: začínají kondicí, na kterou dojde předchozí", () => {
+    const w = weekTargets({ ...base, goal: "udrzeni", history: hist([300, 300, 300, 300]) });
+    expect(w).toHaveLength(4);
+    for (let i = 1; i < 4; i++) expect(w[i]!.ctlStart).toBeCloseTo(w[i - 1]!.ctlEnd, 1);
+    expect(w[1]!.from).toBe("2026-11-16");
+    expect(w[1]!.days).toBe(7);
+  });
+  it("únava ubírá a říká to", () => {
+    const t = weekTargets({ ...base, goal: "udrzeni", history: hist([300, 300, 300, 300]), fatigue: 0.8 })[0]!;
+    expect(t.limit).toBe("únava");
+    expect(t.notes.join(" ")).toMatch(/o 20 % lehčí/);
+  });
+});
+
+describe("historie a lehčí týden", () => {
+  it("ojedinělý propad (nemoc) se do obvyklé zátěže nepočítá, dva už ano", () => {
+    expect(usualLoad({ weekLoads: [300, 300, 20, 300], weekOff: [0, 0, 0, 0] })).toBe(300);
+    expect(usualLoad({ weekLoads: [300, 20, 20, 300], weekOff: [0, 0, 0, 0] })).toBeLessThan(300);
+  });
+  it("každý 4. týden lehčí (stabilní podle kalendáře)", () => {
+    const idx = [0, 1, 2, 3, 4].map((i) => cycleIndex(addDays("2026-11-16", 7 * i)));
+    expect(new Set(idx.slice(0, 4)).size).toBe(4);
+    expect(idx[4]).toBe(idx[0]);
+  });
+});

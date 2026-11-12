@@ -398,7 +398,7 @@ api.get("/coach", async (c) => {
     weeks: weekLoadsView(ctx, r.plan),
     goalLabel: GOAL_LABEL[ctx.s.goal as Goal],
     goal: ctx.s.goal,
-    goals: ctx.s.coach_v2 ? goalsViewV2(ctx, r.plan) : goalsView(ctx, await weekLoads(ctx)),
+    goals: ctx.s.coach_v2 || ctx.s.coach_v3 ? goalsViewV2(ctx, r.plan) : goalsView(ctx, await weekLoads(ctx)),
     coach: (r.plan as { coach?: unknown }).coach ?? null,
     eftp: eftpOf(ctx),
     ftpCheck: ftpCheckOf(ctx, await getState<string>(c.env.DB, "ftp_set_at")),
@@ -1095,7 +1095,7 @@ api.post("/settings", async (c) => {
     if (["morning_from", "morning_to", "evening_time", "weekly_time"].includes(k)) return typeof v === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? null : "čas ve tvaru HH:MM";
     if (k === "rides_per_week") return Number.isInteger(v) && (v as number) >= 2 && (v as number) <= 5 ? null : "tréninky týdně 2–5";
     if (k === "sleep_goal_min") return Number.isInteger(v) && (v as number) >= 360 && (v as number) <= 600 ? null : "cíl spánku 6:00–10:00";
-    if (k === "coach_v2") return typeof v === "boolean" ? null : "přepínač trenéra";
+    if (k === "coach_v2" || k === "coach_v3") return typeof v === "boolean" ? null : "přepínač trenéra";
     if (k === "place_name") return typeof v === "string" && v.trim() ? null : "místo nesmí být prázdné";
     if (k === "goal") return ["udrzeni", "zvyseni", "pokles", "zavod"].includes(v as string) ? null : "neznámý cíl";
     if (k === "goal_date") return v == null || (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) ? null : "datum cíle";

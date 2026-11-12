@@ -154,7 +154,7 @@ ZPRÁVA: ${q}`;
   const moved = new Set<string>();
   // AI nesmí obejít pravidla trenéra: co bylo před akcemi, se uloží; když akce přinesou nové porušení
   // kdekoli v týdnu (kvalita po těžkém dni, řada dní, propad formy, délka nad strop…), dny se vrátí
-  const guard = !!ctx.s.coach_v2;
+  const guard = !!ctx.s.coach_v2 || !!ctx.s.coach_v3;
   const before = guardItems(p);
   const planDates = p.days.map((d) => d.date).sort();
   const snap = guard && planDates.length ? await all<{ date: string; kind: string; note: string | null; created_at: string | null }>(c.env.DB, `SELECT date, kind, note, created_at FROM constraints WHERE date >= ? AND date <= ? AND kind IN ('sport', 'typ', 'delka', 'jizda', 'kroky')`, planDates[0], planDates[planDates.length - 1]) : [];
@@ -251,7 +251,7 @@ coachApi.post("/coach/ai-week", async (c) => {
   const { text, dry } = ((await c.req.json().catch(() => ({}))) ?? {}) as { text?: string; dry?: boolean };
   const ctx = await loadCtx(c.env);
   // Trenér v2 má plán uložený a skládá ho kód – AI návrh týdne by šel proti němu
-  if (ctx.s.coach_v2) return c.json({ ok: false, reply: "Nový trenér skládá týden sám podle tvého profilu. Úpravy udělej u dnů nebo napiš trenérovi.", changes: 0 });
+  if (ctx.s.coach_v2 || ctx.s.coach_v3) return c.json({ ok: false, reply: "Nový trenér skládá týden sám podle tvého profilu. Úpravy udělej u dnů nebo napiš trenérovi.", changes: 0 });
   const base = await planFor(ctx);
   const days = base.days;
   const locked = (d: Day) => d.kind === "blocked" || d.kind === "hockey" || d.kind === "xc_ski" || !!d.own;
@@ -347,12 +347,12 @@ POKYN UŽIVATELE: ${String(text ?? "").slice(0, 400) || "žádný"}`;
 coachApi.get("/coach/profile", async (c) => {
   const ctx = await loadCtx(c.env);
   const profile = ctx.s.coach_profile ? validateProfile(ctx.s.coach_profile).profile : profileFromHistory(ctx.acts, ctx.T);
-  return c.json({ v2: ctx.s.coach_v2, saved: !!ctx.s.coach_profile, profile, summary: profileSummary(profile) });
+  return c.json({ v2: ctx.s.coach_v2, v3: ctx.s.coach_v3, saved: !!ctx.s.coach_profile, profile, summary: profileSummary(profile) });
 });
 
 /** Uložení profilu (a přepínače nového trenéra). Plán se postaví znovu, změny čekají na „Zapsat“. */
 coachApi.post("/coach/profile", async (c) => {
-  const body = (await c.req.json()) as { profile?: unknown; v2?: boolean };
+  const body = (await c.req.json()) as { profile?: unknown; v2?: boolean; v3?: boolean };
   const s = await getSettings(c.env.DB);
   let profile = s.coach_profile;
   if (body.profile !== undefined) {
@@ -362,11 +362,12 @@ coachApi.post("/coach/profile", async (c) => {
     await setSetting(c.env.DB, "coach_profile", profile);
   }
   if (typeof body.v2 === "boolean") await setSetting(c.env.DB, "coach_v2", body.v2);
+  if (typeof body.v3 === "boolean") await setSetting(c.env.DB, "coach_v3", body.v3);
   const ctx = await loadCtx(c.env);
   let after: { id: number; changes: number } | null = null;
   if (ctx.s.coach_v2) {
     await resetCoachWeeks(c.env.DB, ctx.T);
     after = await proposalAfter(c.env);
-  } else if (typeof body.v2 === "boolean") after = await proposalAfter(c.env);
-  return c.json({ ok: true, v2: ctx.s.coach_v2, profile, summary: profile ? profileSummary(profile) : [], proposal: after });
+  } else if (typeof body.v2 === "boolean" || typeof body.v3 === "boolean" || ctx.s.coach_v3) after = await proposalAfter(c.env);
+  return c.json({ ok: true, v2: ctx.s.coach_v2, v3: ctx.s.coach_v3, profile, summary: profile ? profileSummary(profile) : [], proposal: after });
 });

@@ -46,6 +46,8 @@ export interface Settings {
   sleep_goal_min: number;
   /** Trenér v2: nový plánovač (uložený týden, profil sportů) místo v1 */
   coach_v2: boolean;
+  /** Trenér v3 (docs/trener-v3/) – má přednost před v2 */
+  coach_v3: boolean;
   /** Trenér v2: profil sportovce (hlavní sport, další sporty); null = odhadne se z historie */
   coach_profile: CoachProfile | null;
 }
@@ -82,6 +84,7 @@ export const DEFAULTS: Settings = {
   place_lon: null,
   sleep_goal_min: 480,
   coach_v2: false,
+  coach_v3: false,
   coach_profile: null,
 };
 

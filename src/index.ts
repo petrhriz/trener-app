@@ -116,6 +116,15 @@ app.get("/admin/raw", async (c) => {
     return c.json({ upstreamError: e instanceof HttpError ? e.status : String(e) }, 502);
   }
 });
+/** Trenér v3 na ostrých datech bez přepnutí uživatele (jen čte; ?goal= zkusí jiný cíl). */
+app.get("/admin/coach3", async (c) => {
+  const ctx = await loadCtx(c.env);
+  const g = c.req.query("goal");
+  if (g === "pokles" || g === "udrzeni" || g === "zvyseni" || g === "zavod") ctx.s.goal = g;
+  const { planForV3, recoveryFor } = await import("./report/build");
+  const p = (await planForV3(ctx, recoveryFor(ctx))) as any;
+  return c.json({ goal: ctx.s.goal, coach: p.coach, warnings: p.warnings, days: p.days.map((d: any) => ({ date: d.date, tag: d.tag, name: d.name, min: d.durationMin, load: d.load, sport: d.sport, indoor: d.indoor, steps: d.steps, note: d.note, form: d.form })), changes: p.changes.length });
+});
 app.get("/admin/ctx", async (c) => {
   const { env: _e, ...ctx } = await loadCtx(c.env);
   return c.json(ctx);
