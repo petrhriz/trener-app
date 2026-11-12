@@ -326,11 +326,31 @@ export function runCoach(inp: CoachInput): CoachPlan {
     }
     const notes = [...tg.notes, ...sk.notes];
 
+    // další sporty z profilu: druhý hlavní sport (běh / kolo) nejvýš jeden vytrvalostní den týdně, běžky při sněhu
+    // jeden vytrvalostní den týdně. Den drží zátěž, délka podle sportu (běh ve stropech běhu). Tvoje volba sportu
+    // u dne (nebo už odjetý ten sport tento týden) se počítá.
+    const autoSport = new Map<string, PlanSport>();
+    const free = (d: string) => sk.roles.get(d) === "endurance" && !fixed.get(d)?.sport && !fixed.get(d)?.own && !autoSport.has(d);
+    if (pinned) {
+      for (const d of dates) { const m = mDay(d); if (m && m.sport !== p.primary && m.role === sk.roles.get(d) && !fixed.get(d)?.sport) autoSport.set(d, m.sport); }
+    } else {
+      const inWeek = (s: PlanSport) => dates.some((d) => fixed.get(d)?.sport === s) || (k === 0 && inp.acts.some((a) => a.date >= W0 && a.date < from && planSport(a.sport) === s && (a.moving_s ?? 0) >= 20 * 60));
+      const other: PlanSport = p.primary === "ride" ? "run" : "ride";
+      if (p.sports[other]?.enabled && !inWeek(other)) {
+        const d = dates.find((x) => free(x) && dow(x) <= 5) ?? dates.find(free);
+        if (d) autoSport.set(d, other);
+      }
+      if (p.snow && p.sports.xc_ski?.enabled && !inWeek("xc_ski")) {
+        const d = [...dates].reverse().find(free);
+        if (d) autoSport.set(d, "xc_ski");
+      }
+    }
+
     // dny: sport, cíl zátěže, délka
     const days: Day3[] = dates.map((d) => {
       const f = fixed.get(d);
       const role = sk.roles.get(d) ?? "rest";
-      const sport: PlanSport = role === "rest" ? p.primary : (f?.sport ?? p.primary);
+      const sport: PlanSport = role === "rest" ? p.primary : (f?.sport ?? autoSport.get(d) ?? p.primary);
       return { date: d, role, sport, minutes: 0, load: 0, want: 0, name: null, workout: null, steps: [], targetText: null, indoor: false, qualityType: null, cat: null, tiz: 0, why: [], blocked: f?.blocked ?? (d === inp.raceDate ? "🏁 Závod – den D." : d === T && inp.recovery === "red" ? "🔴 ráno: volno, nebo Z1 do 45 min / procházka." : null), own: f?.own ?? null, mine: !!(f && (f.sport || f.type || f.minutes || f.own || f.edit)), userRest: !!f?.rest };
     });
     const train = days.filter((x) => x.role !== "rest");
@@ -466,7 +486,10 @@ export function runCoach(inp: CoachInput): CoachPlan {
         }
       }
     }
-    for (const x of train) if (fixed.get(x.date)?.sport && x.sport !== p.primary && !x.own) {
+    for (const x of train) if (autoSport.get(x.date) === x.sport && !fixed.get(x.date)?.sport) {
+      x.why.push(`${SPORT_WORD[x.sport]} podle profilu (${x.sport === "xc_ski" ? "je sníh, " : ""}jeden vytrvalostní den týdně)`);
+    }
+    for (const x of train) if ((fixed.get(x.date)?.sport || autoSport.get(x.date) === x.sport) && x.sport !== p.primary && !x.own) {
       const capped = x.want > 0 && Math.abs(x.load - x.want) > x.want * 0.15;
       x.why.push(capped ? (x.load < x.want ? `${SPORT_WORD[x.sport]} místo ${SPORT_GEN[p.primary]}: ${x.minutes} min je strop ${SPORT_GEN[x.sport]}${x.sport === "run" ? " podle toho, kolik teď běháš" : ""} – zátěž ${x.load} místo ${x.want}, zbytek dostanou ostatní dny` : `${SPORT_WORD[x.sport]} místo ${SPORT_GEN[p.primary]}: ${x.minutes} min vyjde na zátěž ${x.load} (${SPORT_WORD[p.primary]} by dalo ${x.want}), ostatní dny jsou o to lehčí`) : `${SPORT_WORD[x.sport]} místo ${SPORT_GEN[p.primary]}: stejná zátěž (${x.load}), délka podle sportu`);
     }

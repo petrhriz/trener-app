@@ -1,4 +1,4 @@
-// Profil sportovce pro Trenéra v2 – schválně malý: hlavní sport, další sporty a „je sníh“.
+// Profil sportovce pro Trenéra – schválně malý: hlavní sport, další sporty a „je sníh“.
 // Dny ani hodiny se nenastavují: zátěž týdne se počítá z kondice a z posledních týdnů (target.ts).
 import { PLAN_SPORTS, type PlanSport, type Sport } from "../../datasource/types";
 import { addDays, mondayOf } from "../../lib/time";
@@ -51,12 +51,14 @@ export function validateProfile(input: unknown, base: CoachProfile = DEFAULT_PRO
 
 const SPORT_CZ: Record<PlanSport, string> = { ride: "kolo", run: "běh", xc_ski: "běžky", walk: "chůze" };
 
-/** Shrnutí profilu lidsky. */
+/** Shrnutí profilu lidsky – přesně to, co trenér s profilem dělá (src/core/coach/engine.ts, „další sporty z profilu“). */
 export function profileSummary(p: CoachProfile): string[] {
-  const other = PLAN_SPORTS.filter((s) => s !== p.primary && p.sports[s].enabled);
+  const other: PlanSport = p.primary === "ride" ? "run" : "ride";
   const out = [`Hlavní sport: ${SPORT_CZ[p.primary]}.`];
-  out.push(other.length ? `Občas taky: ${other.map((s) => `${SPORT_CZ[s]}${p.sports[s].quality ? " (i intervaly)" : ""}`).join(", ")}.` : "Jiné sporty trenér sám neplánuje (u dne si je můžeš zvolit).");
-  if (p.sports.xc_ski.enabled) out.push(p.snow ? "Je sníh – běžky se plánují." : "Běžky se plánují, až zapneš „Je sníh“.");
+  const word = (s: PlanSport) => SPORT_CZ[s][0]!.toUpperCase() + SPORT_CZ[s].slice(1);
+  if (p.sports[other].enabled) out.push(`${word(other)}: nejvýš jeden vytrvalostní den týdně místo ${p.primary === "ride" ? "jízdy" : "běhu"}${other === "run" ? " (délka ve stropech běhu podle toho, kolik běháš)" : ""}${p.sports[other].quality ? "; když si u dne zvolíš kvalitu, smí mít i intervaly" : ""}.`);
+  if (p.sports.xc_ski.enabled) out.push(p.snow ? "Je sníh – jeden vytrvalostní den týdně na běžkách." : "Běžky se plánují, až zapneš „Je sníh“ (pak jeden vytrvalostní den týdně).");
+  if (!p.sports[other].enabled && !p.sports.xc_ski.enabled) out.push("Jiné sporty trenér sám neplánuje (u dne si je můžeš zvolit).");
   return out;
 }
 

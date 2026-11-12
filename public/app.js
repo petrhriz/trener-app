@@ -3035,7 +3035,7 @@ async function coachProfileForm(box) {
       ${p.primary === "ride" ? `<label class="chk"><input type="checkbox" id="cpRunQ" ${p.sports.run.quality ? "checked" : ""}> Běh může mít i intervaly (jinak jen lehce)</label>` : ""}
       <label class="chk"><input type="checkbox" id="cpSnow" ${p.snow ? "checked" : ""}> Teď je sníh (běžky se začnou plánovat)</label>
       <div class="btns"><button class="btn pri" id="cpSave">Uložit</button><span class="note" id="cpMsg">${esc(msg)}</span></div>
-      <p class="note">${"Zátěž týdne počítá trenér z tvé kondice a z posledních 4 týdnů, délky jízd z toho, co poslední měsíc jezdíš."} Dny ani hodiny se nenastavují. Zaškrtnutý další sport trenér nabídne nejvýš jednou týdně místo lehké jízdy; kdykoli si ho můžeš zvolit u dne sám. Cíl (Zlepšit / Udržet / Pokles) se přepíná v Trenérovi.</p>`;
+      <p class="note">${"Zátěž týdne počítá trenér z tvé kondice a z posledních 4 týdnů, délky jízd z toho, co poslední měsíc jezdíš."} Dny ani hodiny se nenastavují. Zaškrtnutý další sport dá trenér nejvýš jeden vytrvalostní den týdně (stejná zátěž, délka podle sportu; běh ve stropech podle toho, kolik běháš), běžky jen když je zaškrtnutý sníh. Kdykoli si sport můžeš zvolit u dne sám. Cíl (Zlepšit / Udržet / Pokles) se přepíná v Trenérovi.</p>`;
     const read = () => {
       const q = JSON.parse(JSON.stringify(p));
       box.querySelectorAll("[data-sp]").forEach((i) => { q.sports[i.dataset.sp].enabled = i.checked; });

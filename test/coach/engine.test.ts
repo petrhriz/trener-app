@@ -68,10 +68,11 @@ describe("Trenér v3 – plán", () => {
     }
   });
   it("kolo → běh: den drží zátěž, délka se přepočítá podle běhu, texty jsou běžecké", () => {
-    const base = runCoach(input());
+    // profil bez běhu: se zapnutým během by trenér sám dal jeden Z2 den týdně jako běh (Oprava 4) – tady jde o tvou volbu
+    const base = runCoach(input({ profile: DEFAULT_PROFILE }));
     const z2 = base.days.find((d) => d.kind === "z2" && !d.isToday)!;
     expect(z2).toBeTruthy();
-    const swapped = runCoach(input({ constraints: [{ date: z2.date, kind: "sport", note: "run" }] }));
+    const swapped = runCoach(input({ profile: DEFAULT_PROFILE, constraints: [{ date: z2.date, kind: "sport", note: "run" }] }));
     const r = swapped.days.find((d) => d.date === z2.date)!;
     expect(r.sport).toBe("run");
     expect(r.durationMin!).toBeLessThan(z2.durationMin!);
