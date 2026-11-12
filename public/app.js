@@ -1339,14 +1339,14 @@ async function pageTrener(el) {
       <div><span>Únava (ATL)</span><b class="num">${num(f.atl, 1)}</b><small>zátěž 7 dní ${thou(f.load7)}</small></div>
       <div><span>Forma (TSB)</span><b class="num">${signed(form, 1)}</b><small class="${form == null ? "" : form < -20 || form > 20 ? "warn" : "good"}">${esc(formZoneName(form))}</small></div>
       <div><span>Zotavení</span><b class="tst-word ${tone}">${rec.score != null ? `${num(rec.score)} %` : esc(({ green: "Dobré", yellow: "Částečné", red: "Nízké" })[rec.state] || rec.stateLabel)}</b></div></div>
-    <div class="sl" style="margin-top:12px">Výhled kondice · 12 týdnů</div><div id="tKond" class="loading sm">Načítám…</div>
+    <div class="sl" style="margin-top:12px">Výhled kondice · 4 týdny</div><div id="tKond" class="loading sm">Načítám…</div>
     <details class="gcmp"><summary>Pravidla trenéra a zdroje</summary>${RULES3}</details>` : `<div class="twhy"><b>Jak je týden postavený</b><p>${whyTxt || why} Cíl zátěže ${p.weeklyTarget.lo}–${p.weeklyTarget.hi}, ${qn ? `${qn}× kvalita` : "bez kvality"}, ${p.days.filter((x) => x.name).length} tréninků.</p>${proj}${distTxt}</div>
     <div class="tstate">
       <div><span>Kondice (CTL)</span><b class="num">${num(f.ctl, 1)}</b><small class="${f.ramp != null && f.ramp < -1 ? "warn" : ""}">${f.ramp != null ? `${signed(f.ramp, 1)} za týden` : ""}</small></div>
       <div><span>Únava (ATL)</span><b class="num">${num(f.atl, 1)}</b><small>zátěž 7 dní ${thou(f.load7)}</small></div>
       <div><span>Forma (TSB)</span><b class="num">${signed(form, 1)}</b><small class="${form == null ? "" : form < -20 || form > 20 ? "warn" : "good"}">${esc(formZoneName(form))}</small></div>
       <div><span>Zotavení</span><b class="tst-word ${tone}">${rec.score != null ? `${num(rec.score)} %` : esc(({ green: "Dobré", yellow: "Částečné", red: "Nízké" })[rec.state] || rec.stateLabel)}</b></div></div>${(d.insights || []).length ? `<div class="insights">${d.insights.map((i) => verdict(i.tone, i.text)).join("")}</div>` : ""}
-    <div class="sl" style="margin-top:12px">Výhled kondice · 12 týdnů</div><div id="tKond" class="loading sm">Načítám…</div>
+    <div class="sl" style="margin-top:12px">Výhled kondice · 4 týdny</div><div id="tKond" class="loading sm">Načítám…</div>
     <details class="gcmp"><summary>Pravidla trenéra</summary><p class="note">${rulesTxt}</p></details>`, 'data-tt="proc"');
   // --- chat (na mobilu schovaný – stejné umí 🤖 v hlavičce) ---
   const chatCard = card("t-chat", "💬 Řekni trenérovi", "AI · úpravy plánu", `<div class="tmsgs">${hist.length ? hist.slice(-6).map((m) => `<div class="msg ${m.role}"><p>${esc(m.text)}</p>${m.applied && m.applied.length ? `<small class="sub">${m.applied.map(esc).join(" · ")}</small>` : ""}</div>`).join("") : '<div class="empty">Napiš, co se mění – trenér upraví plán (např. „ve středu nestihnu, přesuň kvalitu na čtvrtek“).</div>'}</div>
@@ -1379,7 +1379,7 @@ async function pageTrener(el) {
   // 90 dní kondice (CTL), únavy (ATL) a formy + čárkovaně výhled podle plánu
   api("fitness").then((fd) => {
     const box = el.querySelector("#tKond"); if (!box) return;
-    // jen výhled: od dneška 12 týdnů dopředu (historie je na stránce Kondice)
+    // jen výhled: od dneška 4 týdny dopředu, stejně daleko jako plán (historie je na stránce Kondice)
     const m = fd.metrics || [], pr = fd.projection || [];
     if (!m.length) { box.outerHTML = '<div class="empty">Kondici zatím nemám.</div>'; return; }
     const now = m[m.length - 1], pts = [now, ...pr];
@@ -1388,7 +1388,7 @@ async function pageTrener(el) {
       { name: "Kondice (CTL)", values: pts.map((q) => q.ctl), color: "var(--z2)", width: 2.6, area: true },
       { name: "Únava (ATL)", values: pts.map((q) => q.atl), color: "var(--z7)", width: 1.6 },
       { name: "Forma (TSB)", values: pts.map((q) => q.form), color: "var(--fg)", width: 1.4, opacity: 0.55 },
-    ] }) + `<p class="note">Výhled od dneška na ${Math.round(pr.length / 7)} týdnů, když budeš trénovat podle trenéra: kondice ${num(now.ctl, 1)} → <b>${num(pts[pts.length - 1].ctl, 1)}</b>. První 4 týdny podle plánu, dál odhad z cíle týdne (lehčí týdny, ladění). Historie je na stránce <a href="#/kondice">Kondice</a>.</p>`;
+    ] }) + `<p class="note">Výhled od dneška na ${Math.round(pr.length / 7)} týdnů, když odjedeš plán trenéra: kondice ${num(now.ctl, 1)} → <b>${num(pts[pts.length - 1].ctl, 1)}</b>. Historie je na stránce <a href="#/kondice">Kondice</a>.</p>`;
   }).catch(() => el.querySelector("#tKond")?.remove());
   const keepScroll = async () => { const y = scrollY; cache.clear(); await route(); requestAnimationFrame(() => scrollTo(0, y)); };
   const post = async (path, body, msgEl) => { try { await api(path, { method: "POST", body: JSON.stringify(body) }); await keepScroll(); } catch (e) { if (msgEl) msgEl.textContent = e.message; else alert(e.message); } };
@@ -2613,7 +2613,7 @@ async function pageKondice(el) {
   const d = await api(kondRange === "ytd" ? "fitness?range=ytd" : "fitness");
   const m = d.metrics;
   if (!m.length) { el.innerHTML = `<div class="head"><div><h1>Kondice</h1></div></div><div class="card"><div class="empty">Kondici zatím nemám – spočítá se, až se stáhnou aktivity (zadej klíče v Nastavení). První data bývají do hodiny.</div></div>`; return; }
-  // Kondice: výhled jen 7 dní (12 týdnů je na Trenérovi)
+  // Kondice: výhled jen 7 dní (4 týdny jsou na Trenérovi)
   const proj = (d.projection || []).slice(0, 7);
   const x = [...m.map((r) => r.date), ...proj.map((p) => p.date)];
   const pad = (arr, k) => [...arr, ...Array(k).fill(null)];
@@ -2637,7 +2637,7 @@ async function pageKondice(el) {
      { name: "Únava (ATL)", values: pad(m.map((r) => r.atl), proj.length), color: "var(--z7)", width: 1.8 },
      { name: "výhled CTL", values: ctlP, color: "var(--z2)", dash: true, noLegend: true },
      { name: "výhled ATL", values: atlP, color: "var(--z7)", dash: true, noLegend: true },
-   ] }) + `<p class="note">Čárkovaně = výhled podle plánu. Výhled na 12 týdnů je na stránce <a href="#/trener">Trenér</a>.</p>`)}
+   ] }) + `<p class="note">Čárkovaně = výhled podle plánu. Výhled na 4 týdny je na stránce <a href="#/trener">Trenér</a>.</p>`)}
    ${card("c8", "🎯 Forma (TSB)", "intervals.icu", lineChart({ x, xfmt: dm, height: 205, markIndex: lastIdx, include: [-35, 25], bands: FORM_BANDS, yticks: [-30, -10, 5, 20], yfmt: (v) => signed(v), bandsLegend: false, legend: false, series: [
      { name: "Forma", values: pad(m.map((r) => r.form), proj.length), color: "var(--fg)", width: 3, bandColors: true },
      { name: "výhled", values: formP, color: "var(--fg)", dash: true, opacity: 0.6 },

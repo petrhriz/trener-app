@@ -894,7 +894,7 @@ api.get("/fitness", async (c) => {
   const done = ctx.acts.some((a) => a.date === T);
   const startDate = done ? T : addDays(T, -1);
   const st = ctx.metrics.find((m) => m.date === startDate);
-  // výhled na 12 týdnů z trenéra (4 týdny plán, dál odhad z cíle týdne); bez trenéra 7 dní z plánu
+  // výhled z trenéra (4 týdny podle plánu); bez trenéra 7 dní z plánu
   const out = ((p as any).coach?.outlook?.days ?? []) as { date: string; load: number }[];
   const outBy = new Map(out.map((x) => [x.date, x.load]));
   const end = out.length ? out[out.length - 1]!.date : addDays(T, 7);

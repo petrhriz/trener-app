@@ -153,7 +153,7 @@ export interface CoachInfo {
   validation: WeekValidation;
   /** kvality v plánu (tento a příští týden) – uloží se v den tréninku a po odjetí vyhodnotí */
   keyDays: { date: string; sport: PlanSport; cat: Cat; level: number; base: number; wid: string | null; plan: WorkPlan | null; minutes: number; name: string | null }[];
-  /** výhled na 12 týdnů: 4 týdny podle plánu, dalších 8 odhad z cíle týdne (stejná pravidla, bez kostry) */
+  /** výhled kondice: týdny plánu (+ případně další jen z cíle týdne, stejná pravidla, bez kostry) */
   outlook: { days: { date: string; load: number }[]; weeks: { weekStart: string; load: number; ctlEnd: number; recoveryWeek: boolean; phaseLabel: string; exact: boolean }[] };
   /** pondělní plán tohoto týdne k uložení (nebo ten uložený) */
   mondayPlan: MondayPlan | null;
@@ -161,8 +161,9 @@ export interface CoachInfo {
 }
 
 export type CoachPlan = PlanResult & { coach: CoachInfo };
-/** Výhled kondice na tolik týdnů (graf na Trenérovi a Kondici). */
-export const OUTLOOK_WEEKS = 12;
+/** Výhled kondice na tolik týdnů (graf na Trenérovi) – stejně daleko jako plán tréninků. Při větším čísle se další
+ *  týdny dopočítají jen z cíle týdne (bez kostry). */
+export const OUTLOOK_WEEKS = 4;
 
 const KIND: Record<Role, Kind> = { rest: "rest", easy: "recovery", endurance: "z2", key: "quality", long: "long" };
 const isBike = (s: Sport) => BIKE_SPORTS.includes(s);
@@ -568,7 +569,7 @@ export function runCoach(inp: CoachInput): CoachPlan {
 
   // v pondělí před prvním tréninkem je pondělním plánem tento plán (week doplní toPlan)
   const mp: MondayPlan | null = mondayPlan ?? (inp.mondayMode || from !== W0 ? null : { weekStart: W0, goal: inp.goal, fatigue: fat.factor, monday: true, week: null as unknown as MondayPlan["week"] });
-  // výhled 12 týdnů: po 4 týdnech plánu už jen cíl týdne rozložený rovnoměrně po dnech (levné – bez kostry a délek);
+  // výhled OUTLOOK_WEEKS týdnů: po 4 týdnech plánu už jen cíl týdne rozložený rovnoměrně po dnech (levné – bez kostry a délek);
   // stejné pořadí pravidel: lehčí týden po bloku, ladění, týden po závodě, strop přidávání
   const outlook: CoachInfo["outlook"] = { days: weeks.flatMap((w) => w.days.map((x) => ({ date: x.date, load: x.load }))), weeks: weeks.map((w) => ({ weekStart: w.weekStart, load: Math.round(w.target.done + w.planned), ctlEnd: w.ctlEnd, recoveryWeek: w.target.recoveryWeek, phaseLabel: w.target.phaseLabel, exact: true })) };
   if (!inp.mondayMode) {
