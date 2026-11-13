@@ -32,7 +32,8 @@ export interface Constraint {
   date: string;
   /** sport = náhrada kola jiným sportem, note = ride | run | xc_ski | walk; typ = vynucený druh jednotky, note = z2 | quality */
   /** kroky = tvoje úprava kvality, note = JSON {reps, work_s, pct} (Trenér v2) */
-  kind: "nemuzu" | "bezky" | "nemoc" | "dovolena" | "nepojedu" | "sport" | "typ" | "jizda" | "delka" | "kroky";
+  /** trenazer = kde pojedeš (kolo), note = 1 (trenažér) | 0 (venku); bez záznamu rozhodne trenér (počasí, zima) */
+  kind: "nemuzu" | "bezky" | "nemoc" | "dovolena" | "nepojedu" | "sport" | "typ" | "jizda" | "delka" | "kroky" | "trenazer";
   note: string | null;
 }
 
@@ -97,6 +98,8 @@ export interface PlanDay {
   own?: OwnRide | null;
   /** den upravený uživatelem (sport, druh, délka, volno, vlastní jízda) */
   mine?: boolean;
+  /** tvoje volba místa jízdy: true = trenažér, false = venku, null = rozhodne trenér */
+  indoorChoice?: boolean | null;
 }
 
 export interface PlanResult {

@@ -66,6 +66,7 @@ export function checkPlan(inp: CoachInput, out: CoachPlan): Violation[] {
     if (!f || f.blocked || f.rest || d.date === raceDate || (d.date === T && inp.recovery === "red")) continue;
     if ((f.sport || f.minutes || f.own || f.edit || f.type) && !training) add("must_ignored", `${d.date}: tvoje volba (${JSON.stringify(f)}) ignorovaná – volno`);
     if (!training) continue;
+    if (f.indoor != null && d.sport === "ride" && d.indoor !== f.indoor) add("indoor_ignored", `${d.date}: chtěl ${f.indoor ? "trenažér" : "venku"}, plán ${d.indoor ? "trenažér" : "venku"}`);
     if (f.sport && d.sport !== f.sport) add("sport_ignored", `${d.date}: chtěl ${f.sport}, plán ${d.sport}`);
     if (f.type === "quality" && d.role !== "key") add("quality_ignored", `${d.date}: chtěl kvalitu, plán ${d.role}`);
     if (f.type === "z2" && d.role === "key") add("z2_ignored", `${d.date}: chtěl Z2, plán kvalita`);

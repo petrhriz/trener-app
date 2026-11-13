@@ -19,7 +19,7 @@ import { getSettings, setSetting } from "../lib/settings";
 
 export const coachApi = new Hono<{ Bindings: Env; Variables: { uid: number } }>();
 const isDate = (d: unknown): d is string => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d);
-const USER_KINDS = ["sport", "typ", "delka", "jizda", "kroky"];
+const USER_KINDS = ["sport", "typ", "delka", "jizda", "kroky", "trenazer"];
 
 type Day = Awaited<ReturnType<typeof planFor>>["days"][number];
 interface Session { sport: string; type: "z2" | "quality"; min: number | null; own: string | null }
@@ -96,6 +96,14 @@ coachApi.post("/plan/len", async (c) => {
   const { date, min } = (await c.req.json()) as { date: string; min: number };
   if (!isDate(date) || typeof min !== "number" || !constraintNoteOk("delka", String(Math.round(min)))) return c.json({ error: "bad input" }, 400);
   await addConstraint(c.env, date, "delka", min ? String(Math.round(min)) : null);
+  return c.json({ ok: true, ...(await proposalAfter(c.env)) });
+});
+
+/** Kde pojedeš na kole: true = trenažér, false = venku, null = rozhodne trenér (počasí, kvalita v zimě). */
+coachApi.post("/plan/indoor", async (c) => {
+  const { date, indoor } = (await c.req.json()) as { date: string; indoor: boolean | null };
+  if (!isDate(date) || !(indoor === true || indoor === false || indoor === null)) return c.json({ error: "bad input" }, 400);
+  await addConstraint(c.env, date, "trenazer", indoor === null ? null : indoor ? "1" : "0");
   return c.json({ ok: true, ...(await proposalAfter(c.env)) });
 });
 

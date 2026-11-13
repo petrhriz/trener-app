@@ -1210,6 +1210,7 @@ async function pageTrener(el) {
     return `${ride ? `<label class="tp-l">Přesunout na<select data-shift="${x.date}"><option value="">vyber den…</option>${shiftTargets(x).map((y) => `<option value="${y.date}">${dayDm(y.date)} · ${esc(y.name || "volno")}${y.name ? " (prohodit)" : ""}</option>`).join("")}</select></label>` : ""}
       <div class="tp-g"><span class="tp-k">Druh</span><div class="seg sm">${[["z2", "Z2"], ["quality", "Kvalita"], ["rest", "Volno"]].map(([k, l]) => `<button class="${(k === "rest" && !ride) || (k === "quality" && q) || (k === "z2" && ride && !q) ? "on" : ""}" data-kindset="${k}" data-date="${x.date}">${l}</button>`).join("")}</div></div>
       <div class="tp-g"><span class="tp-k">Sport</span><div class="sw-sport" data-date="${x.date}">${[["ride", "🚴", "Kolo"], ["run", "🏃", "Běh"], ["xc_ski", XC_SVG, "Běžky"], ["walk", "🚶", "Chůze"]].map(([k, i, l]) => `<button class="${ride && x.sport === k ? "on" : ""}" data-sport="${k}" title="${l}">${i}</button>`).join("")}</div></div>
+      ${ride && x.sport === "ride" ? `<div class="tp-g"><span class="tp-k">Kde</span><div class="seg sm">${[["auto", "Podle trenéra", null], ["out", "Venku", false], ["in", "Trenažér", true]].map(([k, l, v]) => `<button class="${(x.indoorChoice ?? null) === v ? "on" : ""}" data-indoor="${x.date}" data-v="${k}" title="${k === "in" ? "Na trenažéru se šlape pořád – stejná zátěž za kratší čas" : k === "auto" ? "Trenažér při špatném počasí a u kvality v zimě" : "Venku"}">${l}</button>`).join("")}</div></div>` : ""}
       ${ride && !x.own ? `<div class="tp-g"><span class="tp-k">Délka</span><div class="tp-len"><button class="btn sm" data-len="${x.date}" data-v="${Math.max(20, (x.durationMin || 60) - 15)}">−15 min</button><b class="num">${dur((x.durationMin || 0) * 60)}</b><button class="btn sm" data-len="${x.date}" data-v="${(x.durationMin || 60) + 15}">+15 min</button></div></div>` : ""}
       ${ownForm(x)}
       ${ride && x.workout ? workoutSvg(x.workout, d.ftp, q ? edIdx(x.workout) : null) : ""}
@@ -1365,6 +1366,7 @@ async function pageTrener(el) {
   }));
   el.querySelectorAll(".tpanel .sw-sport button").forEach((b) => b.addEventListener("click", () => post("plan/sport", { dates: [b.parentElement.dataset.date], sport: b.dataset.sport })));
   el.querySelectorAll("[data-len]").forEach((b) => b.addEventListener("click", () => post("plan/len", { date: b.dataset.len, min: +b.dataset.v })));
+  el.querySelectorAll("[data-indoor]").forEach((b) => b.addEventListener("click", () => post("plan/indoor", { date: b.dataset.indoor, indoor: b.dataset.v === "in" ? true : b.dataset.v === "out" ? false : null })));
   // kalendář: klik na kterýkoli budoucí den (4 týdny) otevře jeho úpravu pod týdnem; druhý klik zavře
   const ccRender = () => pageTrener(el).then(() => el.querySelector("#ccDet")?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
   el.querySelectorAll("[data-ccday]").forEach((b) => b.addEventListener("click", () => {

@@ -1219,7 +1219,7 @@ api.post("/proposal/:id/apply", async (c) => {
 
 api.post("/constraint", async (c) => {
   const { date, kind, note } = (await c.req.json()) as { date: string; kind: string; note?: string };
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !["nemuzu", "bezky", "nemoc", "dovolena", "nepojedu", "sport", "typ", "jizda", "delka"].includes(kind)) return c.json({ error: "bad input" }, 400);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !["nemuzu", "bezky", "nemoc", "dovolena", "nepojedu", "sport", "typ", "jizda", "delka", "trenazer"].includes(kind)) return c.json({ error: "bad input" }, 400);
   // neplatný sport nebo nesmyslná délka by rozbily plán (neznámý sport dřív shodil celý plán)
   const n = note == null ? null : String(note);
   if (!constraintNoteOk(kind, n)) return c.json({ error: "bad note" }, 400);

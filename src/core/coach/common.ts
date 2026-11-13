@@ -33,6 +33,8 @@ export interface Fixed {
   own?: OwnRide;
   /** tvoje úprava kroků kvality (počet, délka úseku, intenzita) */
   edit?: StepEdit;
+  /** kde pojedeš na kole: true = trenažér, false = venku (bez volby rozhodne trenér) */
+  indoor?: boolean;
 }
 
 /** Skutečnost dne (odjeté aktivity). */
@@ -74,14 +76,31 @@ export interface ProgressRow {
 /** Za kolik dní bez aktivity se kvalita považuje za neodjetou. */
 export const EVAL_WAIT_DAYS = 3;
 
-/** Zátěž za hodinu lehké jednotky z historie uživatele (60 dní), v rozumných mezích kolem teorie. */
-export function easyRate(acts: EngineAct[], today: string, sport: PlanSport, power: boolean): { rate: number; calib: number } {
+/** Hodina na trenažéru dá víc zátěže než hodina venku: šlape se pořád, venku se z kopce a na křižovatkách nešlape.
+ *  Hodina uvnitř ≈ 1,25–1,5 h venku (CTS, Roadman: koeficient 1,3–1,5) → bez vlastních dat 1,3. Když máš aspoň 3 Z2 jízdy
+ *  na trenažéru i venku (60 dní), platí tvůj poměr (v mezích 1,1–1,5). */
+export const INDOOR_RATE = 1.3;
+
+/**
+ * Zátěž za hodinu lehké jednotky z historie uživatele (60 dní), v rozumných mezích kolem teorie. U kola zvlášť
+ * venku a na trenažéru (`place`): z jízd daného místa, jinak z druhého místa přepočtem poměrem.
+ */
+export function easyRate(acts: EngineAct[], today: string, sport: PlanSport, power: boolean, place?: "indoor" | "outdoor"): { rate: number; calib: number } {
   const theory = sport === "ride" && power ? EASY_LOAD_H.power : sport === "run" ? EASY_LOAD_H.run : EASY_LOAD_H.hr;
-  const v = acts
-    .filter((a) => a.date > addDays(today, -60) && planSport(a.sport) === sport && !a.quality && (a.moving_s ?? 0) >= 40 * 60 && (a.load ?? 0) > 0)
-    .map((a) => a.load! / (a.moving_s! / 3600));
-  const m = v.length >= 3 ? median(v)! : theory;
-  const rate = Math.max(theory * 0.8, Math.min(theory * 1.35, m));
+  const easy = acts.filter((a) => a.date > addDays(today, -60) && planSport(a.sport) === sport && !a.quality && (a.moving_s ?? 0) >= 40 * 60 && (a.load ?? 0) > 0);
+  const perH = (a: EngineAct) => a.load! / (a.moving_s! / 3600);
+  if (sport !== "ride" || !place) {
+    const v = easy.map(perH);
+    const m = v.length >= 3 ? median(v)! : theory;
+    const rate = Math.max(theory * 0.8, Math.min(theory * 1.35, m));
+    return { rate, calib: rate / theory };
+  }
+  const inV = easy.filter((a) => a.sport === "indoor").map(perH), outV = easy.filter((a) => a.sport !== "indoor").map(perH);
+  const ratio = inV.length >= 3 && outV.length >= 3 ? Math.max(1.1, Math.min(1.5, median(inV)! / median(outV)!)) : INDOOR_RATE;
+  const k = place === "indoor" ? ratio : 1;
+  const own = place === "indoor" ? inV : outV, other = place === "indoor" ? outV : inV;
+  const m = own.length >= 3 ? median(own)! : other.length >= 3 ? (median(other)! * (place === "indoor" ? ratio : 1 / ratio)) : theory * k;
+  const rate = Math.max(theory * k * 0.8, Math.min(theory * k * 1.35, m));
   return { rate, calib: rate / theory };
 }
 
@@ -96,11 +115,12 @@ export function constraintNoteOk(kind: string, note: string | null | undefined):
   if (kind === "delka") { if (empty) return true; const n = Number(note); return Number.isFinite(n) && n >= 20 && n <= Math.max(...Object.values(MAX_DAY_MIN)); }
   if (kind === "jizda") { if (empty) return true; const o = readOwnRide(note!); return !!o && o.min >= 20 && o.min <= MAX_OWN_MIN; }
   if (kind === "kroky") return empty || readStepEdit(note) != null;
+  if (kind === "trenazer") return empty || note === "1";
   return note == null || note.length <= 200;
 }
 
 /** Pořadí zpracování omezení dne: výsledek nesmí záviset na pořadí řádků z databáze (výslovně zvolený sport má přednost před „běžky“). */
-const CON_ORDER = ["nemoc", "nepojedu", "dovolena", "nemuzu", "bezky", "sport", "typ", "delka", "jizda", "kroky"];
+const CON_ORDER = ["nemoc", "nepojedu", "dovolena", "nemuzu", "bezky", "sport", "typ", "delka", "jizda", "kroky", "trenazer"];
 
 /**
  * Která aktivita dne je plánovaná kvalita. Nebere se „ta s největší zátěží“: kandidát je aktivita stejného
@@ -144,6 +164,7 @@ export function fixedFromConstraints(cons: Constraint[]): Map<string, Fixed> {
     else if (c.kind === "delka" && Number.isFinite(Number(c.note)) && Number(c.note) >= 20) f.minutes = Math.min(Math.max(...Object.values(MAX_DAY_MIN)), Math.round(Number(c.note)));
     else if (c.kind === "jizda") { const o = readOwnRide(c.note); if (o && Number.isFinite(o.min)) f.own = { ...o, min: Math.min(MAX_OWN_MIN, Math.round(o.min)) }; }
     else if (c.kind === "kroky") { const e = readStepEdit(c.note); if (e) f.edit = e; }
+    else if (c.kind === "trenazer" && (c.note === "1" || c.note === "0")) f.indoor = c.note === "1";
   }
   for (const [d, f] of out) {
     if (f.rest && !f.blocked) out.set(d, { rest: true });

@@ -206,12 +206,13 @@ export function randomConstraints(r: Rng, T: string, count: number): Constraint[
   const out: Constraint[] = [];
   for (let i = 0; i < count; i++) {
     const date = addDays(T, r.int(0, 13));
-    const kind = r.pick(["nemoc", "nepojedu", "dovolena", "nemuzu", "bezky", "sport", "sport", "typ", "typ", "delka", "delka", "jizda", "kroky"] as const);
+    const kind = r.pick(["nemoc", "nepojedu", "dovolena", "nemuzu", "bezky", "sport", "sport", "typ", "typ", "delka", "delka", "jizda", "kroky", "trenazer", "trenazer"] as const);
     let note: string | null = null;
     if (kind === "sport") note = r.pick(["ride", "run", "xc_ski", "walk", "rest", "rest", "hokej", ""]);
     else if (kind === "typ") note = r.pick(["z2", "quality", "quality", "auto", "xxx"]);
     else if (kind === "delka") note = String(r.pick([20, 30, 45, 60, 90, 120, 180, 240, 5, -10, 99999]));
     else if (kind === "jizda") note = r.chance(0.9) ? JSON.stringify({ min: r.pick([45, 90, 150, 240, 360]), km: null, with: r.chance(0.5) ? "parta" : null }) : "{rozbité";
+    else if (kind === "trenazer") note = r.pick(["1", "0", "x"]);
     else if (kind === "kroky") note = r.chance(0.8) ? JSON.stringify({ reps: r.int(2, 8), work_s: r.pick([120, 240, 480, 600]), pct: r.int(85, 120) }) : "nesmysl";
     out.push({ date, kind, note });
   }

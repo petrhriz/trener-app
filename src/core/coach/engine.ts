@@ -169,7 +169,7 @@ export interface CoachInfo {
   mondayPlan: MondayPlan | null;
   /** návrat po pauze (strop intenzity) – text pro stránku; null = bez omezení */
   reentry: string | null;
-  horizon: { weekStart: string; detail: boolean; load: number; done: number; need: number; target: number; notes: string[]; limit: WeekTarget["limit"]; ctlStart: number; ctlEnd: number; ctlGoal: number; phaseLabel: string; recoveryWeek: boolean; days: { date: string; role: Role; sport: PlanSport; minutes: number; load: number; name: string | null; blocked: boolean; workout: Workout | null; steps: string[]; targetText: string | null; why: string[] }[] }[];
+  horizon: { weekStart: string; detail: boolean; load: number; done: number; need: number; target: number; notes: string[]; limit: WeekTarget["limit"]; ctlStart: number; ctlEnd: number; ctlGoal: number; phaseLabel: string; recoveryWeek: boolean; days: { date: string; role: Role; sport: PlanSport; minutes: number; load: number; name: string | null; blocked: boolean; workout: Workout | null; steps: string[]; targetText: string | null; why: string[]; indoor?: boolean }[] }[];
 }
 
 export type CoachPlan = PlanResult & { coach: CoachInfo };
@@ -220,7 +220,15 @@ export function runCoach(inp: CoachInput): CoachPlan {
   const run = runReadiness(inp.acts, T, p.primary === "run");
   // typický běh za 4 týdny (medián, běhy od 15 min) – strop Z2 běhu
   const runTypical = Math.round(median(inp.acts.filter((a) => a.sport === "run" && a.date > addDays(T, -28) && (a.moving_s ?? 0) >= 15 * 60).map((a) => (a.moving_s ?? 0) / 60)) ?? 0);
-  const rateOf = (s: PlanSport) => easyRate(inp.acts, T, s, s === "ride" && power);
+  // zátěž za hodinu podle sportu; kolo zvlášť venku a na trenažéru (na trenažéru se šlape pořád → víc zátěže za hodinu)
+  const rateMemo = new Map<string, { rate: number; calib: number }>();
+  const rateAt = (s: PlanSport, indoor = false) => {
+    const key = `${s}:${indoor}`;
+    let r = rateMemo.get(key);
+    if (!r) rateMemo.set(key, (r = easyRate(inp.acts, T, s, s === "ride" && power, s === "ride" ? (indoor ? "indoor" : "outdoor") : undefined)));
+    return r;
+  };
+  const rateOf = (s: PlanSport) => rateAt(s);
   const fat = fatigueFactor(inp.fatigue);
   // návrat po pauze: první týden jen Z1–Z2, pak nejvýš tempo / sweet spot (tvoje výslovná kvalita platí)
   const ceilingOf = (d: string) => inp.reentry?.ceilingOn(d) ?? "full";
@@ -448,7 +456,20 @@ export function runCoach(inp: CoachInput): CoachPlan {
     });
     for (const x of days) { const w = roleWhy.get(x.date); if (w && x.role !== "rest") x.why.push(w); }
     const train = days.filter((x) => x.role !== "rest");
-    const rOf = (x: Day3) => rateOf(x.sport).rate;
+    // kde pojedeš: tvoje volba (trenažér / venku), jinak trenažér při špatném počasí a u kvality v zimě bez dobrého okna
+    const indoorOf = (x: Day3, preview = false): boolean => {
+      if (x.sport !== "ride" || x.role === "rest") return false;
+      const f = fixed.get(x.date);
+      if (f?.indoor != null) return f.indoor;
+      if (x.own || preview) return false;
+      const w = inp.weather.get(x.date) ?? null;
+      if (x.role === "key") { const goodOutside = inp.weatherOk && !!w && !w.bad && !!w.window; return !inp.weatherOk || !!w?.bad || (winter && !goodOutside); }
+      return !!w?.bad && !x.mine;
+    };
+    for (const x of days) x.indoor = indoorOf(x, !detail);
+    // trenažér mění zátěž za hodinu u Z2 a dlouhé jízdy; kvalitu určuje stavba intervalů, ne místo
+    const inRate = (x: Day3) => x.indoor && x.role !== "key";
+    const rOf = (x: Day3) => rateAt(x.sport, inRate(x)).rate;
     const setMinutes = (x: Day3, m: number) => { x.minutes = m; x.load = loadFor(m, rOf(x), x.role); };
     // pevné dny: vlastní jízda a tvoje délka
     for (const x of train) {
@@ -523,7 +544,8 @@ export function runCoach(inp: CoachInput): CoachPlan {
         // stejný sport a druh: délka z pondělního plánu (krát poměr) – přepočet ze zátěže by kvůli rozjetí v Z1
         // dal každý den o kus míň; jinak délka ze zátěže podle sportu dne
         const c = capsOf(x.sport, x.role);
-        const same = m.sport === x.sport && m.role === x.role && m.minutes > 0;
+        // stejný sport, druh i místo (trenažér / venku – jiná zátěž za hodinu; starší uložené plány místo nemají)
+        const same = m.sport === x.sport && m.role === x.role && m.minutes > 0 && (m.indoor ?? x.indoor) === x.indoor;
         // Při dorovnání zátěže po skutečném průběhu týdne stačí jemnější krok než
         // obvyklé 15min zaokrouhlení – jinak se menší přebytek kvality na Z2 vůbec neprojeví.
         const step = 5;
@@ -550,15 +572,13 @@ export function runCoach(inp: CoachInput): CoachPlan {
       const build = (x: Day3, preview = false, forceCat: Cat | null = null) => {
         const f = fixed.get(x.date);
         const w = inp.weather.get(x.date) ?? null;
-        const calib = rateOf(x.sport).calib;
-        x.indoor = false;
-        if (x.sport === "ride" && !x.own && !preview) {
-          if (x.role === "key") {
-            const goodOutside = inp.weatherOk && !!w && !w.bad && !!w.window;
-            if (!inp.weatherOk || !!w?.bad || (winter && !goodOutside)) { x.indoor = true; if (w?.bad) x.why.push(`${w.text} → trenažér`); }
-          } else if (w?.bad && !x.mine) { x.indoor = true; x.why.push(`${w.text} → trenažér`); }
+        x.indoor = indoorOf(x, preview);
+        const calib = rateAt(x.sport, inRate(x)).calib;
+        if (x.sport === "ride") {
+          if (f?.indoor != null) { const msg = f.indoor ? "tvoje volba: trenažér (šlape se pořád – Z2 a dlouhá kratší při stejné zátěži)" : "tvoje volba: venku"; if (!x.why.includes(msg)) x.why.push(msg); }
+          else if (x.indoor && w?.bad && !x.why.includes(`${w.text} → trenažér`)) x.why.push(`${w.text} → trenažér`);
           // dlouhá na trenažéru nejvýš INDOOR_LONG_MAX (hodina na trenažéru ≈ 1,25–1,5 h venku)
-          if (x.indoor && x.role === "long" && x.minutes > INDOOR_LONG_MAX) { x.minutes = INDOOR_LONG_MAX; if (!x.why.some((s) => s.startsWith("dlouhá na trenažéru"))) x.why.push(`dlouhá na trenažéru nejvýš ${INDOOR_LONG_MAX / 60} h (hodina uvnitř ≈ 1,25–1,5 h venku), zbytek dostanou ostatní dny`); }
+          if (x.indoor && x.role === "long" && !x.own && !f?.minutes && x.minutes > INDOOR_LONG_MAX) { x.minutes = INDOOR_LONG_MAX; if (!x.why.some((s) => s.startsWith("dlouhá na trenažéru"))) x.why.push(`dlouhá na trenažéru nejvýš ${INDOOR_LONG_MAX / 60} h (hodina uvnitř ≈ 1,25–1,5 h venku), zbytek dostanou ostatní dny`); }
         }
         let b: Built;
         if (x.role === "key") {
@@ -673,7 +693,7 @@ export function runCoach(inp: CoachInput): CoachPlan {
     // medián 60 dní a mezi dny může poskočit (aktivita vypadne z okna) – bez toho by týden „rostl“, i když se nic nestalo.
     if (pinned) for (const x of train) {
       const m = mDay(x.date);
-      if (!m || x.own || fixed.get(x.date)?.minutes || m.sport !== x.sport || m.role !== x.role || m.minutes <= 0) continue;
+      if (!m || x.own || fixed.get(x.date)?.minutes || m.sport !== x.sport || m.role !== x.role || m.minutes <= 0 || (m.indoor ?? x.indoor) !== x.indoor) continue;
       x.load = Math.round((m.load * x.minutes) / m.minutes);
     }
 
@@ -702,7 +722,7 @@ export function runCoach(inp: CoachInput): CoachPlan {
         }
       }
       if (detail) for (const x of train) if (x.why.some((w) => w.startsWith("zkráceno") || w.startsWith("místo kvality"))) {
-        const calib = rateOf(x.sport).calib;
+        const calib = rateAt(x.sport, inRate(x)).calib;
         const b = buildWorkout({ sport: x.sport, family: x.role === "long" ? "long" : "end", level: 0, wid: null, minutes: x.minutes, indoor: x.indoor, zones: inp.zones, calib });
         x.workout = relabel(b.workout, x.sport); x.steps = stepsText(x.workout, x.sport); x.name = nameFor(b.name, x.sport); x.targetText = b.targetText; x.load = b.load; x.tiz = 0; x.qualityType = null; x.cat = null;
       }
@@ -796,6 +816,7 @@ function toPlan(inp: CoachInput, weeks: Week3[], o: { reentry: string | null; ou
   const proj = project(o.startState, addDays(o.from, -1), projDates.map((d) => dayOf(d)?.load ?? 0));
   const projBy = new Map(proj.map((x) => [x.date, x]));
 
+  const fixedNow = fixedFromConstraints(inp.constraints);
   const days: PlanDay[] = dates.map((date) => {
     const x = dayOf(date) ?? { date, role: "rest" as Role, sport: inp.profile.primary, minutes: 0, load: 0, want: 0, name: null, workout: null, steps: [], targetText: null, indoor: false, qualityType: null, cat: null, tiz: 0, why: [], blocked: null, own: null, mine: false, userRest: false };
     const pj = projBy.get(date);
@@ -832,6 +853,7 @@ function toPlan(inp: CoachInput, weeks: Week3[], o: { reentry: string | null; ou
       userRest: x.userRest,
       own: x.own,
       mine: x.mine,
+      indoorChoice: fixedNow.get(date)?.indoor ?? null,
     } as PlanDay;
   });
 
@@ -969,7 +991,7 @@ function toPlan(inp: CoachInput, weeks: Week3[], o: { reentry: string | null; ou
     mondayPlan: null,
     reentry: o.reentry,
     outlook: o.outlook,
-    horizon: weeks.map((w) => ({ weekStart: w.weekStart, detail: w.detail, load: w.planned, done: w.target.done, need: w.target.need, target: w.target.load, notes: w.target.notes, limit: w.target.limit, ctlStart: w.target.ctlStart, ctlEnd: w.ctlEnd, ctlGoal: w.target.ctlGoal, phaseLabel: w.target.phaseLabel, recoveryWeek: w.target.recoveryWeek, days: w.days.map((x) => ({ date: x.date, role: x.role, sport: x.sport, minutes: x.minutes, load: x.load, name: x.name, blocked: !!x.blocked, workout: x.role !== "rest" && !x.blocked ? x.workout : null, steps: x.role !== "rest" && !x.blocked ? x.steps : [], targetText: x.role !== "rest" && !x.blocked ? x.targetText : null, why: x.why })) })),
+    horizon: weeks.map((w) => ({ weekStart: w.weekStart, detail: w.detail, load: w.planned, done: w.target.done, need: w.target.need, target: w.target.load, notes: w.target.notes, limit: w.target.limit, ctlStart: w.target.ctlStart, ctlEnd: w.ctlEnd, ctlGoal: w.target.ctlGoal, phaseLabel: w.target.phaseLabel, recoveryWeek: w.target.recoveryWeek, days: w.days.map((x) => ({ date: x.date, role: x.role, sport: x.sport, minutes: x.minutes, load: x.load, name: x.name, blocked: !!x.blocked, workout: x.role !== "rest" && !x.blocked ? x.workout : null, steps: x.role !== "rest" && !x.blocked ? x.steps : [], targetText: x.role !== "rest" && !x.blocked ? x.targetText : null, why: x.why, indoor: x.indoor })) })),
   };
   coach.mondayPlan = o.mondayPlan && !o.mondayPlan.week ? { ...o.mondayPlan, week: coach.horizon[0]! } : o.mondayPlan;
   return { from: dates[0]!, to: dates[dates.length - 1]!, days, changes, chart, loadPast7, loadNext7, qualityWeeks, warnings, weeklyTarget: { lo: Math.round(total0 * 0.9), hi: Math.round(total0 * 1.1), mid: total0 }, missed, done, coach };

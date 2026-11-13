@@ -242,6 +242,12 @@ export async function addConstraint(env: Env, date: string, kind: string, note: 
     if (note) await run(env.DB, "INSERT INTO constraints (date, kind, note, created_at) VALUES (?, 'jizda', ?, ?)", date, note, new Date().toISOString());
     return;
   }
+  if (kind === "trenazer") {
+    // kde pojedeš: 1 = trenažér, 0 = venku, prázdné = rozhodne trenér
+    await run(env.DB, "DELETE FROM constraints WHERE date = ? AND kind = 'trenazer'", date);
+    if (note === "1" || note === "0") await run(env.DB, "INSERT INTO constraints (date, kind, note, created_at) VALUES (?, 'trenazer', ?, ?)", date, note, new Date().toISOString());
+    return;
+  }
   if (kind === "kroky") {
     // tvoje úprava kvality (JSON {reps, work_s, pct}); platí poslední zadání pro den
     await run(env.DB, "DELETE FROM constraints WHERE date = ? AND kind = 'kroky'", date);
