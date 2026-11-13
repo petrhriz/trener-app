@@ -78,13 +78,16 @@ export function solveWeek(inp: SkInput): SkResult {
   // nejdřív se drží kvalita, pak dlouhý, ubírá se Z2 (počet tréninků)
   attempts.sort((x, y) => y.k - x.k || Number(y.l) - Number(x.l) || y.s - x.s);
 
-  for (const a of attempts) {
+  // Nejdřív přísně. Když tvoje volby (trénink, kvalita) pravidla poruší vždy – třeba volba na den po 3 trénincích
+  // za sebou –, platí tvoje volba a pravidla se hlídají jen u ostatních dní. Bez toho by se celý týden vyprázdnil.
+  const mustDates = new Set(must.map((d) => d.date));
+  for (const relaxed of [false, true]) for (const a of attempts) {
     let best: { score: number; roles: Map<string, Role> } | null = null;
     for (const set of combos(open, a.s)) {
       if (!must.every((m) => set.includes(m))) continue;
       const trained = new Set(set.map((d) => d.date));
       // nejvýš MAX_STREAK dní za sebou (i se 3 dny před týdnem)
-      if (!streakOk(first!, days.length, trained, tailBy)) continue;
+      if (!streakOk(first!, days.length, trained, tailBy, relaxed ? mustDates : undefined)) continue;
       // tvoje volba kvality platí i při 🟡 ráně
       const keyable = set.filter((d) => d.type !== "z2" && !d.ownLong && (!d.noKey || d.type === "quality"));
       const mustKey = set.filter((d) => d.type === "quality");
@@ -101,7 +104,7 @@ export function solveWeek(inp: SkInput): SkResult {
           for (const d of days) roles.set(d.date, trained.has(d.date) ? "endurance" : "rest");
           for (const kd of keys) roles.set(kd.date, "key");
           if (lg) roles.set(lg.date, "long");
-          if (!keyRuleOk(roles, tailBy, byDate)) continue;
+          if (!keyRuleOk(roles, tailBy, byDate, relaxed)) continue;
           const score = scoreOf(roles, days, tailBy, inp.habit);
           if (!best || score > best.score + 1e-9) best = { score, roles };
         }
@@ -122,21 +125,24 @@ export function solveWeek(inp: SkInput): SkResult {
   return { roles, sessions: 0, keys: 0, long: false, notes: inp.sessions ? ["Tento týden se trénink nevešel (blokované dny)."] : [] };
 }
 
-function streakOk(first: string, n: number, trained: Set<string>, tail: Map<string, PastDay>): boolean {
+/** Nejvýš MAX_STREAK dní za sebou. `allowed` = tvoje dny, na kterých se delší řada toleruje (jen v nouzi). */
+function streakOk(first: string, n: number, trained: Set<string>, tail: Map<string, PastDay>, allowed?: Set<string>): boolean {
   let run = 0;
   for (let i = -3; i < n; i++) {
     const d = addDays(first, i);
     const t = i < 0 ? !!tail.get(d)?.trained : trained.has(d);
     run = t ? run + 1 : 0;
-    if (run > MAX_STREAK && i >= 0) return false;
+    if (run > MAX_STREAK && i >= 0 && !allowed?.has(d)) return false;
   }
   return true;
 }
 
 /** Kvalita ne den po kvalitě, dlouhém ani jiném těžkém dni (i přes hranu týdne). Dlouhý den po kvalitě smí. */
-function keyRuleOk(roles: Map<string, Role>, tail: Map<string, PastDay>, _by: Map<string, SkDay>): boolean {
+function keyRuleOk(roles: Map<string, Role>, tail: Map<string, PastDay>, by: Map<string, SkDay>, relaxed = false): boolean {
   for (const [d, r] of roles) {
     if (r !== "key") continue;
+    // v nouzi platí tvoje volba kvality i po těžkém dni (závěrečná kontrola ji zapíše jako výjimku)
+    if (relaxed && by.get(d)?.type === "quality") continue;
     const y = addDays(d, -1);
     const yr = roles.get(y);
     if (yr === "key" || yr === "long") return false;

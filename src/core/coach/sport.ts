@@ -19,19 +19,24 @@ export interface Caps {
  * Sezóna: dlouhá nejvýš o 15 % delší než tvoje nejdelší za 4 týdny (aspoň 2 h). Běh podle připravenosti
  * (`runCapOf`: 1,5× nejdelšího běhu za 4 týdny, aspoň 60, nejvýš 180 min – tvoje rozhodnutí), běžky a chůze rozumně.
  */
-export function capsFor(o: { sport: PlanSport; role: Role; winter: boolean; longest: number; typical: number; runLongest: number }): Caps {
+export function capsFor(o: { sport: PlanSport; role: Role; winter: boolean; longest: number; typical: number; runLongest: number; runTypical?: number }): Caps {
   const { sport, role } = o;
   if (role === "rest") return { min: 0, max: 0 };
   if (sport === "run") {
     const top = runCapOf(o.runLongest);
-    return role === "easy" ? { min: 20, max: Math.min(40, top) } : role === "long" ? { min: 40, max: top } : { min: 30, max: Math.min(top, 60) };
+    // Z2 běh: hodina, nebo o pětinu víc než tvůj typický běh za 4 týdny (kdo běžně běhá 75 min, nedostane strop 60) –
+    // vždy ve stropu běhu podle nejdelšího běhu; kvalita nejvýš hodinu
+    const easyTop = Math.min(top, Math.max(60, Math.round(((o.runTypical ?? 0) * 1.2) / 5) * 5));
+    return role === "easy" ? { min: 20, max: Math.min(40, top) } : role === "long" ? { min: 40, max: top } : role === "key" ? { min: 30, max: Math.min(top, 60) } : { min: 30, max: easyTop };
   }
   if (sport === "walk") return role === "key" ? { min: 30, max: 60 } : { min: 30, max: role === "long" ? 180 : 120 };
   if (sport === "xc_ski") return role === "key" ? { min: 40, max: 75 } : { min: 45, max: role === "long" ? 180 : 120 };
   if (role === "easy") return { min: 30, max: 45 };
   if (role === "key") return { min: 45, max: o.winter ? 60 : 90 };
   if (role === "long") return o.winter ? { min: 75, max: 120 } : { min: 90, max: Math.min(300, Math.max(120, Math.round(o.longest * 1.15))) };
-  return o.winter ? { min: 45, max: 75 } : { min: 45, max: Math.max(90, Math.round(o.typical * 1.2)) };
+  // Z2 den nikdy delší než strop dlouhého dne (u velmi dlouhých typických jízd by jinak „Z2“ přerostl dlouhý)
+  const longMax = Math.min(300, Math.max(120, Math.round(o.longest * 1.15)));
+  return o.winter ? { min: 45, max: 75 } : { min: 45, max: Math.min(longMax, Math.max(90, Math.round(o.typical * 1.2))) };
 }
 
 const round = (sport: PlanSport, m: number) => (sport === "run" ? Math.round(m / 5) * 5 : Math.round(m / 15) * 15);

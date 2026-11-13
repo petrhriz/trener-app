@@ -13,7 +13,7 @@ import type { QualityType } from "../quality";
 import type { State } from "../recovery";
 import type { DayWeather } from "../weather";
 import { type Workout, renderIcu } from "../workout";
-import { type EngineAct, type ProgressRow, easyRate, fixedFromConstraints, runCapOf } from "./common";
+import { type EngineAct, MAX_DAY_MIN, MAX_STREAK, type ProgressRow, easyRate, fixedFromConstraints, runCapOf } from "./common";
 import { type Built, type Cat, type WorkPlan, type Zones, CAT_NAME as CAT_WORD, START_TIER, applyStepEdit, buildWorkout, catCandidates, catNeeds, chooseCat, isCat } from "./library";
 import type { CoachProfile } from "./profile";
 import { type Distribution, distribution } from "./progress";
@@ -28,7 +28,7 @@ import { type WeekValidation, validateWeek } from "./validate";
 import type { Fixed, PastDay as V2Past } from "./common";
 import { type WeekTarget, TWO_KEYS_MIN_H, blockWeeksFor, historyBase, nextBlock, usualSessions, weekHistory, weekTarget } from "./budget";
 import { type PastDay, type SkDay, solveWeek } from "./skeleton";
-import { type Role, capsFor, loadFor, minutesFor, nameFor, relabel, stepsText } from "./sport";
+import { ROLE_INTENSITY, type Role, capsFor, loadFor, minutesFor, nameFor, relabel, stepsText } from "./sport";
 
 export interface CoachInput {
   today: string;
@@ -105,6 +105,8 @@ export interface Day3 {
   wplan?: WorkPlan | null;
   /** zátěž, kterou by den měl podle cíle týdne (před stropy délek) */
   want: number;
+  /** délka z pondělního plánu – platí i když strop délky během týdne klesne (okno 28 dní se posune) */
+  keepMin?: number;
   why: string[];
   blocked: string | null;
   own: OwnRide | null;
@@ -216,6 +218,8 @@ export function runCoach(inp: CoachInput): CoachPlan {
   const longest = Math.round(Math.max(60, ...rides28));
   const typical = Math.round(median(rides28) ?? 60);
   const run = runReadiness(inp.acts, T, p.primary === "run");
+  // typický běh za 4 týdny (medián, běhy od 15 min) – strop Z2 běhu
+  const runTypical = Math.round(median(inp.acts.filter((a) => a.sport === "run" && a.date > addDays(T, -28) && (a.moving_s ?? 0) >= 15 * 60).map((a) => (a.moving_s ?? 0) / 60)) ?? 0);
   const rateOf = (s: PlanSport) => easyRate(inp.acts, T, s, s === "ride" && power);
   const fat = fatigueFactor(inp.fatigue);
   // návrat po pauze: první týden jen Z1–Z2, pak nejvýš tempo / sweet spot (tvoje výslovná kvalita platí)
@@ -243,7 +247,21 @@ export function runCoach(inp: CoachInput): CoachPlan {
     : null;
   const monday = mondayPlan?.week ?? null;
   // dny, které z pondělního plánu odpadnou: nově zablokované, tvoje volno, 🔴 dnes (nedohání se)
-  const lostDay = (d: string) => !!fixed.get(d)?.blocked || !!fixed.get(d)?.rest || (d === T && inp.recovery === "red");
+  const lostBase = (d: string) => !!fixed.get(d)?.blocked || !!fixed.get(d)?.rest || (d === T && inp.recovery === "red");
+  const mine = (d: string) => { const f = fixed.get(d); return !!(f && (f.sport || f.type || f.minutes || f.own || f.edit)); };
+  // trénoval jsi navíc (dny, které pondělní plán neměl) → den z plánu, který by byl už 4. za sebou, je volno a nedohání
+  // se (pravidlo nejvýš MAX_STREAK dny za sebou platí i proti skutečnosti, ne jen proti plánu); tvoje volby dne platí
+  const streakRest = new Set<string>();
+  if (monday) {
+    let run = 0;
+    for (let d = addDays(from, -3); d <= addDays(W0, 6); d = addDays(d, 1)) {
+      const m = monday.days.find((x) => x.date === d);
+      const t = d < from ? trainedOn(d) || d === inp.raceDate : !!m && m.role !== "rest" && !m.blocked && !lostBase(d);
+      run = t ? run + 1 : 0;
+      if (run > MAX_STREAK && d >= from && !mine(d)) { streakRest.add(d); run = 0; }
+    }
+  }
+  const lostDay = (d: string) => lostBase(d) || streakRest.has(d);
   // únava nad rámec té, se kterou se pondělní plán počítal – jen zbylé dny, ne dvakrát
   const fRel = mondayPlan ? Math.min(1, fat.factor / Math.max(0.01, mondayPlan.fatigue)) : 1;
   const weekZero = (tg: WeekTarget, m: CoachInfo["horizon"][number]): WeekTarget => {
@@ -259,6 +277,8 @@ export function runCoach(inp: CoachInput): CoachPlan {
     const n1 = (x: number) => x.toFixed(1).replace(".", ",");
     const notes = [...m.notes];
     if (lostLoad > 0) notes.push(`${lost.map((x) => dayDm(x.date)).join(", ")}: trénink z plánu odpadá (−${Math.round(lostLoad)} zátěže), nedohání se.`);
+    const extra = lost.filter((x) => streakRest.has(x.date));
+    if (extra.length) notes.push(`${extra.map((x) => dayDm(x.date)).join(", ")}: volno – s tréninky navíc by to byly víc než ${MAX_STREAK} dny za sebou.`);
     if (fRel < 1) notes.push(`Únava: zbytek týdne o ${Math.round((1 - fRel) * 100)} % lehčí (${before} → ${load}).`);
     if (missed > 20) notes.push(`Od pondělí odjeto ${Math.round(doneLoad)} z plánovaných ${Math.round(planDone)} – co se nestihlo, se nedohání; zbytek týdne zůstává podle plánu.`);
     if (over > 5) notes.push(`Od pondělí odjeto o ${over} víc, než bylo v plánu – zbylé dny jsou o to lehčí.`);
@@ -281,7 +301,7 @@ export function runCoach(inp: CoachInput): CoachPlan {
     const winter = tg.winter;
     const rate = rateOf(p.primary).rate;
     // zimní krátké délky jen pro Zimu a Udržování – Zlepšit v zimě je záměrné budování základu, délky jako v sezóně
-    const capsOf = (sport: PlanSport, role: Role) => capsFor({ sport, role, winter: tg.shortDays, longest, typical, runLongest: run.longest });
+    const capsOf = (sport: PlanSport, role: Role) => capsFor({ sport, role, winter: tg.shortDays, longest, typical, runLongest: run.longest, runTypical });
 
     // kolik tréninků, kvalit a jestli dlouhý
     const capE = capsOf(p.primary, "endurance");
@@ -289,12 +309,19 @@ export function runCoach(inp: CoachInput): CoachPlan {
     const nDays = dates.length;
     // aspoň tolik tréninků, kolik je potřeba, aby se zátěž vešla do stropů délek (v zimě krátké jízdy)
     const capLoad = rate * capsOf(p.primary, "long").max / 60 * 0.5 + rate * capE.max / 60 * 0.5;
-    let sessions = tg.load <= 15 ? 0 : Math.max(1, Math.round(tg.load / sessionLoad), Math.ceil(tg.load / capLoad));
+    // kvalita má kratší strop než Z2 a dlouhý – počítá se zvlášť (jinak by sportovec s jedním dlouhým tréninkem týdně
+    // dostal 2 tréninky a do jejich stropů by se zátěž nevešla)
+    const keyCapLoad = loadFor(capsOf(p.primary, "key").max, rate, "key");
+    const fitN = tg.phase === "post" ? Math.ceil(tg.load / capLoad) : 1 + Math.ceil(Math.max(0, tg.load - keyCapLoad) / capLoad);
+    let sessions = tg.load <= 15 ? 0 : Math.max(1, Math.round(tg.load / sessionLoad), fitN);
     // nejvýš o jeden víc, než kolik tréninků obvykle máš (vážený průměr jako u zátěže, ne nejvíc za 4 týdny)
     const maxSess = Math.max(3, usualSessions(history) + 1);
     sessions = Math.min(sessions, nDays, maxSess, 6);
     // ladění (Bosquet 2007): méně objemu, ale stejně tréninků a intenzita zůstává → kratší tréninky
     if (tg.phase === "taper" && tg.load > 15) sessions = Math.min(nDays, Math.max(sessions, Math.round(history.weekSessions.reduce((t, x) => t + x, 0) / Math.max(1, history.weekSessions.length))));
+    // nikdy víc tréninků, než kolik se jich do zátěže týdne vejde v nejkratší délce (jinak plán přeroste cíl – hlavně
+    // ladění u malého objemu, kde se drží počet tréninků z historie)
+    if (tg.load > 15) sessions = Math.min(sessions, Math.max(1, Math.floor((tg.load * 1.1) / Math.max(1, loadFor(capE.min, rate, "endurance")))));
     // dvě kvality jen v Rozvoji a jen když je na ně objem i zátěž: týden aspoň TWO_KEYS_MIN_H hodin (80/20 podle
     // času, Seiler) a po dvou kvalitách zbyde na ostatní tréninky aspoň jejich nejkratší délka
     const keyCap = capsOf(p.primary, "key").max;
@@ -334,6 +361,8 @@ export function runCoach(inp: CoachInput): CoachPlan {
     });
     const tail: PastDay[] = [1, 2, 3].map((i) => {
       const d = addDays(tg.from, -i);
+      // den závodu je trénink a těžký den, i když je v plánu jako blokovaný a závod v aktivitách není
+      if (d === inp.raceDate) return { date: d, trained: true, hard: true };
       const pd = prevDays.find((x) => x.date === d);
       if (pd) return { date: d, trained: pd.role !== "rest", hard: pd.role === "key" || pd.role === "long" };
       const acts = actsOn(d);
@@ -362,10 +391,26 @@ export function runCoach(inp: CoachInput): CoachPlan {
       for (const d of dates) {
         const m = mDay(d);
         let r: Role = m && !m.blocked && !lostDay(d) ? m.role : "rest";
+        // tvoje volba zadaná až během týdne platí i proti pondělnímu plánu (trénink v den volna, kvalita, Z2)
+        const f = fixed.get(d);
+        if (f && !lostDay(d) && !skDays.find((x) => x.date === d)?.blocked) {
+          if (f.type === "quality") r = "key";
+          else if (f.type === "z2" && r === "key") r = "endurance";
+          else if (r === "rest" && mine(d)) r = f.own && f.own.min >= 120 ? "long" : "endurance";
+        }
         if (r === "key" && ceilingOf(d) === "base" && fixed.get(d)?.type !== "quality") { r = "endurance"; roleWhy.set(d, "místo kvality Z2 – návrat po pauze, první týden jen Z1–Z2"); }
+        // do týdne po závodě kvalita ne (závod se mohl během týdne přidat nebo posunout)
+        if (r === "key" && !!inp.raceDate && d > inp.raceDate && d <= addDays(inp.raceDate, 7) && fixed.get(d)?.type !== "quality") { r = "endurance"; roleWhy.set(d, "místo kvality Z2 – týden po závodě"); }
         // včera opravdu těžký den (kvalita podle zón, dlouhý, závod), který v plánu nebyl → dnes kvalita ne
         if (d === tg.from && r === "key" && fixed.get(d)?.type !== "quality" && tail[0]?.hard) { r = "endurance"; roleWhy.set(d, "místo kvality Z2 – včera byl těžký trénink"); }
         sk.roles.set(d, r);
+      }
+      // kvalita ne den po těžkém dni – i když se těžký den (tvoje dlouhá jízda, kvalita) objevil až během týdne
+      for (const d of dates) {
+        if (sk.roles.get(d) !== "key" || fixed.get(d)?.type === "quality") continue;
+        const y = addDays(d, -1);
+        const yr = sk.roles.get(y);
+        if (yr === "key" || yr === "long" || (yr === undefined && tail.find((t) => t.date === y)?.hard)) { sk.roles.set(d, "endurance"); roleWhy.set(d, "místo kvality Z2 – den předtím je těžký trénink"); }
       }
       // nová únava / nemoc může ubrat kvality (pozdější → Z2), přidat ne
       const keyDays = dates.filter((d) => sk.roles.get(d) === "key" && fixed.get(d)?.type !== "quality");
@@ -409,13 +454,20 @@ export function runCoach(inp: CoachInput): CoachPlan {
     for (const x of train) {
       const f = fixed.get(x.date);
       if (x.own) { x.minutes = x.own.min; x.load = Math.round(loadFor(x.own.min, rOf(x), x.role === "key" ? "endurance" : x.role) * (x.own.with ? 1.15 : 1)); }
-      else if (f?.minutes) setMinutes(x, f.minutes);
+      // tvoje délka, nejvýš strop sportu (běh 4 h, kolo 7 h…)
+      else if (f?.minutes) setMinutes(x, Math.min(f.minutes, MAX_DAY_MIN[x.sport]));
     }
-    // kvalita: typická délka dne kvality
-    // kvalita: délka hlavního sportu; na jiném sportu stejná zátěž (délka podle jeho sazby, v jeho stropech)
-    for (const x of train) if (x.role === "key" && !x.own && !fixed.get(x.date)?.minutes) {
-      x.want = loadFor(capsOf(p.primary, "key").max, rate, "key");
-      setMinutes(x, x.sport === p.primary ? capsOf(x.sport, "key").max : minutesFor(x.want, rOf(x), "key", x.sport, capsOf(x.sport, "key")));
+    // kvalita: asi stejný čas jako Z2 den týdne (zátěž ×1,35 podle intenzity), nejvýš strop kvality hlavního sportu
+    // (45–90 min, v zimě do 60). S pevným stropem by u malého objemu (2–3 h týdně) jedna kvalita snědla půl týdne
+    // a plán by přestřelil cíl. Délka kvality = délka Z2 dne je vlastní volba (zdroje délku v minutách nedávají).
+    const pinnedLen = (x: Day3) => !!x.own || !!fixed.get(x.date)?.minutes;
+    const wOf = (x: Day3) => (x.role === "key" ? ROLE_INTENSITY.key : x.role === "long" ? 1.6 : x.role === "easy" ? 0.5 : 1);
+    const flexW = train.filter((x) => !pinnedLen(x)).reduce((t, x) => t + wOf(x), 0);
+    const flexLoad = Math.max(0, tg.load - train.filter(pinnedLen).reduce((t, x) => t + x.load, 0));
+    for (const x of train) if (x.role === "key" && !pinnedLen(x)) {
+      x.want = Math.min(loadFor(capsOf(p.primary, "key").max, rate, "key"), flexW > 0 ? (flexLoad * wOf(x)) / flexW : 0);
+      const kc = capsOf(x.sport, "key");
+      setMinutes(x, x.want > 0 ? minutesFor(x.want, rOf(x), "key", x.sport, kc) : kc.min);
     }
     const spread = () => {
       const flex = train.filter((x) => (x.role === "endurance" || x.role === "long" || x.role === "easy") && !x.own && !fixed.get(x.date)?.minutes);
@@ -442,6 +494,14 @@ export function runCoach(inp: CoachInput): CoachPlan {
       }
     };
     spread();
+    // tvoje dny (vlastní jízda, délka) už spotřebovaly zátěž týdne: Z2 / dlouhý den, na který zbyla méně než polovina
+    // nejkratší délky, je volno – trénink navíc by týden jen přetáhl (zbytek se rozdělí mezi ostatní dny)
+    if (!pinned) {
+      const tiny = train.filter((x) => (x.role === "endurance" || x.role === "easy" || x.role === "long") && !x.mine && !x.own && x.want < loadFor(capsOf(x.sport, x.role).min, rOf(x), x.role) / 2);
+      for (const x of tiny) { x.role = "rest"; x.minutes = 0; x.load = 0; train.splice(train.indexOf(x), 1); }
+      if (tiny.length) { notes.push(`${tiny.map((x) => dayDm(x.date)).join(", ")}: volno – zátěž týdne už pokryjí tvoje tréninky.`); spread(); }
+    }
+    const overRest: Day3[] = [];
     if (pinned) {
       const planRest = dates.filter((d) => !lostDay(d)).reduce((t, d) => t + (mDay(d)?.load ?? 0), 0);
       const scale = planRest > 0 ? Math.min(1, tg.load / planRest) : 1;
@@ -451,6 +511,9 @@ export function runCoach(inp: CoachInput): CoachPlan {
         if (!m || m.load <= 0) continue;
         x.want = Math.round(m.load * scale);
         const ld = x.want;
+        // týden už je odjetý nad plán: den, na který zbyla méně než polovina nejkratší délky, je volno (ne trénink
+        // nejkratší délky navíc – to by týden dál přetahovalo)
+        if (scale < 1 && x.role !== "key" && !mine(x.date) && ld < loadFor(capsOf(x.sport, x.role).min, rOf(x), x.role) / 2) { overRest.push(x); continue; }
         // stejný sport a druh: délka z pondělního plánu (krát poměr) – přepočet ze zátěže by kvůli rozjetí v Z1
         // dal každý den o kus míň; jinak délka ze zátěže podle sportu dne
         const c = capsOf(x.sport, x.role);
@@ -458,8 +521,22 @@ export function runCoach(inp: CoachInput): CoachPlan {
         // Při dorovnání zátěže po skutečném průběhu týdne stačí jemnější krok než
         // obvyklé 15min zaokrouhlení – jinak se menší přebytek kvality na Z2 vůbec neprojeví.
         const step = 5;
-        setMinutes(x, same ? Math.max(c.min, Math.min(c.max, Math.round((m.minutes * scale) / step) * step)) : minutesFor(ld, rOf(x), x.role, x.sport, c));
+        // běh má strop kvůli šlachám a kostem (podle nejdelšího běhu) – ten platí vždy
+        const keep = same && x.sport !== "run";
+        if (keep) x.keepMin = m.minutes;
+        setMinutes(x, same ? Math.max(Math.min(c.min, m.minutes), Math.min(Math.max(c.max, keep ? m.minutes : 0), Math.round((m.minutes * scale) / step) * step)) : minutesFor(ld, rOf(x), x.role, x.sport, c));
       }
+      // součet nejkratších délek přerostl zbytek týdne (odjeto víc, než bylo v plánu) → nejmenší Z2 dny jsou volno,
+      // dokud se zbytek nevejde (nedohání se ani nepřetahuje)
+      while (scale < 1) {
+        const free = train.filter((x) => !mine(x.date) && !x.own && !overRest.includes(x));
+        if (free.reduce((t, x) => t + x.load, 0) <= tg.load * 1.15 + 10) break;
+        const drop = free.filter((x) => x.role === "endurance" || x.role === "easy" || x.role === "long").sort((p1, p2) => Number(p1.role === "long") - Number(p2.role === "long") || p1.want - p2.want || p2.date.localeCompare(p1.date))[0];
+        if (!drop) break;
+        overRest.push(drop);
+      }
+      for (const x of overRest) { x.role = "rest"; x.minutes = 0; x.load = 0; train.splice(train.indexOf(x), 1); }
+      if (overRest.length) notes.push(`${overRest.map((x) => dayDm(x.date)).join(", ")}: volno – tento týden už máš odjeto víc, než bylo v plánu.`);
     }
 
     // obsah: konkrétní tréninky tento a příští týden; další týdny náhled (`preview` – bez počasí a bez
@@ -527,6 +604,11 @@ export function runCoach(inp: CoachInput): CoachPlan {
         x.tiz = b.tizMin;
         // délka a zátěž ze sestaveného tréninku (i u náhledu – dlaždice, graf a rozpis musí sedět)
         if (!x.own) { x.minutes = b.minutes; x.load = b.load; }
+        // tvoje délka kvality je kratší, než se do ní vejde rozjetí, úseky a vyjetí → říct proč je delší
+        if (x.role === "key" && f?.minutes && x.minutes > f.minutes + 5) {
+          const msg = `kvalita potřebuje aspoň ${x.minutes} min (rozjetí, úseky, vyjetí) – ${f.minutes} min nestačí`;
+          if (!x.why.includes(msg)) x.why.push(msg);
+        }
       };
     if (detail) {
       for (const x of train.filter((y) => y.role === "key")) build(x);
@@ -559,9 +641,15 @@ export function runCoach(inp: CoachInput): CoachPlan {
           x.minutes = cut;
           if (down) { build(x, false, down); x.why.push(`🟡 ráno: o stupeň lehčí (${CAT_WORD[from0!]} → ${CAT_WORD[down]}) a o čtvrtinu kratší`); }
           else { x.role = "endurance"; build(x); x.why.push(`🟡 ráno: místo ${from0 ? CAT_WORD[from0] : "kvality"} Z2, o čtvrtinu kratší`); }
+        } else if (x.role === "long") {
+          // dlouhý → Z2: o čtvrtinu kratší a nejvýš strop Z2 dne (jinak by „Z2“ zůstala delší než běžný Z2 den)
+          const e = capsOf(x.sport, "endurance");
+          x.role = "endurance";
+          x.minutes = Math.max(e.min, Math.min(e.max, cut));
+          build(x);
+          x.why.push(`🟡 ráno: místo dlouhé Z2 ${x.minutes} min`);
         } else if (x.minutes > c.min) {
           x.minutes = cut;
-          if (x.role === "long") x.role = "endurance";
           build(x);
           x.why.push("🟡 ráno: o čtvrtinu kratší");
         }
@@ -575,18 +663,36 @@ export function runCoach(inp: CoachInput): CoachPlan {
       x.why.push(capped ? (x.load < x.want ? `${SPORT_WORD[x.sport]} místo ${SPORT_GEN[p.primary]}: ${x.minutes} min je strop ${SPORT_GEN[x.sport]}${x.sport === "run" ? " podle toho, kolik teď běháš" : ""} – zátěž ${x.load} místo ${x.want}, zbytek dostanou ostatní dny` : `${SPORT_WORD[x.sport]} místo ${SPORT_GEN[p.primary]}: ${x.minutes} min vyjde na zátěž ${x.load} (${SPORT_WORD[p.primary]} by dalo ${x.want}), ostatní dny jsou o to lehčí`) : `${SPORT_WORD[x.sport]} místo ${SPORT_GEN[p.primary]}: stejná zátěž (${x.load}), délka podle sportu`);
     }
 
-    // kontrola formy: výhled po dnech; pod dnem se zkracují Z2 a dlouhý, pak poslední kvalita → Z2
+    // rozběhnutý týden: den převzatý z pondělního plánu drží jeho zátěž (poměrem délky). Sazba zátěže za hodinu je
+    // medián 60 dní a mezi dny může poskočit (aktivita vypadne z okna) – bez toho by týden „rostl“, i když se nic nestalo.
+    if (pinned) for (const x of train) {
+      const m = mDay(x.date);
+      if (!m || x.own || fixed.get(x.date)?.minutes || m.sport !== x.sport || m.role !== x.role || m.minutes <= 0) continue;
+      x.load = Math.round((m.load * x.minutes) / m.minutes);
+    }
+
+    // kontrola formy: výhled po dnech; pod dnem se zkracují Z2 a dlouhý, pak poslední kvalita → Z2, nakonec volno
     const floor = formFloor(tg.phase);
     const proj = () => project(state, stateDate, dates.map((d) => days.find((x) => x.date === d)!.load));
     if (floor != null) {
-      for (let it = 0; it < 3; it++) {
-        const low = proj().find((x) => x.form < floor);
+      // Propad, ke kterému plán nepřispívá (forma je pod hranicí z minulých dní a úplné volno by ji nezvedlo víc), se
+      // zkracováním nespraví – ten se nepočítá. Zkracují se jen dny do posledního propadu (pozdější ho neovlivní).
+      const restP = project(state, stateDate, dates.map(() => 0));
+      for (let it = 0; it < 5; it++) {
+        const lows = proj().filter((x, i) => x.form < floor && x.form < restP[i]!.form - 0.5);
+        const low = lows[0];
         if (!low) break;
+        const until = lows[lows.length - 1]!.date;
         if (it < 2) {
-          for (const x of train) if ((x.role === "endurance" || x.role === "long") && !x.mine) { const c = capsOf(x.sport, x.role); setMinutes(x, Math.max(c.min, Math.round((x.minutes * 0.8) / 15) * 15)); if (detail) x.why.push(`zkráceno – forma by spadla pod ${floor}`); }
-        } else {
-          const kd = [...train].reverse().find((x) => x.role === "key" && !x.mine);
+          const msg = `zkráceno – forma by spadla pod ${floor}`;
+          for (const x of train) if ((x.role === "endurance" || x.role === "long") && !x.mine && x.date <= until) { const c = capsOf(x.sport, x.role); setMinutes(x, Math.max(c.min, Math.round((x.minutes * 0.8) / 15) * 15)); if (detail && !x.why.includes(msg)) x.why.push(msg); }
+        } else if (it === 2) {
+          const kd = [...train].reverse().find((x) => x.role === "key" && !x.mine && x.date <= until);
           if (kd) { kd.role = "endurance"; kd.why.push(`místo kvality Z2 – forma ${dayDm(low.date)} by byla ${num(low.form, 0)}`); setMinutes(kd, Math.min(kd.minutes, capsOf(kd.sport, "endurance").max)); }
+        } else {
+          // ani zkrácení a Z2 místo kvality nestačí → poslední Z2 / lehký den před propadem je volno
+          const ed = [...train].reverse().find((x) => (x.role === "endurance" || x.role === "easy") && !x.mine && x.date <= until);
+          if (ed) { ed.role = "rest"; ed.minutes = 0; ed.load = 0; ed.workout = null; ed.steps = []; ed.name = null; ed.tiz = 0; ed.why.push(`volno – forma ${dayDm(low.date)} by byla ${num(low.form, 0)}`); train.splice(train.indexOf(ed), 1); }
         }
       }
       if (detail) for (const x of train) if (x.why.some((w) => w.startsWith("zkráceno") || w.startsWith("místo kvality"))) {
@@ -666,6 +772,8 @@ export function horizonSummary(weeks: Pick<Week3, "planned" | "ctlEnd" | "target
 function toPlan(inp: CoachInput, weeks: Week3[], o: { reentry: string | null; outlook: CoachInfo["outlook"]; mondayPlan: MondayPlan | null; from: string; todayDone: boolean; startState: { ctl: number; atl: number }; history: { weekLoads: number[] }; usual: number; ctlRef: number; fat: { notes: string[] }; longest: number; typical: number; runLongest: number; runExperienced: boolean }): CoachPlan {
   const T = inp.today;
   const all = weeks.flatMap((w) => w.days);
+  // stejný důvod se při opakovaném sestavení dne (dorovnání zátěže, zkracování) nepíše dvakrát
+  for (const x of all) x.why = [...new Set(x.why)];
   const dayOf = (d: string) => all.find((x) => x.date === d) ?? null;
   const calBy = new Map<string, CalItem>();
   for (const c of inp.calendar) if ((c.status === "planned" || c.status === "moved") && c.kind !== "rest" && !calBy.has(c.date)) calBy.set(c.date, c);
@@ -787,11 +895,13 @@ function toPlan(inp: CoachInput, weeks: Week3[], o: { reentry: string | null; ou
     const past = new Map<string, V2Past>();
     for (let i = -3; i < 7; i++) { const d = addDays(w.weekStart, i); if (d < w.target.from) past.set(d, v2Past(d)); }
     const fp = project(o.startState, addDays(o.from, -1), projDates.map((d) => dayOf(d)?.load ?? 0)).filter((x) => x.date >= w.target.from && x.date < addDays(w.weekStart, 7));
+    // stejný průběh, ale týden celý volno – propad, který by nastal i tak, není chyba plánu
+    const fr = project(o.startState, addDays(o.from, -1), projDates.map((d) => (d < w.target.from ? dayOf(d)?.load ?? 0 : 0))).filter((x) => x.date >= w.target.from && x.date < addDays(w.weekStart, 7));
     const caps = { easy: capsFor({ sport: "ride", role: "endurance", winter: w.target.shortDays, longest: o.longest, typical: o.typical, runLongest: o.runLongest }).max, long: capsFor({ sport: "ride", role: "long", winter: w.target.shortDays, longest: o.longest, typical: o.typical, runLongest: o.runLongest }).max, key: capsFor({ sport: "ride", role: "key", winter: w.target.shortDays, longest: o.longest, typical: o.typical, runLongest: o.runLongest }).max - 20 };
     return validateWeek({
       weekStart: w.weekStart,
       from: w.target.from,
-      days: w.days.map((x) => ({ date: x.date, role: x.role, sport: x.sport, minutes: x.minutes, tiz: x.tiz, blocked: !!x.blocked, own: !!x.own, userQuality: fixed.get(x.date)?.type === "quality", userMinutes: !!fixed.get(x.date)?.minutes || (x.role === "key" && !!fixed.get(x.date)?.edit), downgraded: null })),
+      days: w.days.map((x) => ({ date: x.date, role: x.role, sport: x.sport, minutes: x.minutes, tiz: x.tiz, blocked: !!x.blocked, own: !!x.own, userQuality: fixed.get(x.date)?.type === "quality", userMinutes: !!fixed.get(x.date)?.minutes || (x.role === "key" && !!fixed.get(x.date)?.edit), mine: x.mine, keepMin: x.keepMin, downgraded: null })),
       past,
       keys: w.keys,
       long: w.long,
@@ -799,6 +909,8 @@ function toPlan(inp: CoachInput, weeks: Week3[], o: { reentry: string | null; ou
       runCap: runCapOf(o.runLongest),
       tsbFloor: formFloor(w.target.phase),
       forms: fp.map((x) => ({ date: x.date, form: x.form })),
+      formsRest: fr.map((x) => ({ date: x.date, form: x.form })),
+      otherCap: (sport, role) => capsFor({ sport, role, winter: w.target.shortDays, longest: o.longest, typical: o.typical, runLongest: o.runLongest }).max,
     });
   };
   const v0 = validate(w0), v1 = validate(w1);
@@ -806,7 +918,15 @@ function toPlan(inp: CoachInput, weeks: Week3[], o: { reentry: string | null; ou
 
   const summary = horizonSummary(weeks, weeks[0]!.target.ctlStart, o.usual);
   const warnings: string[] = [summary, ...w0.notes, ...o.fat.notes.map((s) => `Zátěž ubírá: ${s}.`), ...(o.reentry ? [`${o.reentry[0]!.toUpperCase()}${o.reentry.slice(1)}.`] : [])];
-  for (const x of proj.filter((y) => y.date <= addDays(T, 7))) if (formZone(x.form) === "Vysoké riziko") warnings.push(`Plán vede do Vysokého rizika ${dayDm(x.date)} – uber zátěž.`);
+  // Vysoké riziko: „uber zátěž“ jen tam, kam vede plán; propad z minulých dní (i úplné volno by ho nechalo) se řekne jednou
+  const restAll = project(o.startState, addDays(o.from, -1), projDates.map(() => 0));
+  const restBy = new Map(restAll.map((x) => [x.date, x.form]));
+  let pastRisk = false;
+  for (const x of proj.filter((y) => y.date <= addDays(T, 7))) {
+    if (formZone(x.form) !== "Vysoké riziko") continue;
+    if (x.form < (restBy.get(x.date) ?? x.form) - 0.5) warnings.push(`Plán vede do Vysokého rizika ${dayDm(x.date)} – uber zátěž.`);
+    else if (!pastRisk) { pastRisk = true; warnings.push(`Forma ${dayDm(x.date)} ${num(x.form, 0)} je ve Vysokém riziku z minulých dní – volno a lehké dny ji zvednou.`); }
+  }
   for (const it of validation.items) if (it.level !== "exception") warnings.push(it.text);
 
   const tg = w0.target;

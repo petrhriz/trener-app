@@ -36,6 +36,10 @@ export interface ValDay {
   userQuality: boolean;
   /** délku zadal uživatel */
   userMinutes: boolean;
+  /** jakákoli tvoje volba dne (sport, druh, délka, vlastní jízda) – řada dní kvůli ní je výjimka */
+  mine?: boolean;
+  /** délka převzatá z pondělního plánu – strop, který mezitím klesl, ji nezkracuje */
+  keepMin?: number;
   /** proč se role dne proti kostře snížila (vědomá úprava), null = nesnížila */
   downgraded: string | null;
 }
@@ -55,6 +59,10 @@ export interface ValidateInput {
   tsbFloor: number | null;
   /** výhled formy na plánované dny */
   forms: { date: string; form: number }[];
+  /** výhled formy, kdyby byl týden celý volno – propad, který nastane i tak, není chyba plánu */
+  formsRest?: { date: string; form: number }[];
+  /** strop délky pro sporty mimo kolo a běh (běžky, chůze) podle druhu dne */
+  otherCap?: (sport: PlanSport, role: Role) => number;
 }
 
 /** Tolerance délky: knihovna zaokrouhluje dojezd na 5 min a přidává rozjetí. */
@@ -77,7 +85,7 @@ export function validateWeek(v: ValidateInput): WeekValidation {
     if (isPlanned(d)) hasPlanned = true;
     if (run > MAX_STREAK && hasPlanned && !flagged) {
       flagged = true;
-      const user = v.days.some((x) => x.date <= d && x.date > addDays(d, -run) && (x.userQuality || x.userMinutes || x.own));
+      const user = v.days.some((x) => x.date <= d && x.date > addDays(d, -run) && (x.userQuality || x.userMinutes || x.own || x.mine));
       add("streak", user ? "exception" : "error", d, `${dayDm(d)}: ${run} dny tréninku za sebou (nejvýš ${MAX_STREAK})${user ? " – tvoje volba" : ""}.`);
     }
   }
@@ -93,15 +101,23 @@ export function validateWeek(v: ValidateInput): WeekValidation {
 
   // 3) forma nesmí spadnout pod hranici
   if (v.tsbFloor != null) {
-    const low = v.forms.find((f) => f.form < v.tsbFloor!);
-    if (low) add("tsb_floor", "error", low.date, `Forma ${dayDm(low.date)} ${num(low.form, 1)} – pod hranicí ${num(v.tsbFloor)} i po zkrácení plánu.`);
+    const rest = new Map((v.formsRest ?? []).map((f) => [f.date, f.form]));
+    // plán k propadu přispívá: forma je níž, než kdyby byl týden volno
+    const byPlan = (f: { date: string; form: number }) => !rest.has(f.date) || f.form < rest.get(f.date)! - 0.5;
+    const low = v.forms.find((f) => f.form < v.tsbFloor! && byPlan(f));
+    const past = v.forms.find((f) => f.form < v.tsbFloor! && !byPlan(f));
+    // k propadu vedou tvoje dny (vlastní jízda, tvoje délka, vynucená kvalita) → výjimka z tvé volby
+    const userBy = low && v.days.some((x) => x.date <= low.date && x.role !== "rest" && (x.userQuality || x.userMinutes || x.own || x.mine));
+    if (low && userBy) add("tsb_floor", "exception", low.date, `Forma ${dayDm(low.date)} ${num(low.form, 1)} – pod hranicí ${num(v.tsbFloor)} kvůli tvým tréninkům.`);
+    else if (low) add("tsb_floor", "error", low.date, `Forma ${dayDm(low.date)} ${num(low.form, 1)} – pod hranicí ${num(v.tsbFloor)} i po zkrácení plánu.`);
+    else if (past) add("tsb_floor", "warn", past.date, `Forma ${dayDm(past.date)} ${num(past.form, 1)} je pod hranicí ${num(v.tsbFloor)} z minulých dní – ani volno ji hned nezvedne.`);
   }
 
   // 4) stropy délek (tvoje délka / vlastní jízda = výjimka)
   for (const d of v.days) {
     if (d.role === "rest" || d.blocked || d.minutes <= 0) continue;
-    const cap = d.sport === "run" ? v.runCap : d.role === "long" ? v.caps.long : d.role === "key" ? v.caps.key + 20 : d.role === "easy" ? 45 : v.caps.easy;
-    if (d.minutes <= cap + CAP_TOL) continue;
+    const cap = d.sport === "run" ? v.runCap : d.sport !== "ride" && v.otherCap ? v.otherCap(d.sport, d.role) : d.role === "long" ? v.caps.long : d.role === "key" ? v.caps.key + 20 : d.role === "easy" ? 45 : v.caps.easy;
+    if (d.minutes <= Math.max(cap, d.keepMin ?? 0) + CAP_TOL) continue;
     if (d.userMinutes || d.own) add("cap", "exception", d.date, `${dayDm(d.date)}: ${d.minutes} min nad strop ${cap} min – tvoje délka.`);
     else add("cap", "error", d.date, `${dayDm(d.date)}: ${d.minutes} min nad strop ${cap} min.`);
   }
