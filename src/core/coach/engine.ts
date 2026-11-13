@@ -503,8 +503,14 @@ export function runCoach(inp: CoachInput): CoachPlan {
     }
     const overRest: Day3[] = [];
     if (pinned) {
-      const planRest = dates.filter((d) => !lostDay(d)).reduce((t, d) => t + (mDay(d)?.load ?? 0), 0);
-      const scale = planRest > 0 ? Math.min(1, tg.load / planRest) : 1;
+      // tvoje dny s pevnou délkou (prodloužený / zkrácený trénink, vlastní jízda) mají svou zátěž; co mají navíc proti
+      // pondělnímu plánu, se odečte z ostatních dnů (o co jsou kratší, se nedohání)
+      const userDays = train.filter(pinnedLen);
+      const userLoad = userDays.reduce((t, x) => t + x.load, 0);
+      const userMon = userDays.reduce((t, x) => t + (mDay(x.date)?.load ?? 0), 0);
+      const planRest = dates.filter((d) => !lostDay(d) && !userDays.some((x) => x.date === d)).reduce((t, d) => t + (mDay(d)?.load ?? 0), 0);
+      const scale = planRest > 0 ? Math.min(1, Math.max(0, tg.load - userLoad) / planRest) : 1;
+      if (userLoad > userMon + 5) notes.push(`${userDays.map((x) => dayDm(x.date)).join(", ")}: tvůj delší trénink (+${Math.round(userLoad - userMon)} zátěže) – ostatní dny týdne jsou o to lehčí.`);
       for (const x of train) {
         if (x.own || fixed.get(x.date)?.minutes) continue;
         const m = mDay(x.date);
@@ -528,9 +534,9 @@ export function runCoach(inp: CoachInput): CoachPlan {
       }
       // součet nejkratších délek přerostl zbytek týdne (odjeto víc, než bylo v plánu) → nejmenší Z2 dny jsou volno,
       // dokud se zbytek nevejde (nedohání se ani nepřetahuje)
-      while (scale < 1) {
+      while (scale < 1 || userLoad > userMon + 5) {
         const free = train.filter((x) => !mine(x.date) && !x.own && !overRest.includes(x));
-        if (free.reduce((t, x) => t + x.load, 0) <= tg.load * 1.15 + 10) break;
+        if (free.reduce((t, x) => t + x.load, 0) <= Math.max(0, tg.load - userLoad) * 1.15 + 10) break;
         const drop = free.filter((x) => x.role === "endurance" || x.role === "easy" || x.role === "long").sort((p1, p2) => Number(p1.role === "long") - Number(p2.role === "long") || p1.want - p2.want || p2.date.localeCompare(p1.date))[0];
         if (!drop) break;
         overRest.push(drop);
@@ -760,9 +766,9 @@ export function horizonSummary(weeks: Pick<Week3, "planned" | "ctlEnd" | "target
   if (f.length) why.push(`únava ubírá ${f.map(wk).join(" a ")} týden`);
   if (po.length) why.push(`${po.map(wk).join(" a ")} týden je po závodě – lehce, bez kvality`);
   if (r.length) why.push(`${r.map(wk).join(" a ")} týden je lehčí (po 3 zátěžových týdnech)`);
-  // plán nedá ani cíl po omezeních: tréninky se nevejdou do stropů délek (v zimě Z2 do 75 min, dlouhá do 2 h)
+  // plán nedá ani cíl po omezeních: tréninky se nevejdou do stropů délek (v zimě Z2 i dlouhá do 2 h)
   const short = weeks.filter((w) => !w.target.recoveryWeek && w.planned < w.target.load * 0.93);
-  if (short.length) why.push(weeks[0]!.target.shortDays ? "do zimních délek (Z2 do 75 min, dlouhá do 2 h, kvalita 1 h) se víc zátěže nevejde" : "do délek tréninků a volných dní se víc zátěže nevejde");
+  if (short.length) why.push(weeks[0]!.target.shortDays ? "do zimních délek (Z2 i dlouhá do 2 h, kvalita 1 h) se víc zátěže nevejde" : "do délek tréninků a volných dní se víc zátěže nevejde");
   if (!why.length) why.push("tréninky se do délek a volných dní víc nevejdou");
   const cur = weeks[weeks.length - 1]!.target;
   const settled = cur.limit == null && cur.load >= cur.need - 5;

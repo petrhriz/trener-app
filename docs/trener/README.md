@@ -21,7 +21,7 @@ kondice (`coach/target.ts`), únava, pravidla kontroly týdne (`coach/validate.t
 6. **Obsah** (jen tento a příští týden): kvalita z knihovny, Z2 a dlouhý ze zbylé zátěže, texty podle sportu.
 7. **Kontrola formy**: výhled forma po dnech; pod −30 (konec pásma „Optimální“ v intervals.icu) se ubírá.
 8. **Rozběhnutý týden** drží pondělní plán: vynechané se nedohání, co se odjelo navíc, se odečte (Z2 den, na který
-   nezbude zátěž, je volno), trénink navíc, po kterém by byl další den z plánu 4. za sebou, ten den zruší. Tvoje volba
+   nezbude zátěž, je volno), tvůj prodloužený trénink (délka, vlastní jízda) ubere ostatním dnům, trénink navíc, po kterém by byl další den z plánu 4. za sebou, ten den zruší. Tvoje volba
    zadaná během týdne platí i proti pondělnímu plánu. Dny z pondělí drží jeho zátěž (sazba za hodinu může mezi dny
    poskočit). Když tvoje volba (trénink, kvalita) pravidla poruší vždy, platí volba a pravidla hlídají ostatní dny.
 9. **Přizpůsobení**: ráno 🟡 → dnešek o stupeň lehčí a o čtvrtinu kratší (dlouhý → Z2 nejvýš strop Z2), 🔴 → volno; minulý týden hodně vynechaný →

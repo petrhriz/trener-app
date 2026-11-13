@@ -1118,7 +1118,7 @@ const RULES3 = `<ul class="rules3">
   <li><b>Přidávání</b> nejvýš +30 % proti obvyklým 4 týdnům, pak +15 % za týden. Každý 4. týden lehčí, o 40–50 % méně. <small>Friel 3:1</small></li>
   <li><b>Týden od pondělí.</b> Vynechané se nedohání, odjeté navíc se odečte od zbytku týdne.</li>
   <li><b>Kostra:</b> nejvýš 3 dny tréninku za sebou, kvalita ne den po kvalitě ani po dlouhém, dlouhý o víkendu.</li>
-  <li><b>Délky ze zátěže</b> podle sportu – změna sportu drží zátěž. Zima a Udržet v zimě: Z2 do 75 min, dlouhá do 2 h.</li>
+  <li><b>Délky ze zátěže</b> podle sportu – změna sportu drží zátěž. Zima a Udržet v zimě: Z2 i dlouhá do 2 h.</li>
   <li><b>Ráno:</b> 🟡 dnes bez kvality, 🔴 volno nebo Z1. Únava (forma pod −20, horší rána, VST pod normou) ubírá týden.</li>
   <li><b>Intenzita 80/20:</b> lehce = Z1–Z2, středně = Z3, intenzivně = Z4 a výš. <small>Seiler</small></li>
 </ul>`;

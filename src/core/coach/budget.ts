@@ -125,7 +125,7 @@ export interface WeekTarget {
   /** z čeho je lehčí týden / ladění: průměr zátěžových týdnů bloku, resp. poslední běžný týden před laděním */
   base: number | null;
   winter: boolean;
-  /** zimní krátké délky (Z2 75 min, dlouhá 2 h) – jen Zima a Udržování; Zlepšit v zimě trénuje normálně */
+  /** zimní krátké délky (Z2 i dlouhá 2 h) – jen Zima a Udržování; Zlepšit v zimě trénuje normálně */
   shortDays: boolean;
   /** zimní základ (jen Zima) */
   floor: number | null;

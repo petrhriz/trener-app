@@ -36,7 +36,7 @@ export function capsFor(o: { sport: PlanSport; role: Role; winter: boolean; long
   if (role === "long") return o.winter ? { min: 75, max: 120 } : { min: 90, max: Math.min(300, Math.max(120, Math.round(o.longest * 1.15))) };
   // Z2 den nikdy delší než strop dlouhého dne (u velmi dlouhých typických jízd by jinak „Z2“ přerostl dlouhý)
   const longMax = Math.min(300, Math.max(120, Math.round(o.longest * 1.15)));
-  return o.winter ? { min: 45, max: 75 } : { min: 45, max: Math.min(longMax, Math.max(90, Math.round(o.typical * 1.2))) };
+  return o.winter ? { min: 45, max: 120 } : { min: 45, max: Math.min(longMax, Math.max(90, Math.round(o.typical * 1.2))) };
 }
 
 const round = (sport: PlanSport, m: number) => (sport === "run" ? Math.round(m / 5) * 5 : Math.round(m / 15) * 15);

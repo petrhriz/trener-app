@@ -433,7 +433,7 @@ function goalsView(ctx: CtxT, plan: Awaited<ReturnType<typeof planFor>>) {
   return [
     g("zvyseni", "Zlepšit", "Zátěž týdne se počítá z kondice tak, aby rostla o 3 body týdně (nad kondicí 45 o 4) – bezpečná hrana podle TrainingPeaks a Friela. 3 týdny přidává, 4. je lehčí (o 40–50 % méně). Kvality těžknou, když je zvládáš."),
     g("udrzeni", "Udržet", "Zátěž týdne = 7 × kondice, tedy tolik, aby kondice zůstala. Kvality zůstávají stejně těžké, jen se střídají."),
-    g("pokles", "Zima", "Mimo sezónu: kondice klesá k zimnímu základu (vrchol sezóny − 42,5 %, trenéři uvádějí 30–40 %), hned po sezóně rychleji, u základu se zastaví a drží. Zimní délky: Z2 do 75 min, dlouhá do 2 h. Jedna lehčí kvalita týdně drží intenzitu."),
+    g("pokles", "Zima", "Mimo sezónu: kondice klesá k zimnímu základu (vrchol sezóny − 42,5 %, trenéři uvádějí 30–40 %), hned po sezóně rychleji, u základu se zastaví a drží. Zimní délky: Z2 i dlouhá do 2 h. Jedna lehčí kvalita týdně drží intenzitu."),
     g("zavod", "Závod", `Příprava na ${ctx.s.goal_name || "závod"}${ctx.s.goal_date ? ` (${dm(ctx.s.goal_date)})` : ""}: Základ, pak Rozvoj a posledních 10–14 dní ladění.`),
   ];
 }
