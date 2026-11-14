@@ -116,15 +116,15 @@ const IC = {
   rovne: ["", '<path d="M4 12h15M13 6l6 6-6 6"/>'],
   dolu: ["", '<path d="M12 4v15M6 13l6 6 6-6"/>'],
   zatez: ["--acc", '<path class="f" d="M12 21a6.5 6.5 0 0 0 6.5-6.5c0-4.5-4-6.5-4.5-11-2.5 2-4 4.5-3.5 7.5-1.5-.5-2.5-2-2.5-3.5-1.5 1.5-2.5 4-2.5 7A6.5 6.5 0 0 0 12 21z"/>'],
-  interval: ["", '<circle class="f" cx="12" cy="13.5" r="7.5"/><path d="M12 13.5V9.5M10 2.5h4M12 2.5V6M18.5 6.5l1.5-1.5"/>'],
+  interval: ["--z7", '<circle class="f" cx="12" cy="13.5" r="7.5"/><path d="M12 13.5V9.5M10 2.5h4M12 2.5V6M18.5 6.5l1.5-1.5"/>'],
   rychlost: ["--z2", '<path d="M2.5 8h5M1.5 12h4.5M2.5 16h5"/><path class="f" d="M9.5 6h5.5l5.5 6-5.5 6H9.5l5.5-6z"/>'],
   pomer: ["--z3", '<path d="M12 3.5v17M7.5 20.5h9M4.5 6.5h15"/><path class="f" d="M2.5 13.5 4.5 7l2 6.5a2 2 0 0 1-4 0zM17.5 13.5 19.5 7l2 6.5a2 2 0 0 1-4 0z"/>'],
-  graf: ["", '<path d="M4 20.5h16"/><rect class="f" x="5" y="11" width="3.2" height="9.5" rx="1"/><rect class="f" x="10.4" y="6" width="3.2" height="14.5" rx="1"/><rect class="f" x="15.8" y="13.5" width="3.2" height="7" rx="1"/>'],
-  intenzita: ["", '<path d="M5 4v16M12 4v16M19 4v16"/><rect class="f" x="3" y="12" width="4" height="3" rx="1"/><rect class="f" x="10" y="7" width="4" height="3" rx="1"/><rect class="f" x="17" y="14" width="4" height="3" rx="1"/>'],
-  kadence: ["", '<circle class="f" cx="12" cy="12" r="3"/><path d="M12 12l4.5 5.5M16.5 17.5H19M19.5 9.5A8 8 0 0 0 5.2 7.5M4.5 14.5a8 8 0 0 0 5 5.1M5 4v3.5h3.5"/>'],
-  delka: ["", '<rect class="f" x="2.5" y="8" width="19" height="8" rx="1.5"/><path d="M6.5 8v3M10.5 8v4.5M14.5 8v3M18.5 8v4.5"/>'],
-  chodidlo: ["", '<path class="f" d="M10 3c2.4 0 3.8 2.4 3.8 5.6 0 3-1.2 5.4-3.7 5.4S6.2 11.6 6.2 8.6C6.2 5.4 7.6 3 10 3z"/><path class="f" d="M7.8 15.6h4.6v1.4a2.3 2.3 0 0 1-4.6 0z"/><path d="M3 21h18"/>'],
-  oscilace: ["", '<path d="M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4"/>'],
+  graf: ["--z2", '<path d="M4 20.5h16"/><rect class="f" x="5" y="11" width="3.2" height="9.5" rx="1"/><rect class="f" x="10.4" y="6" width="3.2" height="14.5" rx="1"/><rect class="f" x="15.8" y="13.5" width="3.2" height="7" rx="1"/>'],
+  intenzita: ["--acc", '<path d="M5 4v16M12 4v16M19 4v16"/><rect class="f" x="3" y="12" width="4" height="3" rx="1"/><rect class="f" x="10" y="7" width="4" height="3" rx="1"/><rect class="f" x="17" y="14" width="4" height="3" rx="1"/>'],
+  kadence: ["--z3", '<circle class="f" cx="12" cy="12" r="3"/><path d="M12 12l4.5 5.5M16.5 17.5H19M19.5 9.5A8 8 0 0 0 5.2 7.5M4.5 14.5a8 8 0 0 0 5 5.1M5 4v3.5h3.5"/>'],
+  delka: ["--z4", '<rect class="f" x="2.5" y="8" width="19" height="8" rx="1.5"/><path d="M6.5 8v3M10.5 8v4.5M14.5 8v3M18.5 8v4.5"/>'],
+  chodidlo: ["--z4", '<path class="f" d="M10 3c2.4 0 3.8 2.4 3.8 5.6 0 3-1.2 5.4-3.7 5.4S6.2 11.6 6.2 8.6C6.2 5.4 7.6 3 10 3z"/><path class="f" d="M7.8 15.6h4.6v1.4a2.3 2.3 0 0 1-4.6 0z"/><path d="M3 21h18"/>'],
+  oscilace: ["--m-resp", '<path d="M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4"/>'],
   vybuch: ["--z6", '<path class="f" d="M12 2.5l2 5.2 5.4-1.6-2.8 4.9 4.9 2.8-5.5.9.9 5.5-4.9-3-3.1 4.6-.9-5.5-5.5.5 3.9-3.9L4 7.3l5.5 1.2z"/>'],
   trasa: ["--z2", '<circle class="f" cx="6" cy="18" r="2.2"/><circle class="f" cx="18" cy="6" r="2.2"/><path d="M8.2 18h7.3a3 3 0 0 0 0-6h-7a3 3 0 0 1 0-6h7.3"/>'],
   mapa: ["--z2", '<path class="f" d="M3 6.5 9 4l6 2.5L21 4v13.5L15 20l-6-2.5L3 20z"/><path d="M9 4v13.5M15 6.5V20"/>'],
@@ -168,7 +168,7 @@ const IC = {
   dest: ["--z2", '<path class="f" d="M7 15a4 4 0 0 1-.6-8A5.5 5.5 0 0 1 17 7.5a3.8 3.8 0 0 1 .5 7.5z"/><path d="M8 18l-1 2.5M12 18l-1 2.5M16 18l-1 2.5"/>'],
   vitr: ["", '<path d="M3 8h11a3 3 0 1 0-3-3M3 12h16a3 3 0 1 1-3 3M3 16h8"/>'],
   slunce: ["--z4", '<circle class="f" cx="12" cy="12" r="4.2"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>'],
-  cas: ["", '<circle class="f" cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>'],
+  cas: ["--z7", '<circle class="f" cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>'],
   historie: ["", '<path d="M3.5 12a8.5 8.5 0 1 0 2.5-6L3.5 8.5M3.5 4v4.5H8M12 7.5V12l3 2"/>'],
   klic: ["--warn", '<circle class="f" cx="8" cy="15" r="4.5"/><path d="M11.2 11.8 20 3M17 6l2.5 2.5M14.5 8.5l2 2"/>'],
   log: ["", '<path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>'],
@@ -3608,7 +3608,7 @@ async function pagePocasi(el, keep = false) {
   const modelName = d.model === "aladin" ? "ALADIN (ČHMÚ, 1 km)" : "Open-Meteo (mix modelů)";
   el.innerHTML = `<div class="head"><div><a class="back" href="#/prehled" data-back>← Zpět</a><h1>Počasí</h1><div class="sub">${esc(d.place || "")} · ${modelName} · aktualizováno ${updTxt}</div></div></div>
   <div class="wxbar">
-    ${(d.places || []).length > 1 ? `<div class="ioseg wxloc" role="tablist" aria-label="Místo">${d.places.map((p) => `<button class="${d.loc === p.key ? "on" : ""}" data-wloc="${p.key}" role="tab" aria-selected="${d.loc === p.key}" title="${esc(p.name)}">${ic(p.key === "home" ? "domov" : "hory")} ${esc(p.name)}</button>`).join("")}</div>` : ""}
+    ${(d.places || []).length > 1 ? `<div class="ioseg ico wxloc" role="tablist" aria-label="Místo">${d.places.map((p) => `<button class="${d.loc === p.key ? "on" : ""}" data-wloc="${p.key}" role="tab" aria-selected="${d.loc === p.key}" title="${esc(p.name)}">${ic(p.key === "home" ? "domov" : "hory")}</button>`).join("")}</div>` : ""}
     <div class="ioseg ico" role="tablist" aria-label="Předpověď">${[["best", ic("svet"), "Mix modelů – Open-Meteo vybere nejlepší model (ICON, ECMWF, GFS…), víc dní"], ["aladin", ic("presne"), "ALADIN 1 km – model ČHMÚ, nejpřesnější pro Česko, ~2,5 dne"]].map(([k, i, t]) => `<button class="${d.model === k ? "on" : ""}" data-wmod="${k}" role="tab" aria-selected="${d.model === k}" title="${t}" aria-label="${t}">${i}</button>`).join("")}</div>
     <div class="ioseg days">${[0, 1, 2].map((k) => `<button data-wd="${k}">${dname(k)}</button>`).join("")}</div>
   </div>

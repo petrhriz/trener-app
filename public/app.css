@@ -2098,11 +2098,9 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 .mrows > button:hover { background: var(--card2); }
 
 /* ===== Počasí: přepínač míst s názvy ===== */
-.wxbar { flex-wrap: wrap !important; }
-.wxbar .wxloc { flex: 1 1 100%; display: flex; }
-.wxbar .wxloc button { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .wxbar .ioseg.days { flex: 1 1 auto; }
 .wxbar .ioseg.days button { flex: 1 1 0; }
+.wxbar .ioseg.ico button { font-size: 16px; }
 
 /* ===== Nastavení: záložky, skupiny v kartách, pole s popisem nahoře, přepínače ===== */
 .ntabs { display: flex; margin: -4px 0 14px; max-width: 560px; }
@@ -2166,3 +2164,9 @@ svg.i .fs { fill: currentColor; stroke: none; }
 /* semafor zotavení jako tečka */
 .sdot { display: inline-block; width: .7em; height: .7em; border-radius: 50%; background: var(--muted); vertical-align: .02em; margin: 0 .1em; }
 .sdot.good { background: var(--ok); } .sdot.warn { background: var(--warn); } .sdot.bad { background: var(--bad); }
+
+/* ikona na vybraném (oranžovém) tlačítku: bílá, ať je vidět */
+.seg button.on .ic, .ioseg button.on .ic, .filters button.on .ic, .btn.pri .ic { --c: #fff; }
+/* ikona si drží barvu skupiny a řádkové zobrazení i uvnitř popisků, které barví / blokují všechny span (např. údaje aktivity) */
+span.ic { display: inline-flex !important; color: var(--c) !important; overflow: visible !important; white-space: normal !important; }
+.abasics span.ic { margin-right: .3em; font-size: 13.5px; }
