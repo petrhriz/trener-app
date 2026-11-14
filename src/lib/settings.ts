@@ -32,7 +32,7 @@ export interface Settings {
   floor_strength: boolean;
   /** místo pro počasí na Přehledu */
   place_name: string;
-  /** osobní hranice počasí: pocitově °C – pod „cold“ zima, nad „hot“ vedro, okno co nejblíž „ideal“ */
+  /** osobní hranice počasí: teplota vzduchu °C – pod „cold“ zima, nad „hot“ vedro, okno co nejblíž „ideal“ */
   ride_temps: { cold: number; hot: number; ideal: number };
   /** souřadnice místa pro počasí (dohledané z place_name); null = výchozí z wrangler.jsonc */
   place_lat: number | null;

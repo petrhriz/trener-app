@@ -52,6 +52,9 @@ api.use("*", async (c, next) => {
   const admin = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (c.env.ADMIN_TOKEN && admin && admin === c.env.ADMIN_TOKEN) { c.set("uid", Number(c.req.header("x-uid") ?? OWNER_ID) || OWNER_ID); return next(); }
   // 1) session (jméno a heslo nebo jednorázový odkaz), 2) Cloudflare Access JWT (pokud je nastavené)
+  // vlastník prohlíží jiný účet (src/index.ts nastaví __viewAs jen po kontrole přihlášení vlastníka)
+  const viewAs = (c.env as { __viewAs?: number }).__viewAs;
+  if (viewAs) { c.set("uid", viewAs); return next(); }
   const uid = await sessionUser(c.env, c.req.header("cookie"));
   if (uid != null) { c.set("uid", uid); return next(); }
   const v = await verifyAccess(c.env, c.req.header("cf-access-jwt-assertion"));

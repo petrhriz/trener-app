@@ -1633,38 +1633,38 @@ body:has(.sheet.on) .shell, body:has(> .modal) .shell { filter: blur(3px) bright
 /* ===== kroužky na Přehledu: Záře (světlo kolem kroužku) ===== */
 .gr-p { font-size: 16px; font-weight: 750; fill: var(--fg); fill-opacity: .55; }
 /* tři stejně velké kroužky, zarovnané na střed */
-html .dn-rings { align-items: center !important; }
-html .dn-rings .gring { --rs: 98px !important; }
-@media (max-width: 380px) { html .dn-rings .gring { --rs: 88px !important; } }
+html:root .dn-rings { align-items: center !important; }
+html:root .dn-rings .gring { --rs: 98px !important; }
+@media (max-width: 380px) { html:root .dn-rings .gring { --rs: 88px !important; } }
 /* Záře: měkké světlo jen kousek za okrajem kroužku (žádné rozmazané skvrny) */
 .dn-rings .gring { position: relative; }
 .dn-rings .gring svg { position: relative; z-index: 1; }
-html .dn-rings .gring::before { content: ""; position: absolute; left: 50%; top: calc(var(--rs) / 2); width: calc(var(--rs) * 1.32); height: calc(var(--rs) * 1.32); transform: translate(-50%, -50%); border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--gc) 20%, transparent) 55%, color-mix(in srgb, var(--gc) 7%, transparent) 78%, transparent); pointer-events: none; z-index: 0; }
-html .dn-rings .gr-track { stroke: color-mix(in srgb, var(--gc) 10%, var(--card2)); }
-@media (prefers-color-scheme: dark) { html:not([data-theme="light"]) .dn-rings .gring::before { background: radial-gradient(closest-side, color-mix(in srgb, var(--gc) 13%, transparent) 58%, color-mix(in srgb, var(--gc) 4%, transparent) 80%, transparent); } }
-html[data-theme="dark"] .dn-rings .gring::before { background: radial-gradient(closest-side, color-mix(in srgb, var(--gc) 13%, transparent) 58%, color-mix(in srgb, var(--gc) 4%, transparent) 80%, transparent); }
+html:root .dn-rings .gring::before { content: ""; position: absolute; left: 50%; top: calc(var(--rs) / 2); width: calc(var(--rs) * 1.32); height: calc(var(--rs) * 1.32); transform: translate(-50%, -50%); border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--gc) 20%, transparent) 55%, color-mix(in srgb, var(--gc) 7%, transparent) 78%, transparent); pointer-events: none; z-index: 0; }
+html:root .dn-rings .gr-track { stroke: color-mix(in srgb, var(--gc) 10%, var(--card2)); }
+@media (prefers-color-scheme: dark) { html:root:not([data-theme="light"]) .dn-rings .gring::before { background: radial-gradient(closest-side, color-mix(in srgb, var(--gc) 13%, transparent) 58%, color-mix(in srgb, var(--gc) 4%, transparent) 80%, transparent); } }
+html:root[data-theme="dark"] .dn-rings .gring::before { background: radial-gradient(closest-side, color-mix(in srgb, var(--gc) 13%, transparent) 58%, color-mix(in srgb, var(--gc) 4%, transparent) 80%, transparent); }
 /* Záře v2: skutečná svatozář kolem kroužku – nejsilnější u okraje kroužku, ven slábne; uvnitř jen nádech */
-html .dn-rings .gring::before { width: calc(var(--rs) * 1.75) !important; height: calc(var(--rs) * 1.75) !important; filter: blur(4px);
+html:root .dn-rings .gring::before { width: calc(var(--rs) * 1.75) !important; height: calc(var(--rs) * 1.75) !important; filter: blur(4px);
   background: radial-gradient(closest-side, color-mix(in srgb, var(--gc) 12%, transparent) 0%, color-mix(in srgb, var(--gc) 16%, transparent) 42%, color-mix(in srgb, var(--gc) 34%, transparent) 56%, color-mix(in srgb, var(--gc) 14%, transparent) 72%, transparent 100%) !important; }
-html .card.dnes { overflow: visible; }
-html .dn-rings { position: relative; }
-@media (prefers-color-scheme: dark) { html:not([data-theme="light"]) .dn-rings .gring::before {
+html:root .card.dnes { overflow: visible; }
+html:root .dn-rings { position: relative; }
+@media (prefers-color-scheme: dark) { html:root:not([data-theme="light"]) .dn-rings .gring::before {
   background: radial-gradient(closest-side, color-mix(in srgb, var(--gc) 8%, transparent) 0%, color-mix(in srgb, var(--gc) 10%, transparent) 42%, color-mix(in srgb, var(--gc) 24%, transparent) 56%, color-mix(in srgb, var(--gc) 9%, transparent) 72%, transparent 100%) !important; } }
-html[data-theme="dark"] .dn-rings .gring::before {
+html:root[data-theme="dark"] .dn-rings .gring::before {
   background: radial-gradient(closest-side, color-mix(in srgb, var(--gc) 8%, transparent) 0%, color-mix(in srgb, var(--gc) 10%, transparent) 42%, color-mix(in srgb, var(--gc) 24%, transparent) 56%, color-mix(in srgb, var(--gc) 9%, transparent) 72%, transparent 100%) !important; }
 /* Záře v3: jen prstenec kolem kroužku – od kroužku ven i dovnitř postupně mizí do pozadí, střed s číslem zůstává čistý.
    Kroužek leží v ::before (1,75 × velikost) na ~51 % poloměru → maximum 46–56 %, střed do 30 % průhledný. */
-html .dn-rings .gring::before { filter: blur(3px);
+html:root .dn-rings .gring::before { filter: blur(3px);
   background: radial-gradient(closest-side, transparent 0%, transparent 30%, color-mix(in srgb, var(--gc) 26%, transparent) 46%, color-mix(in srgb, var(--gc) 30%, transparent) 54%, color-mix(in srgb, var(--gc) 12%, transparent) 70%, transparent 88%) !important; }
 /* tmavý režim: světlejší odstín barvy kroužku (tmavě fialová na tmavém pozadí skoro není vidět) a o něco silnější */
-@media (prefers-color-scheme: dark) { html:not([data-theme="light"]) .dn-rings .gring::before {
+@media (prefers-color-scheme: dark) { html:root:not([data-theme="light"]) .dn-rings .gring::before {
   background: radial-gradient(closest-side, transparent 0%, transparent 30%, color-mix(in srgb, var(--gc2) 24%, transparent) 46%, color-mix(in srgb, var(--gc2) 30%, transparent) 54%, color-mix(in srgb, var(--gc2) 11%, transparent) 70%, transparent 88%) !important; } }
-html[data-theme="dark"] .dn-rings .gring::before {
+html:root[data-theme="dark"] .dn-rings .gring::before {
   background: radial-gradient(closest-side, transparent 0%, transparent 30%, color-mix(in srgb, var(--gc2) 24%, transparent) 46%, color-mix(in srgb, var(--gc2) 30%, transparent) 54%, color-mix(in srgb, var(--gc2) 11%, transparent) 70%, transparent 88%) !important; }
 /* „%“: stejná barva jako číslo, zhruba 0,6 jeho velikosti, těsně za ním → „71%“ působí opticky uprostřed */
 .gr-p { font-size: 18px !important; font-weight: 700 !important; fill: var(--fg) !important; fill-opacity: 1 !important; }
 /* Záře v3.1: o kousek slabší */
-html .dn-rings .gring::before { opacity: .85; }
+html:root .dn-rings .gring::before { opacity: .85; }
 /* AI shrnutí na stránce */
 .ainote { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--acc) 7%, var(--card2)); font-size: 14px; line-height: 1.45; display: flex; flex-direction: column; gap: 4px; }
 .ainote.busy .an-t { color: var(--muted); }
@@ -2148,3 +2148,8 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
   .nrow3 { gap: 8px; }
 }
 @media (prefers-reduced-motion: reduce) { .ntg input[type=checkbox], .ntg input[type=checkbox]::after { transition: none; } }
+
+/* ===== vlastník prohlíží cizí účet: lišta nahoře ===== */
+.viewbar { position: sticky; top: 0; z-index: 40; display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; padding: calc(6px + env(safe-area-inset-top)) 16px 6px; background: var(--acc); color: #fff; font-size: 13.5px; }
+.viewbar .btn { background: rgba(255, 255, 255, .2); border-color: transparent; color: #fff; }
+.ubtns { display: inline-flex; gap: 6px; }

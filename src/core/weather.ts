@@ -23,7 +23,7 @@ export interface DayWeather {
   gusty: boolean;
   frost: boolean;
   bad: boolean;
-  /** hodiny 7–20 (v létě od rozednění, nejdřív 4 h): zelená = srážky ≤ 30 %, nárazy ≤ 40 km/h, pocitově mezi tvými hranicemi (výchozí 3–30 °C), za světla */
+  /** hodiny 7–20 (v létě od rozednění, nejdřív 4 h): zelená = srážky ≤ 30 %, nárazy ≤ 40 km/h, teplota vzduchu mezi tvými hranicemi (výchozí 3–30 °C), za světla */
   hours: { h: number; green: boolean; kind?: HourKind; why?: string; temp: number | null; prob: number | null; gust: number | null; feels: number | null; precip: number | null; code?: number | null }[];
   window: { from: number; to: number } | null;
   text: string;
@@ -31,7 +31,11 @@ export interface DayWeather {
   code: number | null;
 }
 
-/** Osobní hranice počasí (Nastavení): pocitová teplota, kdy ještě / už jezdíš, a ideální teplota pro okno. */
+/**
+ * Osobní hranice počasí (Nastavení): teplota vzduchu, kdy ještě / už jezdíš, a ideální teplota pro okno.
+ * Teplota vzduchu, ne pocitová: pocitová se počítá pro stojícího člověka hlavně z větru – na kole ofukuje vlastní
+ * rychlost a vítr se hlídá zvlášť (nárazy), takže by se počítal dvakrát.
+ */
 export interface RideTemps {
   cold: number;
   hot: number;
@@ -64,20 +68,20 @@ const DAY_TO = 20;
 
 const hourOf = (t: string) => +t.slice(11, 13);
 
-export function isGreen(h: Pick<Hour, "precip_prob" | "gust" | "feels">, t: RideTemps = DEFAULT_TEMPS): boolean {
-  return (h.precip_prob ?? 100) <= 30 && (h.gust ?? 99) <= 40 && (h.feels ?? -99) >= t.cold && (h.feels ?? 99) <= t.hot;
+export function isGreen(h: Pick<Hour, "precip_prob" | "gust" | "temp">, t: RideTemps = DEFAULT_TEMPS): boolean {
+  return (h.precip_prob ?? 100) <= 30 && (h.gust ?? 99) <= 40 && (h.temp ?? -99) >= t.cold && (h.temp ?? 99) <= t.hot;
 }
 
 /**
  * Druh hodiny. Navíc „chladno“ relativně ke dni: když den vystoupá o 8+ °C nad danou hodinu a je teplý (≥ 18 °C),
  * je ranní / večerní hodina sice jezditelná, ale oblečení na začátek pak nesedí (ráno nabalený, v 10 h vedro).
  */
-export function hourKind(h: Pick<Hour, "precip_prob" | "gust" | "feels">, dayMaxFeels: number | null, t: RideTemps = DEFAULT_TEMPS): { kind: HourKind; why: string } {
+export function hourKind(h: Pick<Hour, "precip_prob" | "gust" | "temp">, dayMax: number | null, t: RideTemps = DEFAULT_TEMPS): { kind: HourKind; why: string } {
   if ((h.precip_prob ?? 100) > 30) return { kind: "rain", why: `déšť ${num(h.precip_prob)} %` };
   if ((h.gust ?? 99) > 40) return { kind: "wind", why: `nárazy ${num(h.gust)} km/h` };
-  if ((h.feels ?? -99) < t.cold) return { kind: "cold", why: `pocitově ${num(h.feels)} °C (pod ${num(t.cold)} °C)` };
-  if ((h.feels ?? 99) > t.hot) return { kind: "hot", why: `pocitově ${num(h.feels)} °C (nad ${num(t.hot)} °C)` };
-  if (dayMaxFeels != null && h.feels != null && dayMaxFeels >= t.ideal && dayMaxFeels - h.feels >= 8) return { kind: "cool", why: `chladno ${num(h.feels)} °C, přes den až ${num(dayMaxFeels)} °C` };
+  if ((h.temp ?? -99) < t.cold) return { kind: "cold", why: `${num(h.temp)} °C (pod ${num(t.cold)} °C)` };
+  if ((h.temp ?? 99) > t.hot) return { kind: "hot", why: `${num(h.temp)} °C (nad ${num(t.hot)} °C)` };
+  if (dayMax != null && h.temp != null && dayMax >= t.ideal && dayMax - h.temp >= 8) return { kind: "cool", why: `chladno ${num(h.temp)} °C, přes den až ${num(dayMax)} °C` };
   return { kind: "ok", why: "vhodné" };
 }
 
@@ -100,13 +104,13 @@ export function dayWeather(all: Hour[], date: string, t: RideTemps = DEFAULT_TEM
   const frost = nightTemps.length > 0 && Math.min(...nightTemps) < 0;
   const rain = rainProb >= 50 && rainSum >= 1;
   const gusty = gustMax > 40;
-  const feelsMax = Math.max(...vals(day, "feels"));
+  const dayMax = Math.max(...vals(day, "temp"));
   const hours = day.map((h) => {
     const dark = darkWhy(hourOf(h.time), sun);
     return {
       h: hourOf(h.time),
       green: !dark && isGreen(h, t),
-      ...(dark ? { kind: "dark" as HourKind, why: dark } : hourKind(h, isFinite(feelsMax) ? feelsMax : null, t)),
+      ...(dark ? { kind: "dark" as HourKind, why: dark } : hourKind(h, isFinite(dayMax) ? dayMax : null, t)),
       temp: h.temp,
       prob: h.precip_prob,
       gust: h.gust,
@@ -126,7 +130,7 @@ export function dayWeather(all: Hour[], date: string, t: RideTemps = DEFAULT_TEM
 }
 
 /**
- * Nejlepší okno 3 po sobě jdoucích zelených hodin: pocitová teplota co nejblíž tvé ideální (ne nejtepleji –
+ * Nejlepší okno 3 po sobě jdoucích zelených hodin: teplota vzduchu co nejblíž tvé ideální (ne nejtepleji –
  * v létě by vyšlo poledne ve vedru), malý rozdíl teplot během jízdy (jedno oblečení), málo srážek a větru.
  */
 export function bestWindow(hours: DayWeather["hours"], t: RideTemps = DEFAULT_TEMPS): { from: number; to: number } | null {
@@ -135,9 +139,9 @@ export function bestWindow(hours: DayWeather["hours"], t: RideTemps = DEFAULT_TE
     const w = hours.slice(i, i + 3);
     if (!w.every((x) => x.green)) continue;
     if (w[2]!.h - w[0]!.h !== 2) continue;
-    const fs = w.map((x) => x.feels ?? t.ideal);
-    const swing = Math.max(...fs) - Math.min(...fs);
-    const score = w.reduce((s, x) => s - Math.abs((x.feels ?? t.ideal) - t.ideal) - (x.prob ?? 0) / 10 - (x.gust ?? 0) / 10 - (x.kind === "cool" ? 4 : 0), 0) - swing;
+    const ts = w.map((x) => x.temp ?? t.ideal);
+    const swing = Math.max(...ts) - Math.min(...ts);
+    const score = w.reduce((s, x) => s - Math.abs((x.temp ?? t.ideal) - t.ideal) - (x.prob ?? 0) / 10 - (x.gust ?? 0) / 10 - (x.kind === "cool" ? 4 : 0), 0) - swing;
     if (!best || score > best.score) best = { from: w[0]!.h, to: w[2]!.h + 1, score };
   }
   return best ? { from: best.from, to: best.to } : null;

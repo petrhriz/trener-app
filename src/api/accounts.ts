@@ -99,7 +99,7 @@ export const accountsApi = new Hono<{ Bindings: Env; Variables: { uid: number } 
 accountsApi.get("/me", async (c) => {
   const uid = c.get("uid");
   const u = await getUser(baseOf(c.env), uid);
-  return c.json({ uid, role: u?.role ?? (uid === OWNER_ID ? "owner" : "user"), name: u?.name ?? null, username: u?.username ?? null, hasPassword: !!(await passOf(baseOf(c.env), uid)), multiUser: true });
+  return c.json({ uid, role: u?.role ?? (uid === OWNER_ID ? "owner" : "user"), name: u?.name ?? null, username: u?.username ?? null, hasPassword: !!(await passOf(baseOf(c.env), uid)), multiUser: true, viewing: !!(c.env as { __viewAs?: number }).__viewAs });
 });
 
 /** Nastavit / změnit své přihlašovací jméno a heslo. */

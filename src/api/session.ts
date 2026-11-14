@@ -117,3 +117,12 @@ export async function sessionInfo(env: Env, cookieHeader: string | undefined): P
   if (!ro && (await sessVer(env, uid).catch(() => -1)) !== ver) return null;
   return { uid, ro };
 }
+
+const VIEW_AS_RE = /(?:^|;\s*)kad_as=(\d+)/;
+/** uid z cookie „prohlížím účet“ – bere se jen u plného (ne náhledového) přihlášení vlastníka */
+export function viewAsOf(si: { uid: number; ro: boolean } | null, cookie: string | undefined): number | null {
+  if (!si || si.ro || si.uid !== OWNER_ID) return null;
+  const m = VIEW_AS_RE.exec(cookie ?? "");
+  const id = m ? Number(m[1]) : null;
+  return id && id !== OWNER_ID ? id : null;
+}

@@ -589,13 +589,13 @@ function zonesHtml(rows) {
 }
 
 // ---------- počasí ----------
-/** Stejné pravidlo jako server (okno na jízdu): vhodné = srážky ≤ 30 %, nárazy ≤ 40 km/h, pocitově ≥ 3 °C. */
+/** Stejné pravidlo jako server (okno na jízdu): vhodné = srážky ≤ 30 %, nárazy ≤ 40 km/h, teplota vzduchu ≥ 3 °C. */
 function hourKind(h) {
   if (h.kind) return [h.kind, h.why || ""];
   if (h.green) return ["ok", "vhodné"];
   if ((h.prob ?? 100) > 30) return ["rain", "déšť " + num(h.prob) + " %"];
   if ((h.gust ?? 99) > 40) return ["wind", "nárazy " + num(h.gust) + " km/h"];
-  if ((h.feels ?? -99) < 3) return ["cold", "pocitově " + num(h.feels) + " °C"];
+  if ((h.temp ?? -99) < 3) return ["cold", num(h.temp) + " °C"];
   return ["ok", "vhodné"];
 }
 function weatherIcon(w) {
@@ -901,6 +901,8 @@ function tomorrowHtml(t) {
   if (x.gust != null) w.push(`<span>${TI.wind}${num(x.gust)} km/h</span>`);
   return `<div class="tmw"><span class="sub">Zítra:</span> ${what}</div>${w.length ? `<div class="tmw-w">${w.join("")}</div>` : ""}`;
 }
+/** „před 14 min“ / „před 2 h“ (oranžově, když data z hodinek nepřišla přes 2 h) */
+const syncAgo = (t) => { const m = Math.max(0, Math.round((Date.now() - t) / 60000)); const txt = m < 60 ? `před ${m} min` : m < 48 * 60 ? `před ${Math.round(m / 60)} h` : `před ${Math.round(m / 1440)} dny`; return m > 120 ? `<span class="warn">${txt}</span>` : txt; };
 let viewDate = null; // vybraný den na Přehledu a v Zotavení (null = dnes)
 async function pagePrehled(el) {
   const d = await api("overview" + (viewDate ? `?date=${viewDate}` : ""));
@@ -920,7 +922,7 @@ async function pagePrehled(el) {
   const todayLine = !d.isToday
     ? (pastActs.length ? pastActs.map((x) => `<a class="today-act" href="#/aktivita/${x.id}"><span class="ico">${SPORT_ICON[x.sport] || "🏅"}</span><div><b>${esc(x.name || SPORT_NAME[x.sport] || "aktivita")}</b><div class="sub">${dur(x.moving_s || 0)}${x.km ? ` · ${num(x.km, 1)} km` : ""}${x.load != null ? ` · zátěž ${num(x.load)}` : ""}</div></div><span class="go">→</span></a>`).join("") : `<div class="today-act"><span class="ico">🛋️</span><div><b>Volno</b></div></div>`)
     : t.done && t.done.length
-    ? t.done.map((x) => { const L = d.lastActivity && d.lastActivity.id === x.id ? d.lastActivity : null; return `<a class="today-act" href="#/aktivita/${x.id}"><span class="ico">✅</span><div><b>${esc(x.name)}</b><div class="sub">${[L && L.km ? `${num(L.km, 1)} km` : "", L ? `${hU(L.moving_s)[0]} ${hU(L.moving_s)[1]}` : "", L && L.np ? `${num(L.np)} W` : "", x.load != null ? `zátěž ${num(x.load)}` : "", L && L.plan ? `plán ${L.compliance ? `${num(L.compliance)} %` : "✓"}` : ""].filter(Boolean).join(" · ")}</div></div><span class="go">→</span></a>`; }).join("")
+    ? t.done.map((x) => `<a class="today-act" href="#/aktivita/${x.id}"><span class="ico">✅</span><div><b>Dnes odtrénováno</b><div class="sub">${esc(x.name)}${x.load != null ? ` · zátěž ${num(x.load)}` : ""}</div></div><span class="go">→</span></a>`).join("")
     : t.name && !paused
       ? `<a class="today-act" href="#/trener"><span class="ico">${({ run: "🏃", xc_ski: XC_SVG, walk: "🚶" })[t.sport] || "🚴"}</span><div><b>${esc(t.name)}</b><div class="sub">${dur((t.durationMin || 0) * 60)}${t.targetText ? " · " + esc(t.targetText) : ""}</div></div><span class="go">→</span></a>`
       : `<div class="today-act"><span class="ico">🛋️</span><div><b>${paused ? "Plán stojí" : "Dnes volno"}</b>${tomorrowHtml(t)}</div></div>`;
@@ -961,15 +963,13 @@ async function pagePrehled(el) {
 
   // 5) poslední aktivita + počasí
   const la = d.lastActivity;
-  // dnešní aktivita je už nahoře v kartě Dnes
-  const laShown = la && d.isToday && (t.done || []).some((x) => x.id === la.id);
-  const laCard = laShown ? "" : la
+  const laCard = la
     ? card("c12 lacard", "Poslední aktivita", "", `<a class="lastact" href="#/aktivita/${la.id}"><span class="big-ico">${SPORT_ICON[la.sport] || "🏅"}</span><div><b>${esc(la.name || SPORT_NAME[la.sport])}</b><div class="sub">${dayDm(la.date)}${la.plan ? ` · plán ${la.compliance ? `${num(la.compliance)} %` : "✓"}` : ""}</div></div><span class="go">→</span></a>
       <div class="la2"><div class="la2-main">${la.km ? `<div><span>Vzdálenost</span><b>${num(la.km, 1)}<small> km</small></b></div>` : ""}<div><span>Čas</span><b>${hU(la.moving_s)[0]}<small> ${hU(la.moving_s)[1]}</small></b></div></div><div class="la2-sub">${[la.elev ? `<span><b>${num(la.elev)}</b> m</span>` : "", la.np ? `<span><b>${num(la.np)}</b> W</span>` : "", la.avg_hr ? `<span><b>${num(la.avg_hr)}</b> bpm</span>` : "", la.load != null ? `<span>zátěž <b>${num(la.load)}</b></span>` : ""].filter(Boolean).join("")}</div></div>`)
     : card("c12", "Poslední aktivita", "", `<div class="empty">Žádná aktivita za 90 dní.</div>`);
 
   const longDate = new Date(d.date + "T12:00").toLocaleDateString("cs-CZ", { weekday: "long", day: "numeric", month: "long" });
-  el.innerHTML = `<div class="head"><div><h1>${greeting(d.hour)}${d.name ? `, <span class="acc">${esc(d.name)}</span>` : ""}</h1><div class="sub"><span class="plong">${longDate[0].toUpperCase() + longDate.slice(1)}</span> · data ${d.lastSync ? new Date(d.lastSync).toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" }) : DASH}<span id="watchAt"></span></div></div></div>
+  el.innerHTML = `<div class="head"><div><h1>${greeting(d.hour)}${d.name ? `, <span class="acc">${esc(d.name)}</span>` : ""}</h1><div class="sub"><span class="plong">${longDate[0].toUpperCase() + longDate.slice(1)}</span>${d.isToday ? `<span id="watchAt">${d.lastSync ? ` · sync ${syncAgo(new Date(d.lastSync).getTime())}` : ""}</span>` : ""}</div></div></div>
   <div class="pbar">${dateNav(d.date, d.minDate, d.todayDate, "pnav", true)}${d.isToday ? weatherPill(d.weatherNow) : d.weatherDay ? weatherDayPill(d.weatherDay) : ""}${statusPill(d.status)}</div>
   <div class="grid prehled">${dnes}${sleepCard}${tiles}${bbCard}${hrCard}${laCard}</div>`;
   el.querySelector("#aiDay")?.addEventListener("click", () => openAiPanel({ title: `Den ${dayDm(d.date)}`,
@@ -982,7 +982,7 @@ async function pagePrehled(el) {
     // poslední data z hodinek = nejnovější bod tepu / Body Battery (hodinky je pošlou až po synchronizaci s telefonem)
     const lastT = Math.max(0, ...(day.hr || []).map((x) => x[0]), ...(day.bb || []).map((x) => x[0]));
     const wa = el.querySelector("#watchAt");
-    if (wa && lastT && d.isToday) { const m = Math.round((Date.now() - lastT) / 60000); wa.innerHTML = ` · hodinky <span class="${m > 120 ? "warn" : ""}">před ${m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`}</span>`; }
+    if (wa && lastT && d.isToday) wa.innerHTML = ` · sync ${syncAgo(lastT)}`;
   }).catch(() => {});
 }
 
@@ -1398,13 +1398,13 @@ async function pageTrener(el) {
     <form class="chatform" id="askF"><textarea rows="1" placeholder="Napiš trenérovi…"></textarea><button class="btn pri" type="submit">➤</button></form>${hist.length ? '<button class="btn sm" id="askClr" style="margin-top:6px">Smazat rozhovor</button>' : ""}`, 'data-tt="chat"');
   // --- cíl, počasí, zátěž po týdnech, intenzita ---
   const cur2 = d.goals.find((g) => g.key === d.goal);
-  const goalCard = card("t-goal", "🎯 Cíl tréninku", "", `<div class="seg">${d.goals.map((g) => `<button class="${d.goal === g.key ? "on" : ""}" data-goal="${g.key}">${esc(g.label)}</button>`).join("")}</div><p class="gtext">${esc(cur2 ? cur2.text : "")}</p>${proj}<p class="note" id="goalMsg"></p>${coLine}<p class="note">${co ? 'Hlavní sport a další sporty nastavíš v <a href="#/nastaveni">Nastavení → Trenér</a>. Dny ani hodiny se nenastavují – trénink přetáhni, kam se ti hodí.' : 'Počet tréninků plán volí sám podle cíle a zátěže týdne. Teplotní hranice pro jízdu venku změníš v <a href="#/nastaveni">Nastavení</a>.'}</p>`, 'data-tt="cil"');
+  const goalCard = card("t-goal", "🎯 Cíl tréninku", "", `<div class="seg">${d.goals.map((g) => `<button class="${d.goal === g.key ? "on" : ""}" data-goal="${g.key}">${esc(g.label)}</button>`).join("")}</div><p class="gtext">${esc(cur2 ? cur2.text : "")}</p>${proj}<p class="note" id="goalMsg"></p>${coLine}<p class="note">${co ? 'Hlavní sport a další sporty nastavíš v <a href="#/nastaveni">Nastavení → Trenér</a>. Dny ani hodiny se nenastavují – trénink přetáhni, kam se ti hodí.' : 'Počet tréninků plán volí sám podle cíle a zátěže týdne. Teplotní hranice pro jízdu venku změníš v <a href="#/nastaveni">Nastavení</a>.'}</p><div class="btns"><button class="btn sm" id="coachOff">Vypnout trenéra</button><span class="note">jezdíš podle sebe bez plánu (třeba v zimě), trenér jen hlídá zátěž na udržení</span></div>`, 'data-tt="cil"');
   const weatherCard = card("c12 t-weather", "🌤️ Počasí na trénink · 7 dní", "Open-Meteo", weatherList(p.days.map((x) => ({ label: x.isToday ? "Dnes" : dayDm(x.date), w: x.weather })).filter((x) => x.w)) + `<p style="margin-top:10px"><a class="btn sm" href="#/pocasi">Počasí po hodinách →</a></p>`, 'id="pocasi" data-tt="pocasi"');
   const loadsCard = card("t-loads", "📈 Zátěž po týdnech", "TSS / HRSS", weekLoadsHtml(d.weeks), 'data-tt="proc"');
   const intens = d.hasPower === false ? "" : card("t-int", "Průvodce intenzitou", "FTP", `<details><summary>Watty pro jednotlivé jednotky (FTP ${d.intensity.ftp} W)</summary><table class="t"><tr><th>Jednotka</th><th class="r">% FTP</th><th class="r">Watty</th></tr>${d.intensity.targets.map((x) => `<tr><td>${esc(x.name)}</td><td class="r">${x.pct[0]}–${x.pct[1]} %</td><td class="r">${x.w[0]}–${x.w[1]} W</td></tr>`).join("")}</table></details>`, 'data-tt="cil"');
   const helpCard = card("t-help", "📘 Jak s trenérem pracovat", "nápověda", COACH_HELP, 'data-tt="cil"');
   const TABS = [["tyden", "Týden"], ["proc", "Stav"], ["pocasi", "Počasí"], ["cil", "Cíl"]];
-  el.innerHTML = `<div class="head"><div><h1>Trenér</h1><div class="sub">cíl ${esc(d.goalLabel || "")}</div></div><button class="btn sm" id="coachOff" title="Jezdit podle sebe bez plánu – třeba v zimě">Vypnout trenéra</button></div>
+  el.innerHTML = `<div class="head"><div><h1>Trenér</h1><div class="sub">cíl ${esc(d.goalLabel || "")}</div></div></div>
   <div class="ioseg ttabs" role="tablist">${TABS.map(([k, l]) => `<button type="button" role="tab" data-ttab="${k}" class="${tTab === k ? "on" : ""}" aria-selected="${tTab === k}">${l}</button>`).join("")}</div>
   <div class="grid tgrid">
     <div class="c7 col tcol">${todayCard}${weekCard}${coachCalendar(d, co, ccOpen, ccDetail)}${planCard}</div>
@@ -3004,7 +3004,7 @@ async function pageNastaveni(el) {
     <label class="ntg"><span><b>„%“ u čísla v kroužku</b><small>na Přehledu (71 %)</small></span><input type="checkbox" id="ringPct" ${ringPref().pct ? "checked" : ""} role="switch"></label>`, tab("obecne"));
   const wxCard = card("c6", "🌤️ Počasí", "Open-Meteo", `<form data-sf class="nform">
     <div class="nrow2 wide">${nField("Domov", `<input name="place_name" value="${v("place_name")}" required>`, "Přehled, plán a okna na trénink")}${nField("Druhé místo", `<input name="place2_name" value="${v("place2_name")}" placeholder="např. Špindlerův Mlýn">`, "hory, chata – přepínač na stránce Počasí")}</div>
-    <div class="sl">Tvoje teploty na jízdu (pocitově)</div>
+    <div class="sl">Tvoje teploty na jízdu (teplota vzduchu)</div>
     <div class="nrow3">${nField("Jezdím od", `<input name="t_cold" type="number" min="-15" max="20" inputmode="numeric" value="${s.ride_temps?.cold ?? 3}"><i class="unit">°C</i>`)}${nField("Ideál", `<input name="t_ideal" type="number" min="0" max="30" inputmode="numeric" value="${s.ride_temps?.ideal ?? 18}"><i class="unit">°C</i>`)}${nField("Vedro nad", `<input name="t_hot" type="number" min="20" max="40" inputmode="numeric" value="${s.ride_temps?.hot ?? 30}"><i class="unit">°C</i>`)}</div>
     ${nSave()}</form>`, tab("obecne"));
   const goalCard = card("c6", "🎯 Cíl a výkon", "", `<form data-sf class="nform">
@@ -3376,12 +3376,14 @@ function joinPage(el, token) {
 async function accountCard(el) {
   const me = await api("me").catch(() => null);
   if (!me) return "";
+  // při prohlížení cizího účtu jeho heslo a uživatele měnit nejde
+  if (me.viewing) return card("c12", "👤 Účet", "prohlížíš", `<p>Prohlížíš účet <b>${esc(me.name || me.username || `#${me.uid}`)}</b>. Heslo, API klíče a uživatele tady měnit nejde.</p><div class="btns"><button class="btn pri" data-viewas="0">Zpět na můj účet</button></div>`);
   const users = me.role === "owner" ? await api("users").catch(() => []) : [];
   const box = `<form class="form-grid" id="acF"><label>Přihlašovací jméno<input id="acUser" value="${esc(me.username || "")}" autocapitalize="none"></label>${me.hasPassword ? `<label>Současné heslo<input id="acOld" type="password" autocomplete="current-password"></label>` : ""}<label>${me.hasPassword ? "Nové heslo" : "Heslo"}<input id="acPass" type="password" autocomplete="new-password"></label></form>
     <div class="btns"><button class="btn pri" id="acSave">${me.hasPassword ? "Změnit heslo" : "Nastavit jméno a heslo"}</button><span class="note" id="acMsg"></span></div>
     <div class="btns"><button class="btn sm" id="acOut">Odhlásit ostatní zařízení</button><span class="note">Přihlášení na jiných zařízeních přestane platit, tady zůstaneš přihlášený. Změna hesla to udělá taky.</span></div>`;
   const ulist = me.role === "owner" ? `<div class="sl" style="margin:16px 0 6px">Uživatelé (${users.filter((u) => u.active).length} / 10)</div>
-    <table class="t"><tr><th>Jméno</th><th>Přihlášení</th><th class="r"></th></tr>${users.map((u) => `<tr><td><b>${esc(u.name || (u.role === "owner" ? "ty" : "–"))}</b>${u.role === "owner" ? ' <span class="sub">vlastník</span>' : ""}</td><td>${esc(u.username || "–")}</td><td class="r">${u.role === "owner" ? "" : `<button class="btn sm" data-uact="${u.id}" data-on="${u.active ? 0 : 1}">${u.active ? "Vypnout" : "Zapnout"}</button>`}</td></tr>`).join("")}</table>
+    <table class="t"><tr><th>Jméno</th><th>Přihlášení</th><th class="r"></th></tr>${users.map((u) => `<tr><td><b>${esc(u.name || (u.role === "owner" ? "ty" : "–"))}</b>${u.role === "owner" ? ' <span class="sub">vlastník</span>' : ""}</td><td>${esc(u.username || "–")}</td><td class="r">${u.role === "owner" ? "" : `<span class="ubtns">${u.active ? `<button class="btn sm" data-viewas="${u.id}" title="Prohlédnout data tohoto účtu (kontrola, testování)">Otevřít</button>` : ""}<button class="btn sm" data-uact="${u.id}" data-on="${u.active ? 0 : 1}">${u.active ? "Vypnout" : "Zapnout"}</button></span>`}</td></tr>`).join("")}</table>
     <div class="btns"><button class="btn pri" id="invBtn">＋ Pozvat (odkaz)</button></div><div id="invOut"></div>
     <p class="note">Každý má svá data ve vlastních tabulkách a vlastní Garmin klíč; vidí jen svoje. Do 4 dalších lidí se jejich data stahují každých 5 minut jako tvoje, při víc lidech se střídají (free plán Cloudflare).</p>` : "";
   setTimeout(() => {
@@ -3448,9 +3450,11 @@ async function pagePocasi(el, keep = false) {
   const updTxt = upd ? `${upd.toLocaleDateString("cs-CZ", { day: "numeric", month: "numeric" })} ${upd.toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" })}` : DASH;
   const nowKey = `${d.today}T${String(d.nowHour).padStart(2, "0")}:00`;
   // posuvná tabulka: všechny hodiny 3 dnů, předěl a název dne nad první hodinou dne
-  const hrs = d.hours.filter((h) => h.time >= `${d.today}T${String(Math.max(0, d.nowHour - 1)).padStart(2, "0")}:00`);
+  // dnes od teď, další dny jen přes den (6–21 h) – noc je pro trénink zbytečná
+  const DAY_FROM = 6, DAY_TO = 21;
+  const hrs = d.hours.filter((h) => h.time >= `${d.today}T${String(Math.max(0, d.nowHour - 1)).padStart(2, "0")}:00` && (h.time.startsWith(d.today) || (+h.time.slice(11, 13) >= DAY_FROM && +h.time.slice(11, 13) <= DAY_TO)));
   const col = (h, i) => {
-    const first = i === 0 || h.time.slice(11, 13) === "00";
+    const first = i === 0 || hrs[i - 1].time.slice(0, 10) !== h.time.slice(0, 10);
     return `<div class="wxc${h.time === nowKey ? " now" : ""}${first ? " dstart" : ""}" data-day="${h.time.slice(0, 10)}" data-h="${h.time.slice(11, 13)}">
       <span class="wxd">${first ? (h.time.slice(0, 10) === d.today ? "Dnes" : `${DAYS[(new Date(h.time.slice(0, 10) + "T12:00").getDay() + 6) % 7]} ${dm(h.time.slice(0, 10))}`) : ""}</span>
       <span class="wxh">${h.time.slice(11, 13)}</span>
@@ -3492,7 +3496,7 @@ async function pagePocasi(el, keep = false) {
     <div class="ioseg days">${[0, 1, 2].map((k) => `<button data-wd="${k}">${dname(k)}</button>`).join("")}</div>
   </div>
   <div class="grid">
-    ${card("c12 wxcard", "🕐 Po hodinách", `aktualizováno ${updTxt}`, table + `<p class="note">Srážky v mm za hodinu (modře, čím víc, tím sytější), šance na déšť, vítr a nárazy v km/h (zeleně od 15, oranžově od 35, červeně od 50). Posuň do strany pro další hodiny a dny. Přepínače nahoře: místo (druhé nastavíš v Nastavení → Obecné → Počasí), 🌍 mix modelů (Open-Meteo vybere nejlepší model, víc dní), 🎯 ALADIN 1 km (model ČHMÚ, nejpřesnější pro Česko, ~2,5 dne).</p>`)}
+    ${card("c12 wxcard", "🕐 Po hodinách", `aktualizováno ${updTxt}`, table + `<p class="note">Srážky v mm za hodinu (modře, čím víc, tím sytější), šance na déšť, vítr a nárazy v km/h (zeleně od 15, oranžově od 35, červeně od 50). Posuň do strany pro další hodiny a dny (další dny jen 6–21 h). Přepínače nahoře: místo (druhé nastavíš v Nastavení → Obecné → Počasí), 🌍 mix modelů (Open-Meteo vybere nejlepší model, víc dní), 🎯 ALADIN 1 km (model ČHMÚ, nejpřesnější pro Česko, ~2,5 dne).</p>`)}
     ${card("c12", "📈 Průběh dne", "Open-Meteo", `<div id="wxBody"></div>`)}
     ${card("c12", "🔗 Další", "", `<div class="wx-links">${has ? `<a class="btn sm" href="https://www.windy.com/${lat}/${lon}?${lat},${lon},9" target="_blank" rel="noopener">Windy ↗</a><a class="btn sm" href="https://www.ventusky.com/?p=${lat};${lon};9&l=rain-3h" target="_blank" rel="noopener">Ventusky ↗</a>` : ""}<a class="btn sm" href="#/trener" data-topocasi>Trenér → okna na trénink</a></div>`)}
   </div>`;
@@ -3755,5 +3759,27 @@ async function alertsAsk() {
     } catch (e) { fail(e); x.disabled = false; }
   }));
 }
+/** Vlastník: přepnout na prohlížení jiného účtu (0 = zpět na svůj). Cookie nastaví server jen vlastníkovi. */
+async function viewAs(uid) {
+  const r = await fetch("/view-as", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ uid }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `chyba ${r.status}`);
+  cache.clear(); clearChats();
+  location.hash = "#/prehled";
+  location.reload();
+}
+document.addEventListener("click", (e) => { const b = e.target.closest?.("[data-viewas]"); if (!b) return; b.disabled = true; viewAs(+b.dataset.viewas).catch((err) => fail(err, b)); });
+/** lišta nahoře, když vlastník prohlíží cizí účet */
+async function viewBar() {
+  const me = await api("me").catch(() => null);
+  if (!me || !me.viewing) return false;
+  const bar = document.createElement("div");
+  bar.className = "viewbar"; bar.setAttribute("role", "status");
+  bar.innerHTML = `<span>Prohlížíš účet <b>${esc(me.name || me.username || `#${me.uid}`)}</b></span><button class="btn sm" data-viewas="0">Zpět na můj</button>`;
+  document.body.prepend(bar);
+  document.documentElement.classList.add("viewing");
+  return true;
+}
 route();
-alertsAsk();
+// upozornění a hodnocení náročnosti jen na vlastním účtu (ne při prohlížení cizího)
+viewBar().then((v) => { if (!v) alertsAsk(); });

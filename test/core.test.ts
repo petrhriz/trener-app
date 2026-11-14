@@ -276,8 +276,10 @@ describe("kvalita z dat (6.6)", () => {
 describe("počasí (kap. 8) a okno na jízdu", () => {
   const mk = (date: string, f: (h: number) => Partial<Hour>): Hour[] => Array.from({ length: 24 }, (_, h) => ({ time: `${date}T${String(h).padStart(2, "0")}:00`, temp: 10, feels: 8, precip_prob: 10, precip: 0, gust: 20, wind: 10, code: 1, ...f(h) }));
   it("zelená hodina", () => {
-    expect(isGreen({ precip_prob: 30, gust: 40, feels: 3 })).toBe(true);
-    expect(isGreen({ precip_prob: 31, gust: 20, feels: 10 })).toBe(false);
+    expect(isGreen({ precip_prob: 30, gust: 40, temp: 3 })).toBe(true);
+    // rozhoduje teplota vzduchu, ne pocitová (vítr se hlídá zvlášť nárazy)
+    expect(isGreen({ precip_prob: 10, gust: 20, temp: 2 }, { cold: 3, hot: 30, ideal: 18 })).toBe(false);
+    expect(isGreen({ precip_prob: 31, gust: 20, temp: 10 })).toBe(false);
   });
   it("déšť, nárazy, mráz", () => {
     const w = dayWeather(mk("2026-11-10", (h) => ({ precip_prob: h > 12 ? 70 : 10, precip: h > 12 ? 0.3 : 0, gust: h === 15 ? 45 : 20, temp: h < 6 ? -2 : 8 })), "2026-11-10")!;

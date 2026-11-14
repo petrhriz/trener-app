@@ -27,8 +27,8 @@ describe("počasí podle tebe", () => {
   const summer = (h: number): Hour => ({ time: `2026-07-10T${String(h).padStart(2, "0")}:00`, temp: 14 + Math.max(0, Math.min(13, (h - 6) * 2)), feels: 14 + Math.max(0, Math.min(13, (h - 6) * 2)), precip_prob: 0, precip: 0, gust: 15, wind: 8, code: 0 });
   const hours = Array.from({ length: 24 }, (_, h) => summer(h));
   it("chladné ráno v teplém dni = „chladno“, ne vhodné", () => {
-    expect(hourKind({ precip_prob: 0, gust: 10, feels: 15 }, 27).kind).toBe("cool");
-    expect(hourKind({ precip_prob: 0, gust: 10, feels: 15 }, 17).kind).toBe("ok");
+    expect(hourKind({ precip_prob: 0, gust: 10, temp: 15 }, 27).kind).toBe("cool");
+    expect(hourKind({ precip_prob: 0, gust: 10, temp: 15 }, 17).kind).toBe("ok");
   });
   it("okno nejblíž ideální teplotě, ne v poledním vedru ani ráno nabalený", () => {
     const w = dayWeather(hours, "2026-07-10", { cold: 3, hot: 30, ideal: 20 })!;
@@ -37,10 +37,19 @@ describe("počasí podle tebe", () => {
     expect(w.window!.from).toBeLessThan(12);
   });
   it("vlastní hranice: pod 8 °C už je zima", () => {
-    expect(hourKind({ precip_prob: 0, gust: 10, feels: 6 }, 10, { cold: 8, hot: 30, ideal: 18 }).kind).toBe("cold");
+    expect(hourKind({ precip_prob: 0, gust: 10, temp: 6 }, 10, { cold: 8, hot: 30, ideal: 18 }).kind).toBe("cold");
     expect(bestWindow([], { cold: 8, hot: 30, ideal: 18 })).toBeNull();
   });
 });
 
 
 
+
+describe("hranice podle teploty vzduchu", () => {
+  it("pocitová pod hranicí, vzduch nad ní → jezdí se (vlastní rychlost na kole převáží vítr)", () => {
+    const h = (x: number): Hour => ({ time: `2026-11-20T${String(x).padStart(2, "0")}:00`, temp: 6, feels: 1, precip_prob: 0, precip: 0, gust: 20, wind: 10, code: 1 });
+    const w = dayWeather(Array.from({ length: 24 }, (_, x) => h(x)), "2026-11-20", { cold: 3, hot: 30, ideal: 18 })!;
+    expect(w.hours.every((x) => x.kind === "ok" || x.kind === "cool")).toBe(true);
+    expect(w.window).not.toBeNull();
+  });
+});

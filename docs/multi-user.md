@@ -34,3 +34,12 @@ Stav: **hotovo.**
 
 Test lokálně: `npx wrangler d1 migrations apply trener-db --local --persist-to <dir>`, `npx wrangler dev --local
 --persist-to <dir> --port 8790`, pak `node scripts/multiuser-local.mjs` (pozvánka, registrace, login, oddělení dat).
+
+## Vlastník: prohlížení jiného účtu
+
+Pro kontrolu a testování (po domluvě s majitelem účtu): Nastavení → Obecné → Účet → u uživatele **Otevřít**.
+`POST /view-as` nastaví cookie `kad_as=<id>` (12 h, `SameSite=Strict`). Platí jen s plným přihlášením vlastníka
+(`viewAsOf` v `src/api/session.ts`) – jinému uživateli ani náhledovému odkazu nic neudělá. Při prohlížení vidíš
+data toho účtu a můžeš v nich zkoušet úpravy; API klíče, heslo a správa uživatelů jsou zamčené (403). Nahoře je
+lišta „Prohlížíš účet … · Zpět na můj“, upozornění a dotazy na náročnost se při prohlížení neukazují. Každé
+přepnutí se zapíše do logu synchronizace.

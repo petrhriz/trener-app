@@ -10,7 +10,7 @@ import { getSettings } from "./lib/settings";
 import { logEvent } from "./lib/db";
 import { applySecrets } from "./lib/secrets";
 import { authApp } from "./api/accounts";
-import { createLoginLink, createViewLink, sessionInfo } from "./api/session";
+import { createLoginLink, createViewLink, sessionInfo, viewAsOf } from "./api/session";
 import { localNow } from "./lib/time";
 import { OWNER_ID, activeUsers, envFor, userForTick } from "./lib/tenant";
 
@@ -132,6 +132,18 @@ app.get("/logout", async (c) => {
 // ---- přihlášení jménem a heslem, registrace z pozvánky ----
 app.route("/auth", authApp);
 
+// ---- vlastník: prohlížení jiného účtu (kontrola a testování); cookie platí jen s plným přihlášením vlastníka ----
+const VIEW_AS = "kad_as";
+app.post("/view-as", async (c) => {
+  const si = await sessionInfo(c.env, c.req.header("cookie"));
+  if (!si || si.ro || si.uid !== OWNER_ID) return c.json({ error: "jen pro vlastníka" }, 403);
+  const id = Number(((await c.req.json().catch(() => ({}))) as { uid?: unknown }).uid ?? 0);
+  if (!id || id === OWNER_ID) return c.json({ ok: true, uid: OWNER_ID }, 200, { "Set-Cookie": `${VIEW_AS}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0` });
+  if (!Number.isInteger(id) || id < 1 || !(await envFor(c.env, id))) return c.json({ error: "Účet je vypnutý nebo neexistuje." }, 400);
+  await logEvent(c.env.DB, "info", `vlastník prohlíží účet ${id}`).catch(() => {});
+  return c.json({ ok: true, uid: id }, 200, { "Set-Cookie": `${VIEW_AS}=${id}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${12 * 3600}` });
+});
+
 // ---- dashboard API: env podle přihlášeného uživatele (vlastní tabulky, KV a klíče) ----
 const apiRoot = new Hono<{ Bindings: Env }>().route("/api", api);
 app.all("/api/*", async (c) => {
@@ -141,15 +153,21 @@ app.all("/api/*", async (c) => {
   // cesta dekódovaná stejně jako ji vidí router (jinak by /api/%75sers kontrolu obešlo)
   const path = (() => { try { return decodeURIComponent(new URL(c.req.url).pathname).toLowerCase(); } catch { return null; } })();
   if (si?.ro && (c.req.method !== "GET" || path == null || /^\/+api\/+(secrets|users|status)(?![a-z])/.test(path))) return c.json({ error: "Jen náhled – tady nic měnit nejde." }, 403);
+  // vlastník prohlíží jiný účet: data toho účtu, ale bez klíčů, hesla a správy uživatelů
+  const viewAs = viewAsOf(si, c.req.header("cookie"));
+  if (viewAs != null) {
+    if (path == null || /^\/+api\/+(secrets|users|me\/)/.test(path)) return c.json({ error: "Při prohlížení cizího účtu nejde měnit klíče, heslo ani uživatele." }, 403);
+    uid = viewAs;
+  }
   // admin token (skripty) smí za uživatele: hlavička x-uid
   const admin = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (uid == null && c.env.ADMIN_TOKEN && admin && safeEqual(admin, c.env.ADMIN_TOKEN)) uid = Number(c.req.header("x-uid") ?? OWNER_ID) || OWNER_ID;
   let env = c.env;
   if (uid != null && uid !== OWNER_ID) {
     const e = await envFor(c.env, uid);
-    if (!e) return c.json({ error: "login", message: "Účet je vypnutý nebo neexistuje. Přihlas se znovu." }, 403);
+    if (!e) return c.json(viewAs != null ? { error: "Prohlížený účet je vypnutý – vrať se na svůj." } : { error: "login", message: "Účet je vypnutý nebo neexistuje. Přihlas se znovu." }, 403);
     await applySecrets(e);
-    env = e;
+    env = viewAs != null ? ({ ...e, __viewAs: viewAs } as Env) : e;
   }
   return apiRoot.fetch(c.req.raw, env, c.executionCtx);
 });
