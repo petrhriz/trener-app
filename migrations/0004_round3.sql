@@ -15,7 +15,7 @@ ALTER TABLE wellness ADD COLUMN next_sleep_need_min INTEGER;
 CREATE TABLE IF NOT EXISTS gear (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  kind TEXT NOT NULL,                -- bike | ski | shoe | other
+  kind TEXT NOT NULL,                -- road | mtb | gravel | trainer | bike | ski | shoe | other
   default_for TEXT,                  -- čárkou oddělené sporty (ride,mtb,indoor | xc_ski | run …), aktivita bez ručního přiřazení
   from_date TEXT,                    -- výchozí přiřazení až od tohoto data (NULL = celá historie)
   to_date TEXT,                      -- vyřazeno k datu (NULL = používá se)

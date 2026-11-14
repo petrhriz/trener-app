@@ -6,7 +6,7 @@ import { all, run } from "../lib/db";
 export interface Gear {
   id: number;
   name: string;
-  kind: "bike" | "ski" | "shoe" | "other";
+  kind: "road" | "mtb" | "gravel" | "trainer" | "bike" | "ski" | "shoe" | "other";
   default_for: string | null;
   from_date: string | null;
   to_date: string | null;
@@ -150,7 +150,8 @@ gearApi.get("/:id/activities", async (c) => {
   return c.json({ gear: g, acts: acts.filter((a) => resolveGear(a, gear, links) === id) });
 });
 
-const KINDS = ["bike", "ski", "shoe", "other"];
+/** druhy vybavení; „bike“ = kolo bez bližšího určení (starší záznamy) */
+const KINDS = ["road", "mtb", "gravel", "trainer", "bike", "ski", "shoe", "other"];
 const clean = (b: any) => ({
   name: String(b.name ?? "").trim().slice(0, 80),
   kind: KINDS.includes(b.kind) ? b.kind : "other",

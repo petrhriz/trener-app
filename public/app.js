@@ -148,6 +148,12 @@ const IC = {
   zraneny: ["--warn", '<rect class="f" x="2.5" y="8" width="19" height="8" rx="4" transform="rotate(-45 12 12)"/><path d="M10.5 10.5h.01M13.5 13.5h.01M13.5 10.5h.01M10.5 13.5h.01"/>'],
   dovolena: ["--z2", '<circle class="f" cx="19.3" cy="4.7" r="2.2"/><g transform="rotate(-18 11 13)"><path class="f" d="M3.5 12.5a7.5 7.5 0 0 1 15 0z"/><path d="M11 12.5V21"/></g><path d="M3 21h18"/>'],
   nelze: ["--bad", '<circle class="f" cx="12" cy="12" r="9"/><path d="M7.5 12h9"/>'],
+  // vybavení: kola bez jezdce podle druhu, trenažér, lyže
+  silnicni: ["--z2", '<circle class="f" cx="5" cy="16.5" r="3.9"/><circle class="f" cx="19" cy="16.5" r="3.9"/><path d="M5 16.5h6.5L16.5 10H9.2M5 16.5 9.2 10M9.2 10l2.3 6.5M16.5 10 19 16.5M8 10h2.6M16.5 10l.4-2h1.8c1 0 1.4.8 1.1 1.6l-.4 1"/>'],
+  horske: ["--z3", '<circle class="f" cx="5" cy="16.5" r="3.9"/><circle class="f" cx="19" cy="16.5" r="3.9"/><circle class="fs" cx="5" cy="16.5" r="1.1"/><circle class="fs" cx="19" cy="16.5" r="1.1"/><path d="M5 16.5h6.5L16 9.5H9.5M5 16.5 9.5 9.5M9.5 9.5l2 7M16 9.5l3 7M15.2 7.6h3.4M8.2 9.5h2.6"/><path d="M17.2 12.2l.9 2" stroke-width="3"/>'],
+  gravel: ["--z4", '<circle class="f" cx="5" cy="16.5" r="3.9"/><circle class="f" cx="19" cy="16.5" r="3.9"/><circle cx="5" cy="16.5" r="2.5"/><circle cx="19" cy="16.5" r="2.5"/><path d="M5 16.5h6.5L16.5 10H9.2M5 16.5 9.2 10M9.2 10l2.3 6.5M16.5 10 19 16.5M8 10h2.6M16.5 10l.3-2h1.9l.8 2.4"/>'],
+  trenazerVyb: ["--z1", '<rect class="f" x="7" y="7" width="10" height="9" rx="2.5"/><circle cx="12" cy="11.5" r="2.4"/><path d="M12 11.5h.01M9 16l-4 4.5M15 16l4 4.5M3.5 20.5h17M12 4v3"/>'],
+  lyze: ["--ski", '<path d="M2.5 19.5h15.5c1.6 0 2.6-.9 3.2-2.4M2.5 22h15.5c1.6 0 2.6-.9 3.2-2.4"/><path d="M8 2.5 10 17M15.5 2.5 13.5 17"/><circle class="fs" cx="9.7" cy="14.6" r="1.1"/><circle class="fs" cx="13.8" cy="14.6" r="1.1"/>'],
   zakaz: ["--bad", '<circle class="f" cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>'],
   // ovládání a rozhraní (bez barvy = barva textu, sedí i na tlačítkách)
   ai: ["--acc", '<path class="f" d="M11 3l1.8 4.7L17.5 9.5l-4.7 1.8L11 16l-1.8-4.7L4.5 9.5l4.7-1.8z"/><path d="M18.5 14.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>'],
@@ -2272,10 +2278,10 @@ async function pageAktivita(el, id) {
   const statsTop = top.map(([k, v]) => cell(k, v)).join("");
   // vybavení a „s kým“ jen u kola, běhu a běžek; vybavení jen odpovídajícího druhu (kolo / boty / lyže)
   const gk = { ride: "bike", mtb: "bike", indoor: "bike", run: "shoe", xc_ski: "ski" }[a.sport];
-  if (a.gear) a.gear.list = a.gear.list.filter((g) => g.kind === gk || g.kind === "other");
+  if (a.gear) a.gear.list = a.gear.list.filter((g) => (gk === "bike" ? BIKE_KINDS.has(g.kind) : g.kind === gk) || g.kind === "other");
   const gearSel = a.gear && a.gear.list.length && gk
     // každé vybavení jen jednou (vybrané = to, které se počítá); „podle sportu“ jen když je zvolené ručně
-    ? `<div class="gearsel">${{ bike: ic("vybaveni"), shoe: ic("boty"), ski: ic("bezky") }[gk] || ic("batoh")} <select id="gearSel" title="vybavení (výchozí podle sportu, změníš tady)">${a.gear.list.map((g) => `<option value="${g.id}" ${a.gear.id === g.id ? "selected" : ""}>${esc(g.name)}</option>`).join("")}<option value="none" ${a.gear.id == null ? "selected" : ""}>bez vybavení</option>${a.gear.manual ? `<option value="auto">↺ výchozí podle sportu</option>` : ""}</select><span class="sub" id="gearMsg"></span></div>` : "";
+    ? `<div class="gearsel">${(() => { const cur = a.gear.list.find((g) => g.id === a.gear.id); return cur ? gearIco(cur) : ic({ bike: "silnicni", shoe: "boty", ski: "lyze" }[gk] || "batoh"); })()} <select id="gearSel" title="vybavení (výchozí podle sportu, změníš tady)">${a.gear.list.map((g) => `<option value="${g.id}" ${a.gear.id === g.id ? "selected" : ""}>${esc(g.name)}</option>`).join("")}<option value="none" ${a.gear.id == null ? "selected" : ""}>bez vybavení</option>${a.gear.manual ? `<option value="auto">↺ výchozí podle sportu</option>` : ""}</select><span class="sub" id="gearMsg"></span></div>` : "";
   const endur = ["ride", "mtb", "run", "xc_ski"].includes(a.sport);
   const verb = a.sport === "run" ? ["Běžel", "běžel"] : ["Jel", "jel"];
   const compSel = endur ? `<div class="gearsel" title="S kým jsi ${esc(verb[1])}${a.company ? " – přetažená Z2 se nebere jako chyba" : ""}">${ic("skupina")} <select id="compSel" aria-label="S kým"><option value="">Sám</option><option value="skupina" ${a.company === "skupina" ? "selected" : ""}>Skupina</option>${a.company && a.company !== "skupina" ? `<option value="${esc(a.company)}" selected>${esc(a.company)}</option>` : ""}<option value="__new">S někým…</option></select><span class="sub" id="compMsg"></span></div>` : "";
@@ -2930,25 +2936,23 @@ function partsHtml(g) {
       ${pct != null ? `<div class="gp-bar"><i style="width:${pct}%"></i></div>` : ""}
       <div class="gp-f"><button class="btn sm gp-do" data-reset="${p.id}">✓ ${esc(p.name)} – ${esc((p.action || "servis").toLowerCase())}</button><span class="sub">od ${dm(p.since.slice(0, 10))}${p.since.slice(0, 4)}${p.history && p.history.length ? ` · dřív ${p.history.length}×` : ""}</span><button class="gp-del" data-pdel="${p.id}" aria-label="smazat díl ${esc(p.name)}" title="smazat díl">✕</button></div></div>`;
   }).join("");
-  const pre = (PART_PRESET[g.kind] || []).filter(([n]) => !ps.some((p) => p.name === n));
+  const pre = (PART_PRESET[g.kind] || (BIKE_KINDS.has(g.kind) && g.kind !== "trainer" ? PART_PRESET.bike : [])).filter(([n]) => !ps.some((p) => p.name === n));
   return `<div class="gparts"><div class="sl">Díly a servis</div>${rows || `<p class="sub gp-empty">Zatím žádné díly – přidej je a hlídej km od servisu (upozornění se ukáže po otevření stránky).</p>`}
     <div class="gp-add">${pre.slice(0, 2).map(([n, a, i, r]) => `<button class="btn sm" data-preset='${esc(JSON.stringify({ name: n, action: a, interval_km: i, repeat_km: r }))}' data-gid="${g.id}">＋ ${esc(n)} ${thou(i)} km</button>`).join("")}<details class="addpart"><summary class="btn sm">＋ Jiný díl</summary>
     <form class="pform form-grid" data-gid="${g.id}"><label>Název<input name="name" placeholder="např. Řetěz" required></label><label>Tlačítko<input name="action" placeholder="Vyměněno"></label><label>Kontrola po (km)<input name="interval_km" type="number" min="0"></label><label>Pak každých (km)<input name="repeat_km" type="number" min="0"></label><label>Najeto už teď (km)<input name="start_km" type="number" min="0" value="0"></label><label>Počítat od data<input name="since" type="date"></label><div><button class="btn pri" type="submit">Přidat díl</button></div></form></details></div></div>`;
 }
 /** druh vybavení: ikona (SVG), barva, název */
-const GEAR_KIND = { bike: [ic("vybaveni"), "Kolo"], ski: [ic("bezky"), "Lyže"], shoe: [ic("boty"), "Boty"], other: [ic("batoh"), "Jiné"] };
-const GEAR_ICO = {
-  bike: '<circle cx="6" cy="16" r="3.6"/><circle cx="18" cy="16" r="3.6"/><path d="M6 16l4-7h5l3 7M10 9l3 7h-7M14 6h3"/>',
-  ski: '<path d="M3 18h18M6 18l3-13M18 18l-3-13"/>',
-  shoe: '<path d="M3 16c0-3 1-6 2-8l4 2c1 .5 2 .5 3 0l1-1 7 4c1 .6 1 2.4 1 3v1H3z"/><path d="M3 18h18"/>',
-  other: '<rect x="5" y="7" width="14" height="13" rx="2"/><path d="M9 7V5h6v2"/>',
+/** druhy vybavení: [klíč ikony, název]; „bike“ = kolo bez bližšího určení (starší záznamy) */
+const GEAR_KIND = { road: ["silnicni", "Silniční kolo"], mtb: ["horske", "Horské kolo (MTB)"], gravel: ["gravel", "Gravel"], trainer: ["trenazerVyb", "Trenažér"], bike: ["silnicni", "Kolo (jiné)"], ski: ["lyze", "Lyže"], shoe: ["boty", "Boty"], other: ["batoh", "Jiné"] };
+/** všechna kola – nabízí se u jízd (silnice, MTB, trenažér) */
+const BIKE_KINDS = new Set(["road", "mtb", "gravel", "trainer", "bike"]);
+/** ikona a barva vybavení; u starého „Kolo“ podle sportů, pro které je výchozí (jen MTB → horské) */
+const gearLook = (g) => {
+  const df = (g.default_for || "").split(",");
+  const k = g.kind === "bike" && df.includes("mtb") && !df.includes("ride") ? "horske" : (GEAR_KIND[g.kind] || GEAR_KIND.other)[0];
+  return { key: k, color: `var(${IC[k][0] || "--z1"})` };
 };
-GEAR_ICO.road = '<circle cx="5.5" cy="16" r="4"/><circle cx="18.5" cy="16" r="4"/><path d="M5.5 16 10 9h6l2.5 7M10 9l2.5 7h-7M16 9l-.8-3h2.6c1.3 0 1.6 1.4 1 2.4"/>';
-GEAR_ICO.mtb = '<circle cx="5.5" cy="16.5" r="4" stroke-width="2.6"/><circle cx="18.5" cy="16.5" r="4" stroke-width="2.6"/><path d="M5.5 16.5 9.5 10H15l3.5 6.5M9.5 10l2.5 6.5h-6.5M15 10l1.5-3.5M14 6.5h4.5M15.6 12.8l1.3 1"/>';
-GEAR_ICO.ski = '<path d="M2.5 19.5h15.5c1.6 0 2.6-.9 3.2-2.4M2.5 22h15.5c1.6 0 2.6-.9 3.2-2.4"/><path d="M8 2.5 10 17M15.5 2.5 13.5 17"/><circle cx="9.7" cy="14.6" r="1.1"/><circle cx="13.8" cy="14.6" r="1.1"/>';
-const GEAR_COLOR = { road: "var(--z2)", mtb: "var(--z3)", bike: "var(--z2)", ski: "#2aa3c9", shoe: "var(--acc)", other: "var(--z7)" };
-/** ikona a barva podle druhu a sportu: silnice ≠ MTB, běžky = lyže s hůlkami */
-const gearLook = (g) => { const df = (g.default_for || "").split(","); const k = g.kind === "bike" ? (df.includes("mtb") && !df.includes("ride") ? "mtb" : "road") : g.kind; return { ico: GEAR_ICO[k] || GEAR_ICO.other, color: GEAR_COLOR[k] || "var(--z1)" }; };
+const gearIco = (g) => ic(gearLook(g).key);
 const GEAR_SPORTS = [["ride", "Silnice"], ["mtb", "MTB"], ["indoor", "Trenažér"], ["run", "Běh"], ["xc_ski", "Běžky"], ["walk", "Chůze"], ["hike", "Turistika"]];
 let gearShow = "active"; // active | retired
 async function pageVybaveni(el) {
@@ -2969,8 +2973,8 @@ async function pageVybaveni(el) {
     const sports = (g.default_for || "").split(",").filter(Boolean).map((s) => SPORT_NAME[s] || s);
     const look = gearLook(g);
     return `<article class="gcard ${g.to_date ? "retired" : ""}" style="--gc:${look.color}">
-      <div class="gc-h"><span class="gc-ico"><svg viewBox="0 0 24 24" aria-hidden="true">${look.ico}</svg></span>
-        <div class="gc-t"><b>${esc(g.name)}</b><span class="sub">${GEAR_KIND[g.kind]?.[1] || "Jiné"}${sports.length ? ` · výchozí pro ${esc(sports.join(", ").toLowerCase())}` : " · jen ručně"}${g.to_date ? ` · vyřazeno ${dm(g.to_date)}${g.to_date.slice(0, 4)}` : ""}</span></div>
+      <div class="gc-h"><span class="gc-ico">${ic(look.key)}</span>
+        <div class="gc-t"><b>${esc(g.name)}</b><span class="sub">${(GEAR_KIND[g.kind] || GEAR_KIND.other)[1]}${sports.length ? ` · výchozí pro ${esc(sports.join(", ").toLowerCase())}` : " · jen ručně"}${g.to_date ? ` · vyřazeno ${dm(g.to_date)}${g.to_date.slice(0, 4)}` : ""}</span></div>
         <button class="gc-edit" data-edit="${g.id}" aria-label="Upravit ${esc(g.name)}" title="Upravit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16z"/></svg></button></div>
       <div class="gc-km"><span class="num">${thou(g.km)}</span><small>km</small><span class="gc-st">${g.n} ${g.kind === "ski" ? "jízd" : g.kind === "shoe" ? "aktivit" : "jízd"} · ${num(g.hours, 0)} h${g.up ? ` · ↑ ${thou(g.up)} m` : ""}</span></div>
       ${g.start_km ? `<div class="sub">včetně ${thou(g.start_km)} km před evidencí</div>` : ""}
@@ -3014,7 +3018,7 @@ async function pageGear(el, id) {
   const km = acts.reduce((t, a) => t + (a.distance_m || 0), 0) / 1000, s = acts.reduce((t, a) => t + (a.moving_s || 0), 0), up = acts.reduce((t, a) => t + (a.elev_gain || 0), 0);
   let month = "";
   const list = acts.map((a) => { const m = a.date.slice(0, 7); const head = m !== month ? `<div class="mhead">${MONTHS[+m.slice(5, 7) - 1]} ${m.slice(0, 4)}</div>` : ""; month = m; return head + actRowHtml(a); }).join("");
-  el.innerHTML = `<div class="head"><div><a class="back" href="#/vybaveni">← Vybavení</a><h1>${GEAR_KIND[g.kind]?.[0] || ic("batoh")} ${esc(g.name)}</h1><div class="sub">${acts.length} aktivit · ${thou(km)} km${g.start_km ? ` (+ ${thou(g.start_km)} km před evidencí)` : ""} · ${hmm(s)} h · ↑ ${thou(up)} m</div></div></div>
+  el.innerHTML = `<div class="head"><div><a class="back" href="#/vybaveni">← Vybavení</a><h1>${gearIco(g)} ${esc(g.name)}</h1><div class="sub">${acts.length} aktivit · ${thou(km)} km${g.start_km ? ` (+ ${thou(g.start_km)} km před evidencí)` : ""} · ${hmm(s)} h · ↑ ${thou(up)} m</div></div></div>
   <div class="grid">${card("c12", "", "", `<div class="alist">${list || '<div class="empty">S tímto vybavením zatím žádná aktivita.</div>'}</div>`)}</div>`;
 }
 

@@ -16,6 +16,7 @@ import m0012 from "../../migrations/0012_zone_history.sql";
 import m0013 from "../../migrations/0013_rpe.sql";
 import m0015 from "../../migrations/0015_plan_versions.sql";
 import m0016 from "../../migrations/0016_no_hockey.sql";
+import m0018 from "../../migrations/0018_gear_bikes.sql";
 
 export const OWNER_ID = 1;
 
@@ -34,6 +35,7 @@ export const TENANT_MIGRATIONS: { name: string; sql: string }[] = [
   { name: "0013", sql: m0013 },
   { name: "0015", sql: m0015 },
   { name: "0016", sql: m0016 },
+  { name: "0018", sql: m0018 },
 ];
 
 /** Tabulky s daty uživatele (vše kromě users). */
