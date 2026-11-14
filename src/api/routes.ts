@@ -730,7 +730,7 @@ api.post("/plan/sport", async (c) => {
 api.get("/activities", async (c) => {
   const q = c.req.query("days") ?? "60";
   const days = q === "all" ? 36500 : Math.min(36500, Number(q) || 60);
-  const rows = await all<any>(c.env.DB, "SELECT id, date, start_local, sport, name, distance_m, moving_s, elev_gain, load, avg_hr, avg_power, np, is_quality, quality_type, json_extract(icu_event, '$.name') AS plan_name, icu_compliance, (SELECT company FROM activity_tags t WHERE t.activity_id = activities.id) AS company FROM activities WHERE date >= date('now', ?) ORDER BY start_local DESC", `-${days} days`);
+  const rows = await all<any>(c.env.DB, "SELECT id, date, start_local, sport, name, distance_m, moving_s, elev_gain, load, avg_hr, avg_power, np, is_quality, quality_type, json_extract(icu_event, '$.name') AS plan_name, CASE WHEN load_source = 'hr_indoor' THEN NULL ELSE icu_compliance END AS icu_compliance, (SELECT company FROM activity_tags t WHERE t.activity_id = activities.id) AS company FROM activities WHERE date >= date('now', ?) ORDER BY start_local DESC", `-${days} days`);
   return c.json(rows);
 });
 

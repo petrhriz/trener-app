@@ -986,7 +986,7 @@ function weekLoadsHtml(w) {
     tipFn: (i) => { const x = w.weeks[i]; return `<b>týden od ${dm(x.from)}</b><div>hotovo ${num(x.done)}${x.planned ? ` · plán ${num(x.planned)}` : ""}${x.current || x.future ? ` · celkem ${num(x.done + x.planned)}` : ""}</div><div>${x.sessions} tréninků · cíl ${w.target.lo}–${w.target.hi}</div>`; } })
     + `<div class="legend"><span><i style="background:var(--acc)"></i>hotovo</span><span><i style="background:color-mix(in srgb, var(--acc) 35%, transparent)"></i>plán</span><span class="sub">čárkovaně = cíl týdne ${w.target.mid} (pásmo ${w.target.lo}–${w.target.hi})</span></div>
     <table class="t wk"><tr><th>Týden</th><th class="r">Hotovo</th><th class="r">Plán</th><th class="r">Tréninky</th></tr>${w.weeks.map((x) => `<tr class="${x.current ? "iv" : ""}"><td>${x.current ? "tento" : x.future ? "příští" : `od ${dm(x.from)}`}</td><td class="r">${x.future ? DASH : num(x.done)}</td><td class="r">${x.planned ? num(x.planned) : DASH}</td><td class="r">${x.sessions}</td></tr>`).join("")}</table>
-    <p class="note">Zátěž = TSS (stejné číslo jako Garmin a intervals.icu). Kondice (CTL) ≈ průměrná denní zátěž za 6 týdnů, týden na udržení ≈ 7 × CTL.</p>`;
+    <p class="note">Zátěž = TSS z wattmetru, bez wattmetru HRSS z tepu; na trenažéru vyšší z obou (uvnitř tě stejný výkon stojí víc). Kondice (CTL) ≈ průměrná denní zátěž za 6 týdnů, týden na udržení ≈ 7 × CTL.</p>`;
 }
 
 // ---------- Trenér: dnešek, plán týdne (interaktivní), z čeho trenér vychází, AI trenér ----------
@@ -2495,7 +2495,7 @@ function loadOverviewHtml(days) {
   return barChart({ x: days.map((d) => d.date), xfmt: dm, mode: "stack", height: 190, bars, todayIndex: days.length - 1,
     tipFn: (i) => { const d = days[i]; return `<b>${dayDm(d.date)}</b>${d.acts.length ? d.acts.map((a) => `<div><span class="sw" style="background:${LOAD_CAT[a.cat][0]}"></span>${esc(a.name || SPORT_NAME[a.sport] || a.sport)} <b>${a.load}</b> · ${LOAD_CAT[a.cat][1].toLowerCase()}</div>`).join("") : "<div>bez zátěže</div>"}`; } })
     + `<div class="legend">${order.filter((k) => sum[k] > 0).map((k) => `<span><i style="background:${LOAD_CAT[k][0]}"></i>${LOAD_CAT[k][1]} · ${thou(sum[k])}</span>`).join("")}</div>
-    <p class="note">Zátěž = TSS (s wattmetrem) nebo HRSS (z tepu) z intervals.icu – u všech sportů stejná stupnice, 1 h na prahu = 100. Barva = hlavní přínos aktivity podle tréninkového efektu Garminu.</p>`;
+    <p class="note">Zátěž = TSS (s wattmetrem) nebo HRSS (z tepu; na trenažéru vyšší z obou) – u všech sportů stejná stupnice, 1 h na prahu = 100. Barva = hlavní přínos aktivity podle tréninkového efektu Garminu.</p>`;
 }
 
 /** VO2max: spojitá čára, mezi měřeními platí poslední hodnota (Garmin ji mění jen po vhodné aktivitě). */

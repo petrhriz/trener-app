@@ -385,7 +385,7 @@ export async function readiness(ctx: Ctx): Promise<Readiness> {
   const fit = fitnessTable(ctx);
   const plan = await planFor(ctx, rec);
   const day = plan.days.find((d) => d.isToday) ?? null;
-  const done = todayActs(ctx).map((a) => ({ name: a.name ?? "aktivita", load: a.load, id: a.id, sport: a.sport, unit: ["ride", "mtb", "indoor"].includes(a.sport) && a.np ? "TSS" : "HRSS", compliance: (a as any).icu_compliance != null ? Math.round((a as any).icu_compliance) : null }));
+  const done = todayActs(ctx).map((a) => ({ name: a.name ?? "aktivita", load: a.load, id: a.id, sport: a.sport, unit: ["ride", "mtb", "indoor"].includes(a.sport) && a.np && a.load_source !== "hr_indoor" ? "TSS" : "HRSS", compliance: (a as any).icu_compliance != null ? Math.round((a as any).icu_compliance) : null }));
   const cal = ctx.calendar.find((c) => c.date === T && c.status !== "skipped") ?? null;
   let decision: string;
   let why: string;

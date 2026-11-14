@@ -112,8 +112,9 @@ export interface Ctx {
 
 export function parseAct(r: any): FullAct {
   const j = (v: unknown) => (typeof v === "string" && v ? JSON.parse(v) : null);
-  // aerobní drift: přednost má decoupling z intervals.icu (bez prvních 10 min a poslední části), vlastní výpočet jen když chybí
-  return { ...r, drift: r.icu_decoupling ?? r.drift ?? null, hr_z: j(r.hr_z), pwr_z: j(r.pwr_z), mmp: j(r.mmp), laps: j(r.laps), icu_event: j(r.icu_event), extra: j(r.extra) };
+  // aerobní drift: přednost má decoupling z intervals.icu (bez prvních 10 min a poslední části), vlastní výpočet jen když chybí.
+  // Trenažér se zátěží z tepu: splnění z intervals.icu počítá jen z výkonu → nepoužít, splnění = vlastní zátěž / plán.
+  return { ...r, icu_compliance: r.load_source === "hr_indoor" ? null : (r.icu_compliance ?? null), drift: r.icu_decoupling ?? r.drift ?? null, hr_z: j(r.hr_z), pwr_z: j(r.pwr_z), mmp: j(r.mmp), laps: j(r.laps), icu_event: j(r.icu_event), extra: j(r.extra) };
 }
 
 export async function loadCtx(env: Env, at?: Date): Promise<Ctx> {
