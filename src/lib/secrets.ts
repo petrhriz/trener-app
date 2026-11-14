@@ -2,7 +2,7 @@
 // Hodnoty zašifrované dřív ADMIN_TOKENem se při čtení přešifrují novým klíčem – pak jde ADMIN_TOKEN vyměnit.
 // Přednost má hodnota z dashboardu, záloha jsou secrets Workeru (.dev.vars → wrangler secret).
 import type { Env } from "../env";
-import { logEvent } from "./db";
+import { logEvent, logged } from "./db";
 
 export const EDITABLE_SECRETS = ["GARMIN_API_KEY", "INTERVALS_API_KEY", "INTERVALS_ATHLETE_ID", "MAPY_API_KEY", "GEMINI_API_KEY", "NVIDIA_API_KEY"] as const;
 export type EditableSecret = (typeof EDITABLE_SECRETS)[number];
@@ -59,7 +59,7 @@ async function valuesOf(env: Env, db: D1Database, uid: number): Promise<Partial<
           try {
             const d = await decryptAny(env, r.value);
             values[r.key as EditableSecret] = d.value;
-            if (d.legacy) await db.prepare("UPDATE app_secrets SET value = ? WHERE key = ?").bind(await encryptSecret(env, d.value), r.key).run().catch(() => undefined);
+            if (d.legacy) await db.prepare("UPDATE app_secrets SET value = ? WHERE key = ?").bind(await encryptSecret(env, d.value), r.key).run().catch(logged(db, `klíč ${r.key} se nepřešifroval`, undefined));
           } catch {
             // žádný klíč nesedí (vyměněný ADMIN_TOKEN bez SECRETS_KEY) – zapsat do logu, ať to není tiché
             await logEvent(db, "error", `klíč ${r.key} nejde dešifrovat – zadej ho znovu v Nastavení`);

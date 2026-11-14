@@ -7,7 +7,7 @@ import { BIKE_SPORTS } from "../datasource/types";
 import { computeDrift } from "../core/activity";
 import { activityLoad } from "../core/load";
 import { classify, qualityFromName, type QualityType } from "../core/quality";
-import { all, execAll, first, getState, lit, logEvent, setState, setStateSql, upsertSql } from "../lib/db";
+import { all, execAll, first, getState, lit, logEvent, logged, setState, setStateSql, upsertSql } from "../lib/db";
 import { HttpError } from "../lib/http";
 import { getSettings, setSettingSql, type Settings } from "../lib/settings";
 import { addDays, daysBetween, localNow } from "../lib/time";
@@ -299,12 +299,12 @@ export async function syncTick(env: Env, opts: { force?: boolean; manual?: boole
       // drift počítám jen když ho intervals.icu nemá (decoupling) – jinak zbytečné stahování průběhu
       if (bike && recent && !a.has_drift && icuRow?.decoupling == null && (!icu.configured || !!icuRow || a.enrich_state >= 2) && ds.activitySamples) {
         if (driftQuota-- > 0) {
-          const smp = await ds.activitySamples(a.id).catch(() => null);
+          const smp = await ds.activitySamples(a.id).catch(logged(env.DB, `průběh jízdy ${a.date} (drift) se nestáhl`, null));
           if (smp) drift = computeDrift(smp, !!a.np);
         } else pending = true;
       }
       if (icuRow && (bike || a.sport === "run") && recent && !a.has_laps) {
-        if (lapQuota-- > 0) laps = await icu.laps(String(icuRow.id)).catch(() => null);
+        if (lapQuota-- > 0) laps = await icu.laps(String(icuRow.id)).catch(logged(env.DB, `okruhy aktivity ${a.date} z intervals.icu se nestáhly`, null));
         else pending = true;
       }
       const ev = icuRow?.paired_event_id != null ? evById.get(String(icuRow.paired_event_id)) : null;
@@ -518,7 +518,7 @@ export async function syncTick(env: Env, opts: { force?: boolean; manual?: boole
     const rows = icuFitnessRows(w);
     await execAll(env.DB, [...wellnessSql(rows), setStateSql("vo2_refresh", T)]);
     // FTP z intervals.icu (tam je zadaný test) – jen když ho uživatel nenastavil ručně
-    const rs = await icu.rideSettings().catch(() => null);
+    const rs = await icu.rideSettings().catch(logged(env.DB, "FTP z intervals.icu se nenačetlo", null));
     // Ruční FTP z dashboardu platí, dokud se v intervals.icu neobjeví NOVÉ číslo (nový test) – to pak má přednost.
     if (rs?.ftp) {
       const seen = await getState<number>(env.DB, "icu_ftp_seen");

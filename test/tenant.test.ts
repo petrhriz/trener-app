@@ -1,3 +1,4 @@
+/// <reference types="node" /> // testy čtou soubory (fs, path) – Node typy jen tady, ne ve Workeru
 // Víc uživatelů – SQL se přesměruje na tabulky uživatele, nic nesmí zůstat na tabulkách vlastníka.
 import { describe, expect, it } from "vitest";
 import fs from "fs";

@@ -1,3 +1,4 @@
+/// <reference types="node" /> // testy čtou soubory (fs, path) – Node typy jen tady, ne ve Workeru
 // Testy AI vrstvy na modelových situacích. Model se nevolá – odpovědi
 // jsou skriptované (vi.mock providers), testuje se, co s nimi udělá náš kód: kontrola původu čísel, druhý pokus,
 // soukromí, žádné klíče v promptu, bezpečnostní pravidla v promptech. Změna promptu = vědomá revize (hash níž).

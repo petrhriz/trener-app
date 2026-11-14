@@ -57,7 +57,8 @@ authApp.post("/login", async (c) => {
   const { username, password } = (await c.req.json().catch(() => ({}))) as { username?: string; password?: string };
   const keys = failKeys(c, cleanUser(username));
   if ((await failCount(c.env.KV, keys)) >= LOGIN_MAX_FAILS) return c.json({ error: "Moc špatných pokusů. Zkus to znovu za 15 minut." }, 429);
-  const u = await c.env.DB.prepare("SELECT id, pass_hash, active FROM users WHERE username = ?").bind(cleanUser(username)).first<{ id: number; pass_hash: string | null; active: number }>().catch(() => null);
+  const u = await c.env.DB.prepare("SELECT id, pass_hash, active FROM users WHERE username = ?").bind(cleanUser(username)).first<{ id: number; pass_hash: string | null; active: number }>().catch(() => "db" as const);
+  if (u === "db") return c.json({ error: "Přihlášení teď nejde (výpadek databáze). Zkus to za chvíli." }, 503);
   // stejná odpověď pro neznámé jméno i špatné heslo; krátké čekání brzdí hádání
   if (!u || !u.active || !(await checkPassword(String(password ?? ""), u.pass_hash))) {
     await addFail(c.env.KV, keys).catch(() => undefined);

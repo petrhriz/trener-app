@@ -3,7 +3,7 @@ import type { Env } from "../env";
 import { IntervalsClient } from "../datasource/intervals";
 import type { Change, Payload } from "../core/plan";
 import { ICU_TYPE } from "../core/workout";
-import { all, first, getState, lit, logEvent, run, setState } from "../lib/db";
+import { all, first, getState, lit, logEvent, logged, run, setState } from "../lib/db";
 import { HttpError } from "../lib/http";
 import { dayDm } from "../lib/format";
 import { getSettings } from "../lib/settings";
@@ -111,7 +111,7 @@ export async function applyChanges(env: Env, items: Change[]): Promise<ApplyResu
   const lines: string[] = [];
   const touched = new Set<string>();
   const notDeleted: string[] = [];
-  if (sync) await retryIcuDeletes(env).catch(() => 0);
+  if (sync) await retryIcuDeletes(env).catch(logged(env.DB, "intervals.icu: dosmazání selhalo", 0));
 
   for (const c of items) {
     try {
@@ -220,7 +220,8 @@ export async function removeConstraint(env: Env, date: string, kind: string | nu
     for (const p of back) {
       let evId: string | null = null;
       if (s.icu_sync && icu.configured) {
-        try { evId = String((await icu.createEvent(eventBody(p, p.id))).id); } catch { /* zapíše se při dalším návrhu */ }
+        // nevyjde-li to, zapíše se při dalším návrhu – ale do logu, ať je vidět, že kalendář nesedí
+        try { evId = String((await icu.createEvent(eventBody(p, p.id))).id); } catch (e) { await logEvent(env.DB, "warn", `intervals.icu: trénink ${p.date} se nezapsal (${(e as Error).message})`); }
       }
       await run(env.DB, "UPDATE planned_workouts SET status = 'planned', icu_event_id = ?, updated_at = ? WHERE id = ?", evId, new Date().toISOString(), p.id);
     }

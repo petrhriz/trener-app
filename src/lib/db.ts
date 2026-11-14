@@ -89,6 +89,17 @@ export function setStateSql(key: string, value: unknown): string {
   )}) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`;
 }
 
+/**
+ * Záložní hodnota při chybě, ale ne potichu: chyba se zapíše do logu (Nastavení → Log).
+ * Použití: `await x().catch(logged(db, "laps z intervals.icu", null))`.
+ */
+export function logged<T>(db: D1Database, what: string, fallback: T): (e: unknown) => Promise<T> {
+  return async (e) => {
+    await logEvent(db, "warn", `${what}: ${e instanceof Error ? e.message : String(e)}`);
+    return fallback;
+  };
+}
+
 export async function logEvent(db: D1Database, level: "info" | "warn" | "error", msg: string) {
   // Bez tokenů a bez zdravotních hodnot – jen technické zprávy.
   try {

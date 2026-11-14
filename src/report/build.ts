@@ -13,7 +13,7 @@ import { type RecoveryResult, evaluateRecovery } from "../core/recovery";
 import { recoveryScore } from "../core/readinessScore";
 import { type DayWeather, dayWeather } from "../core/weather";
 import type { Workout } from "../core/workout";
-import { all, first, getState, run, setState } from "../lib/db";
+import { all, first, getState, logged, run, setState } from "../lib/db";
 import { type KeyRecord, evaluateKeys, recordKeys } from "../core/coach/keys";
 import { dayDm, dm, hmm, num, signed } from "../lib/format";
 import { addDays, dateRange, mondayOf } from "../lib/time";
@@ -328,7 +328,7 @@ export async function planForCoach(ctx: Ctx, rec: RecoveryResult, opt: { dryRun?
       trained: [...new Set(ctx.acts.filter((a) => a.date >= W0 && (a.moving_s ?? 0) >= 20 * 60).map((a) => a.date))].sort(),
       profile: JSON.stringify(profile),
     };
-    await saveVersion(ctx, plan, drivers).catch(() => {});
+    await saveVersion(ctx, plan, drivers).catch(logged(ctx.env.DB, "historie plánu se neuložila", undefined));
   }
   (plan.coach as any).lastKeys = keys1.filter((r) => r.state !== "pending").slice(-4).reverse();
   return plan;

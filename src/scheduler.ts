@@ -1,7 +1,7 @@
 // Interní plánovač (cron). Čas v Europe/Prague – letní/zimní čas řeší Intl.
 // Upozornění (servis, Garmin klíč, synchronizace) se neposílají – ukáže je stránka po otevření (src/api/alerts.ts).
 import type { Env } from "./env";
-import { logEvent, once, run } from "./lib/db";
+import { logEvent, logged, once, run } from "./lib/db";
 import { localNow, mondayOf } from "./lib/time";
 import { weekly } from "./report/build";
 import { loadCtx } from "./report/context";
@@ -13,7 +13,7 @@ export async function runScheduler(env: Env, at = new Date()): Promise<string[]>
   const rep = await syncTick(env);
   log.push(...rep.steps);
   // dříve nesmazané události v intervals.icu (výpadek) – zkusit znovu
-  const del = await retryIcuDeletes(env).catch(() => 0);
+  const del = await retryIcuDeletes(env).catch(logged(env.DB, "intervals.icu: dosmazání selhalo", 0));
   if (del) log.push(`intervals.icu: dosmazáno ${del}`);
   const now = localNow(at, env.TZ_NAME);
   const T = now.date;

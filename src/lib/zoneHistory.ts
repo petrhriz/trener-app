@@ -4,7 +4,7 @@ import { all, run } from "./db";
 import type { Settings } from "./settings";
 
 export async function loadZoneHistory(db: D1Database): Promise<ZoneHistRow[]> {
-  const rows = await all<{ date: string; ftp: number | null; hr_zones: string | null }>(db, "SELECT date, ftp, hr_zones FROM zone_history ORDER BY date").catch(() => []);
+  const rows = await all<{ date: string; ftp: number | null; hr_zones: string | null }>(db, "SELECT date, ftp, hr_zones FROM zone_history ORDER BY date");
   return rows.map((r) => {
     let hr: HrZones | null = null;
     try { hr = r.hr_zones ? JSON.parse(r.hr_zones) : null; } catch { hr = null; }

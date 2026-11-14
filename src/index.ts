@@ -154,7 +154,20 @@ app.all("/api/*", async (c) => {
   return apiRoot.fetch(c.req.raw, env, c.executionCtx);
 });
 
-app.get("/health", (c) => c.json({ ok: true }));
+/**
+ * Stav pro hlídání zvenku (UptimeRobot apod.): databáze odpovídá a synchronizace běží. Veřejné, proto bez
+ * podrobností – jen ok / stale. 503 = databáze nejde, 200 s sync „stale“ = cron nebo Garmin stojí přes 6 h.
+ */
+app.get("/health", async (c) => {
+  try {
+    const r = await c.env.DB.prepare("SELECT value FROM sync_state WHERE key = 'last_sync_ok'").first<{ value: string }>();
+    const at = r ? Date.parse(JSON.parse(r.value) as string) : NaN;
+    const stale = !isFinite(at) || Date.now() - at > 6 * 3600_000;
+    return c.json({ ok: !stale, db: "ok", sync: stale ? "stale" : "ok" }, 200, { "Cache-Control": "no-store" });
+  } catch {
+    return c.json({ ok: false, db: "error" }, 503, { "Cache-Control": "no-store" });
+  }
+});
 
 export default {
   fetch: app.fetch,

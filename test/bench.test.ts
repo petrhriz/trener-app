@@ -1,3 +1,4 @@
+/// <reference types="node" /> // testy čtou soubory (fs, path) – Node typy jen tady, ne ve Workeru
 // Lokální měření CPU výpočtů.
 //  - BENCH_CTX=cesta k JSON z /admin/ctx: plán a připravenost nad skutečným kontextem,
 //  - BENCH=1: runCoach nad simulovanou historií (scripts/coach-sim-lib.ts) – pondělí a čtvrtek (rozběhnutý týden).
