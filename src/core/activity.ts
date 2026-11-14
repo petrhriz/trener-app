@@ -227,7 +227,7 @@ export function analyzeActivity(a: ActRow, plan: PlannedForAct | null, ftp: numb
   if (a.avg_hr) basics.push(["❤️ Tep", `${num(a.avg_hr)} bpm${a.max_hr ? ` (max ${num(a.max_hr)} bpm)` : ""}`]);
   // VI a aerobní drift nejsou nahoře: VI je v Dalších údajích, drift (= decoupling) v kartě 1. vs. 2. polovina
   if (hasPower) basics.push(["⚡ Výkon", `${num(a.avg_power)} W (NP ${num(a.np)} W)`]);
-  const viInfo = hasPower && vi != null ? { value: Math.round(vi * 100) / 100, intensity: intensity != null ? Math.round(intensity) : null, text: vi <= 1.1 ? "rovnoměrná jízda" : vi <= 1.25 ? "kopce nebo intervaly" : "hodně nárazová jízda" } : null;
+  const viInfo = hasPower && vi != null ? { value: Math.round(vi * 100) / 100, intensity: intensity != null ? Math.round(intensity) : null, text: vi <= 1.1 ? "rovnoměrná" : vi <= 1.25 ? "kopce / intervaly" : "nárazová" } : null;
   const driftNote = isBike ? driftText(a.drift, steady, hilly, moving, a.max_temp) : null;
   let basicsNote = "";
   if (isBike && !hasPower) basicsNote = "Bez wattmetru: hodnotím tep a zóny tepu, zátěž je odhad z tepu.";

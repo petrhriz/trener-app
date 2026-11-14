@@ -367,10 +367,10 @@ api.get("/coach", async (c) => {
       acts: acts.map((a) => ({ id: a.id, name: a.name, sport: a.sport, moving_s: a.moving_s, load: Math.round(a.load ?? 0), q: !!a.is_quality })),
     });
   }
-  // kalendář trenéra: 2 ukončené týdny + tento týden do včerejška – skutečnost po dnech a co bylo v plánu
+  // kalendář trenéra: 2 ukončené týdny + tento týden včetně dneška (odjetý dnešek se ukáže jako hotový) – skutečnost po dnech a co bylo v plánu
   const W0 = mondayOf(T);
   const past: { date: string; acts: { id: string; sport: string; min: number; load: number; q: boolean; name: string | null }[]; plan: { name: string; min: number | null; kind: string } | null }[] = [];
-  for (let d = addDays(W0, -14); d < T; d = addDays(d, 1)) {
+  for (let d = addDays(W0, -14); d <= T; d = addDays(d, 1)) {
     const acts = ctx.acts.filter((a) => a.date === d && ((a.load ?? 0) >= 5 || (a.moving_s ?? 0) >= 900));
     const pl = ctx.calendar.find((x) => x.date === d && x.kind !== "rest" && x.name) ?? null;
     past.push({ date: d, acts: acts.map((a) => ({ id: a.id, sport: a.sport, min: Math.round((a.moving_s ?? 0) / 60), load: Math.round(a.load ?? 0), q: !!a.is_quality, name: a.name ?? null })), plan: pl ? { name: pl.name, min: pl.duration_min ?? null, kind: pl.kind } : null });
@@ -784,7 +784,7 @@ api.get("/activity/:id", async (c) => {
     if (!rep.goal.includes("jel jsi")) rep.goal += a.sport === "run" ? ` 👥 Běh ${who}.` : ` 👥 Jízda ${who}.`;
   }
   return c.json({
-    ...rep, company, rpe: tag?.rpe ?? null, id: a.id, sport: a.sport, hasStreams: (a.moving_s ?? 0) > 60, strain: a.icu_strain, calories: a.calories, drift: a.drift, icuDecoupling: raw?.icu_decoupling ?? null, z2Power,
+    ...rep, company, rpe: tag?.rpe ?? null, id: a.id, sport: a.sport, hasStreams: (a.moving_s ?? 0) > 60, strain: a.icu_strain, calories: a.calories, drift: a.drift, icuDecoupling: raw?.icu_decoupling ?? null, z2Power, aiOn: ctx.s.act_ai !== false,
     extra, aerobicTe: (a as any).aerobic_te ?? null, avgPower: a.avg_power ?? null, np: a.np ?? null, avgCad: a.avg_cad, minTemp: a.min_temp, maxTemp: a.max_temp, elevGain: a.elev_gain, distance: a.distance_m, moving: a.moving_s,
     gear: { id: gearId, manual: links.has(a.id), list: gear.filter((g) => !g.to_date || g.to_date >= a.date).map((g) => ({ id: g.id, name: g.name, kind: g.kind })) },
   });
@@ -794,6 +794,7 @@ api.get("/activity/:id", async (c) => {
 api.get("/activity/:id/ai", async (c) => {
   const id = c.req.param("id");
   const force = c.req.query("force") === "1";
+  if ((await getSettings(c.env.DB)).act_ai === false) return c.json({ text: null, model: null, off: true });
   if (!force) {
     const hit = await c.env.KV.get<{ text: string; model: string | null }>(`actai:v1:${id}`, "json").catch(() => null);
     if (hit?.text) return c.json({ ...hit, cached: true });

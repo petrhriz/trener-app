@@ -616,7 +616,7 @@ function weatherList(days, temps = null) {
     return `<div class="wrow"><b class="wd">${esc(label)}</b><span class="wi">${weatherIcon(w)}</span><span class="wt"><b>${num(w.tmax)}°</b> / ${num(w.tmin)}°</span><span class="wm sub">💧 ${num(w.rainProb)} % · 💨 ${num(w.gustMax)} km/h</span>${verdict}<div class="hstrip">${cells}</div></div>`;
   }).join("");
   const t = temps || { cold: 3, hot: 30, ideal: 18 };
-  return `<div class="wlist">${rows}</div><details class="info wleg"><summary>ⓘ Vysvětlivky</summary><div class="legend"><span><i class="lg ok"></i>vhodné</span><span><i class="lg ok win"></i>doporučené okno (nejblíž ${t.ideal} °C)</span><span><i class="lg cool"></i>chladné ráno / večer v teplém dni</span><span><i class="lg cold"></i>zima (pocitově &lt; ${t.cold} °C)</span><span><i class="lg hot"></i>vedro (nad ${t.hot} °C)</span><span><i class="lg rain"></i>srážky &gt; 30 %</span><span><i class="lg wind"></i>vítr &gt; 40 km/h</span><span><i class="lg dark"></i>tma (do 30 min po západu slunce)</span><span class="sub">hodiny 7–20, číslo = teplota · hranice v Nastavení</span></div></details>`;
+  return `<div class="wlist">${rows}</div><details class="info wleg"><summary>ⓘ Vysvětlivky</summary><div class="legend"><span><i class="lg ok"></i>vhodné</span><span><i class="lg ok win"></i>doporučené okno (nejblíž ${t.ideal} °C)</span><span><i class="lg cool"></i>chladné ráno / večer v teplém dni</span><span><i class="lg cold"></i>zima (pocitově &lt; ${t.cold} °C)</span><span><i class="lg hot"></i>vedro (nad ${t.hot} °C)</span><span><i class="lg rain"></i>srážky &gt; 30 %</span><span><i class="lg wind"></i>vítr &gt; 40 km/h</span><span><i class="lg dark"></i>tma (do 30 min po západu slunce)</span><span class="sub">hodiny 7–20 (v létě od rozednění), číslo = teplota · hranice v Nastavení</span></div></details>`;
 }
 function bindHours(root) {
   root.querySelectorAll(".hstrip i").forEach((el) => {
@@ -1847,7 +1847,8 @@ function extraHtml(a) {
     x.max_speed && !foot ? ["🚀 Max. rychlost", u(num(x.max_speed, 1), "km/h"), ""] : null,
     run && a.avgPower ? ["⚡ Výkon", u(num(a.avgPower), "W"), a.np ? `NP ${num(a.np)} W` : ""] : null,
     // VI = NP / průměrný výkon (jak nárazová byla jízda); intenzita = NP / FTP
-    a.vi ? ["📊 VI (variabilita)", num(a.vi.value, 2), `${a.vi.text}${a.vi.intensity != null ? ` · intenzita ${a.vi.intensity} % FTP` : ""}`] : null,
+    a.vi ? ["📊 VI", num(a.vi.value, 2), a.vi.text] : null,
+    a.vi?.intensity != null ? ["🎚️ Intenzita", u(a.vi.intensity, "%"), "NP proti FTP"] : null,
     a.avgCad ? [run ? "👟 Kadence" : "🔄 Kadence", u(num(x.run_cad || a.avgCad), run ? "kr/min" : "ot/min"), x.max_cad ? `max ${num(x.max_cad)} ${run ? "kr/min" : "ot/min"}` : ""] : null,
     x.strokes ? [run || foot ? "👟 Kroků" : "🔄 Otáček", thou(x.strokes), "celkem"] : a.avgCad && a.moving && !run ? ["🔄 Otáček", thou((a.avgCad * a.moving) / 60), "celkem (odhad)"] : null,
     x.stride_m ? ["📏 Délka kroku", u(num(x.stride_m, 2), "m"), ""] : null,
@@ -2136,11 +2137,17 @@ async function pageAktivita(el, id) {
     api(`activity/${a.id}/ai${force ? "?force=1" : ""}`).then((r) => {
       clearTimeout(slow);
       if (!box.isConnected) return;
-      if (r && r.text) { box.querySelector(".ai-t").textContent = "🤖 " + r.text; m.innerHTML = `${r.model ? esc(String(r.model).replace(/^[a-z]+:/, "").replace(/^.*\//, "")) + " · " : ""}<button class="linkbtn" type="button">napsat znovu</button>`; m.querySelector("button").addEventListener("click", () => { m.textContent = "🤖 píšu…"; loadAi(true); }); }
+      if (r && r.text) { box.querySelector(".ai-t").textContent = "🤖 " + r.text; m.innerHTML = `${r.model ? esc(String(r.model).replace(/^[a-z]+:/, "").replace(/^.*\//, "")) + " · " : ""}<button class="linkbtn" type="button" data-again>napsat znovu</button> · <button class="linkbtn" type="button" data-aioff title="Zpátky zapneš v Nastavení">skrýt AI</button>`;
+        m.querySelector("[data-again]").addEventListener("click", () => { m.textContent = "🤖 píšu…"; loadAi(true); });
+        m.querySelector("[data-aioff]").addEventListener("click", async () => {
+          if (!confirm("Skrýt AI hodnocení u všech aktivit?\n\nMísto něj bude krátké hodnocení z čísel. Zpátky ho zapneš v Nastavení.")) return;
+          try { await api("settings", { method: "POST", body: JSON.stringify({ act_ai: false }) }); cache.clear(); box.querySelector(".ai-t").textContent = "🎯 " + a.goal; m.remove(); toast("AI hodnocení aktivit skryto"); } catch (e) { fail(e); }
+        });
+      }
       else m.remove();
     }).catch(() => { clearTimeout(slow); m.remove(); });
   };
-  loadAi(false);
+  if (a.aiOn !== false) loadAi(false); else el.querySelector("#actAi .ai-m")?.remove();
   const rs = el.querySelector("#rpeSel");
   if (rs) rs.addEventListener("change", async () => {
     const msg = el.querySelector("#rpeMsg");
@@ -2957,6 +2964,7 @@ async function pageNastaveni(el) {
      ${f("year_km_goal", "Roční cíl km", "number")}
      ${f("garmin_key_created", "Garmin klíč vytvořen", "date")}
      <label class="chk"><input type="checkbox" name="llm_enabled" ${s.llm_enabled ? "checked" : ""}> AI pro volné otázky a chat</label>
+     <label class="chk"><input type="checkbox" name="act_ai" ${s.act_ai !== false ? "checked" : ""}> AI hodnocení aktivit (text nahoře na stránce aktivity; vypnuté = krátké hodnocení z čísel)</label>
      <label class="chk"><input type="checkbox" name="ai_private" ${s.ai_private ? "checked" : ""}> AI nedostane zdravotní údaje (VST, spánek, klidový tep, stres, Body Battery, váha) – jen trénink</label>
      <label class="chk"><input type="checkbox" name="floor_strength" ${s.floor_strength ? "checked" : ""}> Síla 1× týdně v minimu týdne</label>
      <label class="chk"><input type="checkbox" name="icu_sync" ${s.icu_sync ? "checked" : ""}> Zápis plánu do intervals.icu</label>
@@ -2986,7 +2994,7 @@ async function pageNastaveni(el) {
     for (const k of ["ftp", "year_km_goal", "goal_ctl"]) body[k] = fd.get(k) ? Number(fd.get(k)) : null;
     for (const k of ["goal_name", "goal_date", "garmin_key_created"]) body[k] = fd.get(k) || null;
     for (const k of ["goal", "place_name"]) if (String(fd.get(k) ?? "").trim()) body[k] = String(fd.get(k)).trim();
-    for (const k of ["llm_enabled", "ai_private", "icu_sync", "floor_strength"]) body[k] = fd.get(k) === "on";
+    for (const k of ["llm_enabled", "act_ai", "ai_private", "icu_sync", "floor_strength"]) body[k] = fd.get(k) === "on";
     const numOr = (k, d) => { const v = String(fd.get(k) ?? "").trim(); return v !== "" && isFinite(+v) ? +v : d; };
     body.ride_temps = { cold: numOr("t_cold", s.ride_temps?.cold ?? 3), hot: numOr("t_hot", s.ride_temps?.hot ?? 30), ideal: numOr("t_ideal", s.ride_temps?.ideal ?? 18) };
     const sv = el.querySelector("#saved");

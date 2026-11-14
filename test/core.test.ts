@@ -296,6 +296,12 @@ describe("počasí (kap. 8) a okno na jízdu", () => {
     // bez údajů o slunci se nic nemění
     expect(dayWeather(mk("2026-11-14", () => ({})), "2026-11-14")!.hours.every((x) => x.green)).toBe(true);
   });
+  it("léto: hodiny začínají od rozednění, ne až v 7", () => {
+    const w = dayWeather(mk("2026-06-20", () => ({})), "2026-06-20", undefined, { rise: "04:52", set: "21:14" })!;
+    expect(w.hours[0]!.h).toBe(5); // 5:00 ≥ 4:22
+    expect(w.hours.every((x) => x.green)).toBe(true);
+    expect(w.hours[w.hours.length - 1]!.h).toBe(20);
+  });
   it("bez předpovědi = null", () => expect(dayWeather([], "2026-11-10")).toBeNull());
 });
 

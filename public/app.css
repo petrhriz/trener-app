@@ -222,7 +222,7 @@ table.t tr.iv td { background: var(--accbg); }
 .wrow { display: grid; grid-template-columns: 62px 30px 80px 150px 132px minmax(0, 1fr); gap: 10px; align-items: center; padding: 9px 0; border-top: 1px solid var(--line); }
 .wrow:first-child { border-top: 0; }
 .wd { font-size: 14px; } .wi { font-size: 20px; } .wt { font-variant-numeric: tabular-nums; white-space: nowrap; } .wm { white-space: nowrap; }
-.hstrip { display: grid; grid-template-columns: repeat(14, 1fr); gap: 3px; min-width: 0; }
+.hstrip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 3px; min-width: 0; }
 .hstrip i { height: 24px; border-radius: 5px; position: relative; cursor: pointer; display: grid; place-items: center; }
 .hstrip i em { font-style: normal; font-size: 10px; font-weight: 700; color: rgba(0, 0, 0, .6); }
 .h.ok, .lg.ok { background: color-mix(in srgb, var(--z3) 70%, transparent); }

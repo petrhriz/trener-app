@@ -54,7 +54,7 @@ export async function aiBackground(env: Env, at = new Date()): Promise<string | 
   if (!(await llmAvailable(env))) return null;
   const ctx = await loadCtx(env, at);
   // 1) zhodnocení nových aktivit (dnes a včera), až jsou data kompletní
-  const recent = ctx.acts.filter((a) => a.date >= addDays(ctx.T, -1) && (a.moving_s ?? 0) >= 20 * 60 && (!a.seen_at || at.getTime() - Date.parse(a.seen_at) >= READY_MS)).reverse();
+  const recent = ctx.s.act_ai === false ? [] : ctx.acts.filter((a) => a.date >= addDays(ctx.T, -1) && (a.moving_s ?? 0) >= 20 * 60 && (!a.seen_at || at.getTime() - Date.parse(a.seen_at) >= READY_MS)).reverse();
   for (const a of recent) {
     const has = await env.KV.get(`actai:v1:${a.id}`).catch(() => null);
     if (has) continue;

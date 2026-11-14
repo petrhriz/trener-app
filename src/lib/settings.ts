@@ -19,6 +19,8 @@ export interface Settings {
   ai_private: boolean;
   /** AI model: "auto" (Gemma → Nemotron → Workers AI podle zadaných klíčů) nebo "google:<id>" / "nvidia:<id>" / "workers:<id>" */
   llm_model: string;
+  /** AI zhodnocení nahoře na stránce aktivity; vypnuté = jen text z kódu (a AI se na to nevolá) */
+  act_ai: boolean;
   icu_sync: boolean;
   garmin_key_created: string | null;
   rides_per_week: number;
@@ -54,6 +56,7 @@ export const DEFAULTS: Settings = {
   llm_enabled: true,
   ai_private: false,
   llm_model: "auto",
+  act_ai: true,
   icu_sync: true,
   garmin_key_created: null,
   rides_per_week: 3,

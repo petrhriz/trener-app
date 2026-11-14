@@ -23,7 +23,7 @@ export interface DayWeather {
   gusty: boolean;
   frost: boolean;
   bad: boolean;
-  /** hodiny 7–20: zelená = srážky ≤ 30 %, nárazy ≤ 40 km/h, pocitově mezi tvými hranicemi (výchozí 3–30 °C), za světla */
+  /** hodiny 7–20 (v létě od rozednění, nejdřív 4 h): zelená = srážky ≤ 30 %, nárazy ≤ 40 km/h, pocitově mezi tvými hranicemi (výchozí 3–30 °C), za světla */
   hours: { h: number; green: boolean; kind?: HourKind; why?: string; temp: number | null; prob: number | null; gust: number | null; feels: number | null; precip: number | null; code?: number | null }[];
   window: { from: number; to: number } | null;
   text: string;
@@ -83,7 +83,10 @@ export function hourKind(h: Pick<Hour, "precip_prob" | "gust" | "feels">, dayMax
 
 export function dayWeather(all: Hour[], date: string, t: RideTemps = DEFAULT_TEMPS, sun?: SunDay | null): DayWeather | null {
   const dayAll = all.filter((h) => h.time.startsWith(date));
-  const day = dayAll.filter((h) => hourOf(h.time) >= DAY_FROM && hourOf(h.time) <= DAY_TO);
+  // brzký východ (léto): okna i před 7. hodinou, od 30 min před východem; večer v Česku světlo končí do 21:30
+  const rise = hm(sun?.rise ?? null);
+  const from = rise != null ? Math.max(4, Math.min(DAY_FROM, Math.ceil(rise - TWILIGHT_H))) : DAY_FROM;
+  const day = dayAll.filter((h) => hourOf(h.time) >= from && hourOf(h.time) <= DAY_TO);
   if (day.length < 10) return null; // předpověď den nepokrývá
   const night = dayAll.filter((h) => hourOf(h.time) <= 8);
   const vals = (arr: Hour[], k: keyof Hour) => arr.map((h) => h[k]).filter((x): x is number => typeof x === "number");
