@@ -2,7 +2,7 @@
   --bg: #f3f2ef; --bg2: #ffffff; --card: #ffffff; --card2: #f5f4f1; --line: #e6e3de; --fg: #1b1916; --muted: #6d6860;
   --acc: #e0600f; --acc2: #f59448; --accbg: #fdeadb; --ok: #23955a; --okbg: #e2f4e9; --warn: #c98206; --warnbg: #fbf0d6;
   --bad: #d03c48; --badbg: #fbe3e5;
-  --z1: #9aa3ad; --z2: #2f7fd6; --z3: #2fa84f; --z4: #e9a21b; --z5: #e8650f; --z6: #d13f4a; --z7: #8a4fd0;
+  --ski: #4fa3d8; --z1: #9aa3ad; --z2: #2f7fd6; --z3: #2fa84f; --z4: #e9a21b; --z5: #e8650f; --z6: #d13f4a; --z7: #8a4fd0;
   --sdeep: #3046a8; --srem: #9a5fd8; --slight: #8fb3ef; --sawake: #f0a3b4;
   --shadow: 0 1px 2px rgba(20, 16, 10, .04), 0 4px 16px rgba(20, 16, 10, .04);
   --r: 16px;
@@ -13,7 +13,7 @@
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #0f0e0d; --bg2: #151413; --card: #1a1918; --card2: #232120; --line: #2d2a28; --fg: #f2efeb; --muted: #9c968f;
   --acc: #f37a2c; --acc2: #ffa064; --accbg: #3a2416; --ok: #5cc285; --okbg: #15301f; --warn: #f0b443; --warnbg: #352a12;
-  --bad: #f0707a; --badbg: #3a1b1e; --z1: #7d8792; --z2: #4f9bec; --z3: #4cc06b; --z4: #f0b23a; --z5: #f37a2c; --z6: #f0707a; --z7: #a679e6;
+  --bad: #f0707a; --badbg: #3a1b1e; --ski: #6bb8e8; --z1: #7d8792; --z2: #4f9bec; --z3: #4cc06b; --z4: #f0b23a; --z5: #f37a2c; --z6: #f0707a; --z7: #a679e6;
   --sdeep: #5470e0; --srem: #b285ee; --slight: #8eb2ee; --sawake: #e98aa0; --shadow: none; color-scheme: dark;
   --m-hrv: #3cc9b2; --m-rhr: #f2788c; --m-sleep: #9a8cf5; --m-stress: #f2b84b; --m-bb: #5cc97a; --m-resp: #5aaef2;
   --tipbg: rgba(48, 45, 42, .97); --tipfg: #f2efeb; --tipline: #4a4541; --tipshadow: 0 10px 28px rgba(0, 0, 0, .55);
@@ -21,7 +21,7 @@
 :root[data-theme="dark"] {
   --bg: #0f0e0d; --bg2: #151413; --card: #1a1918; --card2: #232120; --line: #2d2a28; --fg: #f2efeb; --muted: #9c968f;
   --acc: #f37a2c; --acc2: #ffa064; --accbg: #3a2416; --ok: #5cc285; --okbg: #15301f; --warn: #f0b443; --warnbg: #352a12;
-  --bad: #f0707a; --badbg: #3a1b1e; --z1: #7d8792; --z2: #4f9bec; --z3: #4cc06b; --z4: #f0b23a; --z5: #f37a2c; --z6: #f0707a; --z7: #a679e6;
+  --bad: #f0707a; --badbg: #3a1b1e; --ski: #6bb8e8; --z1: #7d8792; --z2: #4f9bec; --z3: #4cc06b; --z4: #f0b23a; --z5: #f37a2c; --z6: #f0707a; --z7: #a679e6;
   --sdeep: #5470e0; --srem: #b285ee; --slight: #8eb2ee; --sawake: #e98aa0; --shadow: none; color-scheme: dark;
   --m-hrv: #3cc9b2; --m-rhr: #f2788c; --m-sleep: #9a8cf5; --m-stress: #f2b84b; --m-bb: #5cc97a; --m-resp: #5aaef2;
   --tipbg: rgba(48, 45, 42, .97); --tipfg: #f2efeb; --tipline: #4a4541; --tipshadow: 0 10px 28px rgba(0, 0, 0, .55);
@@ -455,8 +455,6 @@ body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-ins
 .rp small { grid-column: 3; color: var(--muted); font-size: 11.5px; }
 .rp b { text-align: right; font-variant-numeric: tabular-nums; }
 
-.emo { width: 1.15em; height: 1.15em; vertical-align: -0.2em; display: inline-block; }
-.sw-sport .emo { width: 18px; height: 18px; }
 
 /* ---------- modální okno stavu ---------- */
 .modal { position: fixed; inset: 0; z-index: 1800; background: rgba(0, 0, 0, .45); display: flex; align-items: flex-end; justify-content: center; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
@@ -1063,7 +1061,7 @@ a.mtile:hover { border-color: color-mix(in srgb, var(--acc) 45%, var(--line)); }
 .td-row { display: grid; grid-template-columns: 72px minmax(0, 1fr) 84px 150px 92px; gap: 10px; align-items: center; padding: 11px 4px; }
 .td-date { font-size: 13px; color: var(--muted); } .td-date b { color: var(--fg); }
 .td-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.td-ico { font-size: 20px; flex: none; } .td-ico .emo { width: 22px; height: 22px; }
+.td-ico { font-size: 20px; flex: none; }
 .td-t { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; }
 .td-t b { font-size: 15px; }
 .td-t small { flex-basis: 100%; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1162,7 +1160,7 @@ details.info > .note { margin-top: 6px; }
   .td-row { grid-template-columns: 50px minmax(0, 1fr) auto; grid-template-areas: "d m b" "d n n" "d w w"; row-gap: 3px; column-gap: 8px; padding: 10px 0; align-items: center; }
   .td-date { line-height: 1.3; }
   .td-main { gap: 7px; }
-  .td-ico { font-size: 17px; } .td-ico .emo { width: 19px; height: 19px; }
+  .td-ico { font-size: 17px; }
   .td-t { flex-wrap: nowrap; overflow: hidden; }
   .td-t b { font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .td-t > small { display: none; }
@@ -1419,7 +1417,6 @@ tr.lapclick.busy td { opacity: .55; }
 .mrows { display: grid; gap: 6px; margin-top: 10px; }
 .mrows > div { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; column-gap: 8px; align-items: center; font-size: 14px; }
 .mrows .mr-i { grid-row: span 2; font-size: 20px; text-align: center; }
-.mrows .mr-i .emo { width: 22px; height: 22px; }
 .mrows .mr-n { font-weight: 650; display: flex; align-items: center; gap: 6px; min-width: 0; }
 .mrows .mr-n i { width: 9px; height: 9px; border-radius: 3px; flex: none; }
 .mrows .mr-v { font-weight: 750; font-variant-numeric: tabular-nums; }
@@ -2153,3 +2150,19 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 .viewbar { position: sticky; top: 0; z-index: 40; display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; padding: calc(6px + env(safe-area-inset-top)) 16px 6px; background: var(--acc); color: #fff; font-size: 13.5px; }
 .viewbar .btn { background: rgba(255, 255, 255, .2); border-color: transparent; color: #fff; }
 .ubtns { display: inline-flex; gap: 6px; }
+
+/* ===== ikony (styl Duotón, funkce ic() v app.js): obrys v barvě skupiny, uzavřené plochy průsvitně ===== */
+.ic { --c: currentColor; display: inline-flex; vertical-align: -.2em; color: var(--c); line-height: 1; flex: none; }
+.ic .i { width: 1.2em; height: 1.2em; display: block; }
+svg.i { fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
+svg.i .f { fill: color-mix(in srgb, currentColor 22%, transparent); }
+svg.i .fs { fill: currentColor; stroke: none; }
+/* ikona v nadpisu karty, na tlačítku a v popisku: o kousek menší a odsazená */
+.card h2 .ic, .btn .ic, .mt-h .ic, .seg .ic, .chipl .ic { margin-right: .15em; }
+.btn .ic .i { width: 1.1em; height: 1.1em; }
+/* ikona stavu ve výběru stavu a v liště Přehledu */
+.pb-ico .ic .i { width: 20px; height: 20px; }
+.stopt span .ic .i { width: 22px; height: 22px; }
+/* semafor zotavení jako tečka */
+.sdot { display: inline-block; width: .7em; height: .7em; border-radius: 50%; background: var(--muted); vertical-align: .02em; margin: 0 .1em; }
+.sdot.good { background: var(--ok); } .sdot.warn { background: var(--warn); } .sdot.bad { background: var(--bad); }

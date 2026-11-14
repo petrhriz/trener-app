@@ -193,7 +193,7 @@ export async function syncTick(env: Env, opts: { force?: boolean; manual?: boole
     const acts = await ds.activitiesPage(0, 10);
     const r = await upsertActivities(env, acts, s);
     rep.newActivities = r.newIds;
-    for (const a of acts.filter((x) => r.newIds.includes(x.id))) await logEvent(env.DB, "info", `sync: 🏅 nová aktivita z ${a.start_local.slice(8, 10)}. ${a.start_local.slice(5, 7)}. ${a.start_local.slice(11, 16)} (${a.sport})`);
+    for (const a of acts.filter((x) => r.newIds.includes(x.id))) await logEvent(env.DB, "info", `sync: nová aktivita z ${a.start_local.slice(8, 10)}. ${a.start_local.slice(5, 7)}. ${a.start_local.slice(11, 16)} (${a.sport})`);
     await markDirty(env.DB, r.minDate);
     await setState(env.DB, "last_sync_ok", new Date().toISOString());
     rep.steps.push(`aktivity (${acts.length}, nové ${r.newIds.length})`);
@@ -227,11 +227,11 @@ export async function syncTick(env: Env, opts: { force?: boolean; manual?: boole
       if (until && until <= Date.now() + 60_000 && (!prevUntil || until > prevUntil + 60_000)) {
         await setState(env.DB, "watch_data_until", until);
         const hhmm = new Intl.DateTimeFormat("cs-CZ", { timeZone: env.TZ_NAME || "Europe/Prague", hour: "2-digit", minute: "2-digit" }).format(new Date(until));
-        await logEvent(env.DB, "info", `sync: ⌚ hodinky synchronizovány s Garmin Connect – data do ${hhmm}`);
+        await logEvent(env.DB, "info", `sync: hodinky synchronizovány s Garmin Connect – data do ${hhmm}`);
       }
       if (parts.includes("sleep") && tw?.sleep_s && (await getState<string>(env.DB, "sleep_logged")) !== T) {
         await setState(env.DB, "sleep_logged", T);
-        await logEvent(env.DB, "info", "sync: 😴 spánek za dnešní noc stažen a přepočten");
+        await logEvent(env.DB, "info", "sync: spánek za dnešní noc stažen a přepočten");
       }
       // vlastní skóre a potřeba spánku (Garmin čísla zůstávají v *_g)
       if (parts.includes("sleep")) await recomputeSleep(env.DB, addDays(T, -2), T);

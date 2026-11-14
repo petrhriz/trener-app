@@ -94,7 +94,7 @@ describe("Trenér v3 – plán", () => {
     // kvalita o stupeň dolů (jiný druh kvality, nebo Z2), délka ~×0,75
     expect(y.kind === "z2" || y.qualityType !== g.qualityType || y.name !== g.name).toBe(true);
     expect(y.durationMin!).toBeLessThanOrEqual(Math.round(g.durationMin! * 0.75) + 10);
-    expect(y.note).toMatch(/🟡 ráno: (o stupeň lehčí|místo)/);
+    expect(y.note).toMatch(/[Rr]áno: (o stupeň lehčí|místo)/);
   });
   it("🟡 stupně dolů: VO2 → práh → sweet spot → tempo → Z2", async () => {
     const { STEP_DOWN } = await import("../../src/core/coach/engine");

@@ -458,7 +458,7 @@ export async function readiness(ctx: Ctx): Promise<Readiness> {
 /** Upozornění (jen když je co hlásit – signál, ne šum). */
 export function alertsFrom(ctx: Ctx, rec: RecoveryResult, fit: FitnessTable): string[] {
   const w: string[] = [];
-  if (rec.state === "red") w.push(`${rec.emoji} ${rec.stateLabel}: ${[...rec.flags.counted, ...rec.reasons].join(", ")}.`);
+  if (rec.state === "red") w.push(`${rec.stateLabel}: ${[...rec.flags.counted, ...rec.reasons].join(", ")}.`);
   if (rec.rhr.streak3) w.push("Klidový tep zvýšený 3 dny po sobě. Když se k tomu přidají příznaky nemoci, žádná zátěž a případně lékař.");
   if (rec.illness) w.push("Nemoc: nic nedohánět, po návratu postupně. Při bolesti na hrudi nebo závrati k lékaři.");
   if (fit.form != null && fit.form < -25) w.push(`Forma ${num(fit.form, 1)} je pod −25.`);

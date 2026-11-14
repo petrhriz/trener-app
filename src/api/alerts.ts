@@ -31,14 +31,14 @@ const hash = (s: string) => {
 export async function alertsFor(env: Env): Promise<Alert[]> {
   const ctx = await loadCtx(env);
   const out: Alert[] = [];
-  for (const s of await serviceAlerts(env.DB)) out.push({ key: `servis:${s.partId}:${s.hit}`, icon: "🔧", title: s.title, text: s.text, href: `#/vybaveni/${s.gearId}` });
+  for (const s of await serviceAlerts(env.DB)) out.push({ key: `servis:${s.partId}:${s.hit}`, icon: "vybaveni", title: s.title, text: s.text, href: `#/vybaveni/${s.gearId}` });
   if (ctx.s.garmin_key_created) {
     const expires = addDays(ctx.s.garmin_key_created, 365);
     const left = daysBetween(ctx.T, expires);
     if (left <= 30 && left >= 0)
-      out.push({ key: `garmin-key:${expires}`, icon: "🔑", title: `Garmin klíč končí za ${left} dní (${dm(expires)})`, text: "Nový: Garmin Connect → Nastavení → Personal API → vytvořit klíč a vlož ho v Nastavení → Klíče.", href: "#/nastaveni" });
+      out.push({ key: `garmin-key:${expires}`, icon: "klic", title: `Garmin klíč končí za ${left} dní (${dm(expires)})`, text: "Nový: Garmin Connect → Nastavení → Personal API → vytvořit klíč a vlož ho v Nastavení → Klíče.", href: "#/nastaveni" });
   }
-  for (const w of alertsFrom(ctx, recoveryFor(ctx), fitnessTable(ctx))) out.push({ key: `warn:${ctx.T}:${hash(w)}`, icon: "⚠️", title: "Upozornění", text: w });
+  for (const w of alertsFrom(ctx, recoveryFor(ctx), fitnessTable(ctx))) out.push({ key: `warn:${ctx.T}:${hash(w)}`, icon: "varovani", title: "Upozornění", text: w });
   const seen = new Set((await getState<string[]>(env.DB, SEEN)) ?? []);
   return out.filter((a) => !seen.has(a.key));
 }

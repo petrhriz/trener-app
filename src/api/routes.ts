@@ -192,7 +192,7 @@ api.get("/overview", async (c) => {
       rhrPast: { today: tw?.rhr ?? null, rating: vsN(tw?.rhr, nm("rhr"), true), norm: nm("rhr"), series: series("rhr") },
       fitPast: { ...pastFit, load7 },
     } : {}),
-    readiness: { state: recD.state, label: recD.stateLabel, emoji: recD.emoji, score: recD.score, scoreDrags: recD.scoreDrags, scoreBoosts: recD.scoreBoosts, reasons: [...recD.flags.counted, ...recD.reasons], decision: r.today.decision, why: r.today.decisionWhy, missing: r.missingData },
+    readiness: { state: recD.state, label: recD.stateLabel, score: recD.score, scoreDrags: recD.scoreDrags, scoreBoosts: recD.scoreBoosts, reasons: [...recD.flags.counted, ...recD.reasons], decision: r.today.decision, why: r.today.decisionWhy, missing: r.missingData },
     bb: { max: tw?.bb_max ?? null, min: tw?.bb_min ?? null, latest: tw?.bb_latest ?? null, charged: tw?.bb_charged ?? null, drained: tw?.bb_drained ?? null, series: last14.map((w) => ({ date: w.date, max: w.bb_max, min: w.bb_min })), norm: nm("bb_max") },
     hrv: { today: r.recovery.hrv.today, rating: r.recovery.hrv.rating, flag: r.recovery.hrv.flag, range: r.recovery.hrv.rangeText, avg7: r.recovery.hrv.avg7, series: series("hrv"), norm: nm("hrv") },
     rhr: { today: r.recovery.rhr.today, rating: r.recovery.rhr.rating, flag: r.recovery.rhr.flag, range: r.recovery.rhr.rangeText, avg7: r.recovery.rhr.avg7, series: series("rhr"), norm: nm("rhr") },
@@ -784,7 +784,7 @@ api.get("/activity/:id", async (c) => {
     // společná jízda: tempo určuje skupina (dotahování, kopce, střídání) → přetažená Z2 není chyba plánu ani tvoje
     const who = company === "skupina" ? "ve skupině" : `s ${company}`;
     rep.goal = rep.goal.replace("Jízda byla nad záměrem Z2, část času mimo Z2.", `Jízda byla nad záměrem Z2 – jel jsi ${who}, tempo určovala skupina, takže to je v pořádku. Zátěž se počítá normálně.`);
-    if (!rep.goal.includes("jel jsi")) rep.goal += a.sport === "run" ? ` 👥 Běh ${who}.` : ` 👥 Jízda ${who}.`;
+    if (!rep.goal.includes("jel jsi")) rep.goal += a.sport === "run" ? ` Běh ${who}.` : ` Jízda ${who}.`;
   }
   return c.json({
     ...rep, company, rpe: tag?.rpe ?? null, id: a.id, sport: a.sport, hasStreams: (a.moving_s ?? 0) > 60, strain: a.icu_strain, calories: a.calories, drift: a.drift, icuDecoupling: raw?.icu_decoupling ?? null, z2Power, aiOn: ctx.s.act_ai !== false,
@@ -1152,8 +1152,8 @@ api.post("/secrets", async (c) => {
 });
 api.post("/secrets/test", async (c) => {
   const out: { garmin: string; intervals: string } = { garmin: "", intervals: "" };
-  try { await new GarminClient(c.env).getToken(true); out.garmin = "✅ připojeno"; } catch (e) { out.garmin = `❌ ${(e as Error).message.slice(0, 120)}`; }
-  try { const a = await new IntervalsClient(c.env).athlete(); out.intervals = `✅ ${a?.name ?? "připojeno"}`; } catch (e) { out.intervals = `❌ ${(e as Error).message.slice(0, 120)}`; }
+  try { await new GarminClient(c.env).getToken(true); out.garmin = "připojeno"; } catch (e) { out.garmin = `chyba: ${(e as Error).message.slice(0, 120)}`; }
+  try { const a = await new IntervalsClient(c.env).athlete(); out.intervals = `připojeno${a?.name ? ` (${a.name})` : ""}`; } catch (e) { out.intervals = `chyba: ${(e as Error).message.slice(0, 120)}`; }
   return c.json(out);
 });
 

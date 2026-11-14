@@ -64,7 +64,6 @@ export interface RecoveryResult {
   sleep: SleepIndicator;
   state: State;
   stateLabel: string;
-  emoji: string;
   flags: { yellow: number; red: number; counted: string[] };
   dayAfter: string | null;
   illness: boolean;
@@ -83,7 +82,6 @@ export const STATE_LABEL: Record<State, string> = {
   yellow: "Částečně zotavený",
   red: "Nezotavený",
 };
-export const STATE_EMOJI: Record<State, string> = { green: "🟢", yellow: "🟡", red: "🔴" };
 
 /** Slovní hodnocení spánku podle skóre 0–100 (vlastní výpočet z nočních dat Garminu) nebo kvalifikátoru Q1–Q4. */
 export function sleepRating(score: number | null, q: string | null): string | null {
@@ -239,10 +237,10 @@ export function evaluateRecovery(inp: RecoveryInput): RecoveryResult {
     if (i.status !== "ok" || i.expected) continue;
     if (i.flag === "red") {
       red++;
-      counted.push(`${name} 🔴`);
+      counted.push(`${name} (červená)`);
     } else if (i.flag === "yellow") {
       yellow++;
-      counted.push(`${name} 🟡`);
+      counted.push(`${name} (žlutá)`);
     }
   }
   let state: State = "green";
@@ -274,7 +272,6 @@ export function evaluateRecovery(inp: RecoveryInput): RecoveryResult {
     sleep,
     state,
     stateLabel: STATE_LABEL[state],
-    emoji: STATE_EMOJI[state],
     flags: { yellow, red, counted },
     dayAfter: inp.dayAfter,
     illness: inp.illness,

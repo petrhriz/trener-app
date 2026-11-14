@@ -46,21 +46,6 @@ export interface PlannedForAct {
   compliance?: number | null;
 }
 
-export const SPORT_EMOJI: Record<string, string> = {
-  ride: "🚴",
-  mtb: "🚵",
-  indoor: "🚴",
-  run: "🏃",
-  skate: "⛸️",
-  xc_ski: "🎿",
-  walk: "🚶",
-  hike: "🚶",
-  padel: "🎾",
-  strength: "🏋️",
-  mobility: "🧘",
-  other: "🏅",
-};
-
 export interface LapRow {
   name: string;
   time: string;
@@ -86,7 +71,6 @@ export interface ActivityAnalysis {
   id: string;
   date: string;
   title: string;
-  emoji: string;
   start: string;
   unitType: string;
   envLabel: string;
@@ -212,21 +196,21 @@ export function analyzeActivity(a: ActRow, plan: PlannedForAct | null, ftp: numb
 
   // ---- 📏 Základ ----
   const basics: [string, string][] = [];
-  basics.push(["⏱️ Čas v pohybu", hms(moving)]);
-  if (!indoor && km != null && km > 0.05) basics.push(["📍 Vzdálenost", `${num(km, 1)} km`]);
-  if (!indoor && a.elev_gain != null && (isBike || a.elev_gain >= 20)) basics.push(["⛰️ Převýšení", `${num(a.elev_gain)} m`]);
-  if (!indoor && speed != null && isBike) basics.push(["🚀 Průměrná rychlost", `${num(speed, 1)} km/h`]);
+  basics.push(["Čas v pohybu", hms(moving)]);
+  if (!indoor && km != null && km > 0.05) basics.push(["Vzdálenost", `${num(km, 1)} km`]);
+  if (!indoor && a.elev_gain != null && (isBike || a.elev_gain >= 20)) basics.push(["Převýšení", `${num(a.elev_gain)} m`]);
+  if (!indoor && speed != null && isBike) basics.push(["Průměrná rychlost", `${num(speed, 1)} km/h`]);
   // běh, chůze, turistika, běžky: tempo min/km místo rychlosti
-  if (!indoor && speed != null && speed > 0.5 && FOOT_SPORTS.includes(a.sport)) basics.push(["⏱️ Průměrné tempo", `${paceOf(speed / 3.6)} /km`]);
+  if (!indoor && speed != null && speed > 0.5 && FOOT_SPORTS.includes(a.sport)) basics.push(["Průměrné tempo", `${paceOf(speed / 3.6)} /km`]);
   const teL = ((a as any).extra?.te_label as string | undefined) ?? null;
-  if (teL && TE_NAME[teL]) basics.push(["🎯 Hlavní přínos", TE_NAME[teL]!]);
+  if (teL && TE_NAME[teL]) basics.push(["Hlavní přínos", TE_NAME[teL]!]);
   // jednotka zátěže: TSS jen u kola s wattmetrem, jinak HRSS z tepu (i běh s výkonem z hodinek)
   const loadUnit = a.load == null ? "" : isBike && a.load_source !== "hr_indoor" && (a.np || a.load_source === "np_ftp") ? " TSS" : " HRSS";
-  basics.push(["🔋 Zátěž", `${num(a.load)}${loadUnit}${planLoad ? ` (plán ${num(planLoad)})` : ""}`]);
-  if (compliance != null) basics.push(["✅ Splnění plánu", `${compliance} %${plan?.compliance != null ? " (intervals.icu)" : ""}`]);
-  if (a.avg_hr) basics.push(["❤️ Tep", `${num(a.avg_hr)} bpm${a.max_hr ? ` (max ${num(a.max_hr)} bpm)` : ""}`]);
+  basics.push(["Zátěž", `${num(a.load)}${loadUnit}${planLoad ? ` (plán ${num(planLoad)})` : ""}`]);
+  if (compliance != null) basics.push(["Splnění plánu", `${compliance} %${plan?.compliance != null ? " (intervals.icu)" : ""}`]);
+  if (a.avg_hr) basics.push(["Tep", `${num(a.avg_hr)} bpm${a.max_hr ? ` (max ${num(a.max_hr)} bpm)` : ""}`]);
   // VI a aerobní drift nejsou nahoře: VI je v Dalších údajích, drift (= decoupling) v kartě 1. vs. 2. polovina
-  if (hasPower) basics.push(["⚡ Výkon", `${num(a.avg_power)} W (NP ${num(a.np)} W)`]);
+  if (hasPower) basics.push(["Výkon", `${num(a.avg_power)} W (NP ${num(a.np)} W)`]);
   const viInfo = hasPower && vi != null ? { value: Math.round(vi * 100) / 100, intensity: intensity != null ? Math.round(intensity) : null, text: vi <= 1.1 ? "rovnoměrná" : vi <= 1.25 ? "kopce / intervaly" : "nárazová" } : null;
   const driftNote = isBike ? driftText(a.drift, steady, hilly, moving, a.max_temp) : null;
   let basicsNote = "";
@@ -259,7 +243,6 @@ export function analyzeActivity(a: ActRow, plan: PlannedForAct | null, ftp: numb
     id: a.id,
     date: a.date,
     title: a.name ?? "Aktivita",
-    emoji: SPORT_EMOJI[a.sport] ?? "🏅",
     start: a.start_local.slice(11, 16),
     unitType,
     envLabel,

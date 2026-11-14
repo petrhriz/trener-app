@@ -62,7 +62,7 @@ export interface CoachInput {
   reentry?: Reentry | null;
 }
 
-/** 🟡 ráno: kvalita o stupeň lehčí (VO2 a kratší ostré → práh, práh a over-under → sweet spot, sweet spot → tempo,
+/** Ráno částečně zotavený: kvalita o stupeň lehčí (VO2 a kratší ostré → práh, práh a over-under → sweet spot, sweet spot → tempo,
  *  tempo → Z2) a o čtvrtinu kratší. Stupně a ×0,75 jsou vlastní volba (docs/trener/zdroje.md). */
 export const STEP_DOWN: Record<Cat, Cat | null> = { nm: "thr", ana: "thr", vo2s: "thr", vo2: "thr", ou: "ss", thr: "ss", ss: "tempo", tempo: null };
 export const YELLOW_CUT = 0.75;
@@ -452,7 +452,7 @@ export function runCoach(inp: CoachInput): CoachPlan {
       const f = fixed.get(d);
       const role = sk.roles.get(d) ?? "rest";
       const sport: PlanSport = role === "rest" ? p.primary : (f?.sport ?? autoSport.get(d) ?? p.primary);
-      return { date: d, role, sport, minutes: 0, load: 0, want: 0, name: null, workout: null, steps: [], targetText: null, indoor: false, qualityType: null, cat: null, tiz: 0, why: [], blocked: f?.blocked ?? (d === inp.raceDate ? "🏁 Závod – den D." : d === T && inp.recovery === "red" ? "🔴 ráno: volno, nebo Z1 do 45 min / procházka." : null), own: f?.own ?? null, mine: !!(f && (f.sport || f.type || f.minutes || f.own || f.edit)), userRest: !!f?.rest };
+      return { date: d, role, sport, minutes: 0, load: 0, want: 0, name: null, workout: null, steps: [], targetText: null, indoor: false, qualityType: null, cat: null, tiz: 0, why: [], blocked: f?.blocked ?? (d === inp.raceDate ? "Závod – den D." : d === T && inp.recovery === "red" ? "Ráno nezotavený: volno, nebo Z1 do 45 min / procházka." : null), own: f?.own ?? null, mine: !!(f && (f.sport || f.type || f.minutes || f.own || f.edit)), userRest: !!f?.rest };
     });
     for (const x of days) { const w = roleWhy.get(x.date); if (w && x.role !== "rest") x.why.push(w); }
     const train = days.filter((x) => x.role !== "rest");
@@ -665,19 +665,19 @@ export function runCoach(inp: CoachInput): CoachPlan {
         if (x.role === "key") {
           const from0 = x.cat, down = from0 ? STEP_DOWN[from0] : null;
           x.minutes = cut;
-          if (down) { build(x, false, down); x.why.push(`🟡 ráno: o stupeň lehčí (${CAT_WORD[from0!]} → ${CAT_WORD[down]}) a o čtvrtinu kratší`); }
-          else { x.role = "endurance"; build(x); x.why.push(`🟡 ráno: místo ${from0 ? CAT_WORD[from0] : "kvality"} Z2, o čtvrtinu kratší`); }
+          if (down) { build(x, false, down); x.why.push(`ráno: o stupeň lehčí (${CAT_WORD[from0!]} → ${CAT_WORD[down]}) a o čtvrtinu kratší`); }
+          else { x.role = "endurance"; build(x); x.why.push(`ráno: místo ${from0 ? CAT_WORD[from0] : "kvality"} Z2, o čtvrtinu kratší`); }
         } else if (x.role === "long") {
           // dlouhý → Z2: o čtvrtinu kratší a nejvýš strop Z2 dne (jinak by „Z2“ zůstala delší než běžný Z2 den)
           const e = capsOf(x.sport, "endurance");
           x.role = "endurance";
           x.minutes = Math.max(e.min, Math.min(e.max, cut));
           build(x);
-          x.why.push(`🟡 ráno: Z2 zkrácená na ${x.minutes} min`);
+          x.why.push(`ráno: Z2 zkrácená na ${x.minutes} min`);
         } else if (x.minutes > c.min) {
           x.minutes = cut;
           build(x);
-          x.why.push("🟡 ráno: o čtvrtinu kratší");
+          x.why.push("ráno: o čtvrtinu kratší");
         }
       }
     }
@@ -826,7 +826,7 @@ function toPlan(inp: CoachInput, weeks: Week3[], o: { reentry: string | null; ou
     const ride = x.role !== "rest" && !x.blocked;
     const tag0 = x.role === "key" ? "Kvalita" : x.role === "endurance" || x.role === "long" ? "Z2" : x.role === "easy" ? "Z1" : "Volno";
     const tag = x.own ? "Vlastní" : ride && x.sport !== inp.profile.primary ? `${SPORT_WORD[x.sport][0]!.toUpperCase()}${SPORT_WORD[x.sport].slice(1)} · ${tag0}` : tag0;
-    const note = [...(date === T && inp.recovery === "green" && ride ? ["🟢 ráno zotavený, beze změny."] : []), ...(date === T && inp.recovery === "yellow" ? ["🟡 ráno částečně zotavený: dnes lehčí."] : []), ...x.why.map((s) => (/[.!]$/.test(s) ? s : `${s}.`))].map((s) => s[0]!.toUpperCase() + s.slice(1)).join(" ");
+    const note = [...(date === T && inp.recovery === "green" && ride ? ["Ráno zotavený, beze změny."] : []), ...(date === T && inp.recovery === "yellow" ? ["Ráno částečně zotavený: dnes lehčí."] : []), ...x.why.map((s) => (/[.!]$/.test(s) ? s : `${s}.`))].map((s) => s[0]!.toUpperCase() + s.slice(1)).join(" ");
     return {
       date,
       isToday: date === T,

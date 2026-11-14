@@ -61,7 +61,7 @@ export async function shiftDay(env: Env, days: Day[], from: string, to: string, 
   if (!A.s) throw new Error(`${dayDm(from)} není trénink.`);
   await place(env, to, A.s);
   await place(env, from, B.s);
-  return B.s ? `${A.name} ⇄ ${B.name}: ${dayDm(from)} ↔ ${dayDm(to)}` : `${A.name}: ${dayDm(from)} → ${dayDm(to)}`;
+  return B.s ? `${A.name} a ${B.name} prohozeny: ${dayDm(from)} a ${dayDm(to)}` : `${A.name}: ${dayDm(from)} → ${dayDm(to)}`;
 }
 
 /** Budoucí dny výhledu trenéra (od dneška). */

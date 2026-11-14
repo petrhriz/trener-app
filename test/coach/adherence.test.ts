@@ -98,7 +98,7 @@ describe("verze plánu", () => {
   it("důvod podle toho, co se změnilo na vstupu", () => {
     const base: Drivers = { week: "2026-11-09", goal: "udrzeni", recovery: "green", fatigue: 1, notes: [], reentry: null, mine: "", weatherBad: [], trained: [], profile: "" };
     expect(reasonOf(null, base)).toEqual(["první uložený plán"]);
-    expect(reasonOf(base, { ...base, recovery: "yellow" })).toEqual(["ranní stav 🟡"]);
+    expect(reasonOf(base, { ...base, recovery: "yellow" })).toEqual(["ranní stav žlutý"]);
     expect(reasonOf(base, { ...base, mine: "x" })).toEqual(["tvoje úprava plánu (den, sport, délka, volno)"]);
     expect(reasonOf(base, { ...base, week: "2026-11-16" })).toContain("nový týden");
     expect(reasonOf(base, { ...base, fatigue: 0.85, notes: ["minulý týden odjeto 2 z 4 tréninků"] })).toEqual(["minulý týden odjeto 2 z 4 tréninků"]);

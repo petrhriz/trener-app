@@ -48,7 +48,7 @@ export function diffDays(prev: VersionDay[], cur: VersionDay[], from: string): s
   return out;
 }
 
-const EMOJI: Record<string, string> = { green: "🟢", yellow: "🟡", red: "🔴" };
+const STATE_WORD: Record<string, string> = { green: "zelený", yellow: "žlutý", red: "červený" };
 
 /** Důvody nové verze: co se na vstupu změnilo proti minulé verzi. */
 export function reasonOf(prev: Drivers | null, cur: Drivers): string[] {
@@ -58,7 +58,7 @@ export function reasonOf(prev: Drivers | null, cur: Drivers): string[] {
   if (prev.goal !== cur.goal) r.push("změna cíle");
   if (prev.profile !== cur.profile) r.push("profil sportovce");
   if (prev.mine !== cur.mine) r.push("tvoje úprava plánu (den, sport, délka, volno)");
-  if (prev.recovery !== cur.recovery && cur.recovery) r.push(`ranní stav ${EMOJI[cur.recovery] ?? cur.recovery}`);
+  if (prev.recovery !== cur.recovery && cur.recovery) r.push(`ranní stav ${STATE_WORD[cur.recovery] ?? cur.recovery}`);
   const newNotes = cur.notes.filter((n) => !prev.notes.includes(n));
   if (newNotes.length) r.push(...newNotes);
   else if (prev.fatigue < 1 && cur.fatigue >= 1) r.push("únava odezněla");

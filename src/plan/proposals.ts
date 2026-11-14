@@ -174,7 +174,7 @@ export async function applyChanges(env: Env, items: Change[]): Promise<ApplyResu
     const perDay = new Map<string, number>();
     for (const r of rows) perDay.set(r.date, (perDay.get(r.date) ?? 0) + 1);
     const dup = [...perDay.entries()].filter(([, n]) => n > 1).map(([d]) => dayDm(d));
-    verify = dup.length ? `⚠️ Ve dnech ${dup.join(", ")} je víc jednotek, zkontroluj plán.` : "Ověřeno: každá jednotka je v plánu jen jednou a ve správný den.";
+    verify = dup.length ? `Pozor: ve dnech ${dup.join(", ")} je víc jednotek, zkontroluj plán.` : "Ověřeno: každá jednotka je v plánu jen jednou a ve správný den.";
     if (sync) {
       try {
         const evs = await icu.events(dates[0]!, dates[dates.length - 1]!);
@@ -188,14 +188,14 @@ export async function applyChanges(env: Env, items: Change[]): Promise<ApplyResu
         for (const e of ours) dupIcu.set(String(e.start_date_local).slice(0, 10), (dupIcu.get(String(e.start_date_local).slice(0, 10)) ?? 0) + 1);
         const dupDays = [...dupIcu.entries()].filter(([, n]) => n > 1).map(([d]) => dayDm(d));
         verify += bad.length || dupDays.length
-          ? ` ⚠️ intervals.icu nesedí pro ${[...new Set([...bad, ...dupDays])].join(", ")}.`
+          ? ` Pozor: intervals.icu nesedí pro ${[...new Set([...bad, ...dupDays])].join(", ")}.`
           : " V intervals.icu ověřeno zpětným čtením.";
       } catch (e) {
         verify += ` intervals.icu se nepodařilo ověřit (${(e as Error).message.slice(0, 60)}).`;
       }
     }
   }
-  if (notDeleted.length) verify += ` ⚠️ V intervals.icu zatím zůstalo ke smazání: ${notDeleted.join(", ")} – zkusím to znovu automaticky.`;
+  if (notDeleted.length) verify += ` Pozor: v intervals.icu zatím zůstalo ke smazání: ${notDeleted.join(", ")} – zkusím to znovu automaticky.`;
   return { lines, verify };
 }
 

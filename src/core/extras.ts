@@ -51,9 +51,9 @@ export function fuelPlan(durationMin: number, tempC: number | null, weightKg: nu
   const sodium = Math.round((sweat * 700) / 50) * 50;
   const h = durationMin / 60;
   const lines = [
-    `🍬 Sacharidy: ${c.text}`,
-    `💧 Tekutiny: ${num(fluid, 2)} l/h (${num(fluid * h, 1)} l celkem, odhad)`,
-    durationMin >= 120 || t >= 25 ? `🧂 Sodík: ${sodium} mg/h (odhad)` : "🧂 Sodík: u jízdy do 2 h a v chladu není potřeba",
+    `Sacharidy: ${c.text}`,
+    `Tekutiny: ${num(fluid, 2)} l/h (${num(fluid * h, 1)} l celkem, odhad)`,
+    durationMin >= 120 || t >= 25 ? `Sodík: ${sodium} mg/h (odhad)` : "Sodík: u jízdy do 2 h a v chladu není potřeba",
   ];
   return {
     durationMin,

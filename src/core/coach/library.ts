@@ -201,7 +201,7 @@ export interface WorkTarget { reps: number; work_s: number; lo: number; hi: numb
 export interface WorkPlan extends WorkTarget { blocks?: WorkTarget[] }
 
 const bpm = (hr: HrZones | null, z: number) => (hr && hr.floors.length >= z ? hrZoneRange(hr, z).join("–") : null);
-const hrText = (hr: HrZones | null, z: number, extra = "") => (bpm(hr, z) ? `❤️ Z${z} (${bpm(hr, z)} bpm)${extra}` : `❤️ Z${z} tepu${extra}`);
+const hrText = (hr: HrZones | null, z: number, extra = "") => (bpm(hr, z) ? `tep Z${z} (${bpm(hr, z)} bpm)${extra}` : `Z${z} tepu${extra}`);
 /** Rychlý závěr: minuty tempa na konci Z2. */
 export const FF_LADDER = [10, 12, 15, 20];
 
@@ -282,7 +282,7 @@ export function buildWorkout(inp: BuildInput): Built {
   // --- lehké jednotky ---
   if (inp.family === "rec") {
     const m = Math.min(45, minutes);
-    if (power) return done(z1Workout({ ftp: zones.ftp! }, m), workoutName("Z1 regenerace", indoor), { targetText: `⚡ ${pctRange(zones.ftp!, TARGET_PCT.recovery).join("–")} W (40–54 % FTP)` });
+    if (power) return done(z1Workout({ ftp: zones.ftp! }, m), workoutName("Z1 regenerace", indoor), { targetText: `${pctRange(zones.ftp!, TARGET_PCT.recovery).join("–")} W (40–54 % FTP)` });
     return done(hrEasy(hr, m, 1, sport === "ride"), sport === "ride" ? workoutName("Z1 regenerace", indoor) : `${L} – Z1 regenerace`, { targetText: hrText(hr, 1) });
   }
   if (inp.family === "end" || inp.family === "long" || inp.family === "ff") {
@@ -294,7 +294,7 @@ export function buildWorkout(inp: BuildInput): Built {
         const [lo, hi] = [round5(zones.ftp! * 0.8), round5(zones.ftp! * 0.88)];
         const w: Workout = { blocks: [base.blocks[0]!, base.blocks[1]!, { label: "Rychly zaver", kind: "main", steps: [{ dur_s: fin * 60, lo, hi }] }, base.blocks[2]!] };
         const [zl, zh] = pctRange(zones.ftp!, TARGET_PCT.z2);
-        return done(w, workoutName(`Z2 s rychlým závěrem ${fin} min`, indoor), { tizMin: fin, level: lvl, targetText: `⚡ ${zl}–${zh} W, závěr ${lo}–${hi} W${bpm(hr, 2) ? ` · ❤️ Z2 (${bpm(hr, 2)} bpm)` : ""}` });
+        return done(w, workoutName(`Z2 s rychlým závěrem ${fin} min`, indoor), { tizMin: fin, level: lvl, targetText: `${zl}–${zh} W, závěr ${lo}–${hi} W${bpm(hr, 2) ? ` · tep Z2 (${bpm(hr, 2)} bpm)` : ""}` });
       }
       const e = hrEasy(hr, minutes - fin, 2, sport === "ride");
       const w: Workout = { blocks: [e.blocks[0]!, e.blocks[1]!, { label: "Rychly zaver", kind: "main", steps: [hrStep(hr, 3, fin * 60)] }, e.blocks[2]!] };
@@ -302,7 +302,7 @@ export function buildWorkout(inp: BuildInput): Built {
     }
     if (power) {
       const [zl, zh] = pctRange(zones.ftp!, TARGET_PCT.z2);
-      return done(z2Workout({ ftp: zones.ftp! }, minutes), indoor ? "Trenažér – Z2" : "Z2 vytrvalost", { family: inp.family === "ff" ? "end" : inp.family, targetText: `⚡ ${zl}–${zh} W (57–72 % FTP)${bpm(hr, 2) ? ` · ❤️ Z2 (${bpm(hr, 2)} bpm)` : ""}` });
+      return done(z2Workout({ ftp: zones.ftp! }, minutes), indoor ? "Trenažér – Z2" : "Z2 vytrvalost", { family: inp.family === "ff" ? "end" : inp.family, targetText: `${zl}–${zh} W (57–72 % FTP)${bpm(hr, 2) ? ` · tep Z2 (${bpm(hr, 2)} bpm)` : ""}` });
     }
     const nm = sport === "ride" ? (indoor ? "Trenažér – Z2" : "Z2 vytrvalost") : `${L} – Z2`;
     return done(hrEasy(hr, minutes, 2, sport === "ride"), nm, { family: inp.family === "ff" ? "end" : inp.family, targetText: hrText(hr, 2) });
@@ -328,7 +328,7 @@ export function buildWorkout(inp: BuildInput): Built {
       level: tierOf(w),
       wid: w.id,
       plan: b.plan,
-      targetText: `⚡ ${b.band[0]}–${b.band[1]} W (${Math.round((b.band[0] / ftp) * 100)}–${Math.round((b.band[1] / ftp) * 100)} % FTP)${hz && cat !== "nm" ? ` · ❤️ ${hot ? "Z4–Z5" : "Z3–Z4"} (${hz})` : ""}`,
+      targetText: `${b.band[0]}–${b.band[1]} W (${Math.round((b.band[0] / ftp) * 100)}–${Math.round((b.band[1] / ftp) * 100)} % FTP)${hz && cat !== "nm" ? ` · tep ${hot ? "Z4–Z5" : "Z3–Z4"} (${hz})` : ""}`,
     });
   }
   // podle tepu (běh, kolo bez wattmetru)
