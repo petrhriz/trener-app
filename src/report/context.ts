@@ -112,10 +112,12 @@ export interface Ctx {
   zh?: ZoneHistRow[];
 }
 
-/** Jezdí s wattmetrem? (aspoň jedna jízda s výkonem za rok) – bez něj stránka neukazuje FTP, křivku výkonu ani zóny výkonu. */
+/** Jezdí s wattmetrem? Aspoň 3 jízdy s výkonem za rok – jedna jízda na cizím trenažéru nebo kole se nepočítá.
+ *  Bez wattmetru stránka neukazuje FTP, křivku výkonu ani zóny výkonu. */
+export const POWER_RIDES_MIN = 3;
 export async function hasPowerMeter(db: D1Database): Promise<boolean> {
-  const r = await first<{ n: number }>(db, "SELECT COUNT(*) AS n FROM (SELECT 1 FROM activities WHERE sport IN ('ride', 'mtb', 'indoor') AND np > 0 AND date >= date('now', '-365 days') LIMIT 1)");
-  return (r?.n ?? 0) > 0;
+  const r = await first<{ n: number }>(db, `SELECT COUNT(*) AS n FROM (SELECT 1 FROM activities WHERE sport IN ('ride', 'mtb', 'indoor') AND np > 0 AND date >= date('now', '-365 days') LIMIT ${POWER_RIDES_MIN})`);
+  return (r?.n ?? 0) >= POWER_RIDES_MIN;
 }
 
 export function parseAct(r: any): FullAct {
