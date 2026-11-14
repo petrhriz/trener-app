@@ -94,7 +94,8 @@ async function plannedQualityMap(db: D1Database, dates: string[]): Promise<Map<s
   if (!dates.length) return m;
   const rows = await all<{ date: string; quality_type: string | null; name: string }>(
     db,
-    `SELECT date, quality_type, name FROM planned_workouts WHERE kind = 'quality' AND date IN (${dates.map(() => "?").join(",")})`,
+    // jen platný plán dne: přeplánovaná (skipped / moved) kvalita nesmí z odjeté Z2 udělat kvalitu
+    `SELECT date, quality_type, name FROM planned_workouts WHERE kind = 'quality' AND status IN ('planned', 'done') AND date IN (${dates.map(() => "?").join(",")})`,
     ...dates,
   );
   for (const r of rows) m.set(r.date, (r.quality_type as QualityType) ?? qualityFromName(r.name));

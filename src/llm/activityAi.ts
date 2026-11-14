@@ -32,6 +32,8 @@ export async function activityComment(env: Env, rep: ActivityAnalysis, extra: Re
     prostredi: rep.envLabel || null,
     zakladni_udaje: Object.fromEntries(rep.basics.map(([k, v]) => [k.replace(/^\S+\s/, ""), v])),
     poznamka_kodu: rep.basicsNote || null,
+    vi: rep.vi ? `${rep.vi.value} (${rep.vi.text})` : null,
+    aerobni_drift: rep.driftNote,
     zamer_a_hodnoceni_kodu: rep.goal,
     verdikt_kodu: rep.verdict,
     tep_v_zonach_pct: zones(rep.hrZones as any),

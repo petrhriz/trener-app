@@ -1122,6 +1122,37 @@ function stepEditor(x, mine) {
 }
 
 /** Pravidla Trenéra v3 – krátce, se zdroji (docs/trener/zdroje.md). */
+/** Nápověda na stránce Trenér: týden, cesta do hodinek, lapy, hodnocení intervalů. */
+const COACH_HELP = `<div class="chelp">
+  <details class="gcmp"><summary>Jak vzniká plán týdne</summary><ul class="rules3">
+    <li>Trenér spočítá cílovou zátěž týdne z tvé kondice a cíle a rozdělí ji do dnů: 1× kvalita v zimě (říjen–únor), 2× v sezóně, nikdy dva dny po sobě, zbytek Z2 a volno.</li>
+    <li>Každé ráno podle zotavení (VST, klidový tep, spánek): 🟢 beze změny, 🟡 kvalita → Z2 nebo kratší, 🔴 volno nebo Z1.</li>
+    <li>Tvoje úpravy (přesun, délka, sport, vlastní jízda, chat) mají přednost – zbytek týdne se dopočítá. Vynechané se nedohání.</li>
+    <li>Změny plánu se do kalendáře zapíšou až po <b>Zapsat</b>.</li></ul></details>
+  <details class="gcmp"><summary>Jak se trénink dostane do Garminu</summary><ul class="rules3">
+    <li>Po <b>Zapsat</b> jde trénink do kalendáře intervals.icu a odtud do Garmin Connect (v intervals.icu musí být zapnuté nahrávání plánovaných tréninků do Garminu).</li>
+    <li>V hodinkách / Edge: Trénink → Kalendář (nebo nabídka dnešního tréninku po startu jízdy) → spustit. Kroky pak vedou samy: cíl wattů nebo tepu, zbývající čas.</li>
+    <li>Bez intervals.icu: u dne stáhni <b>📥 FIT soubor</b> a nahraj ho kabelem do složky Garmin/NewFiles.</li></ul></details>
+  <details class="gcmp" open><summary>Kdy zmáčknout lap</summary><ul class="rules3">
+    <li><b>Kroky na čas</b> (intervaly a pauzy v opakování, rozjetí u Z2 jízdy) skončí samy – nic nemačkej.</li>
+    <li><b>Kroky do lapu</b> ukončíš sám tlačítkem Lap, až jsi připravený. Čas u nich je jen vodítko.</li>
+    <li><b>Kvalita:</b> rozjetí končí lapem – zmáčkni, až jsi rozjetý a máš před sebou úsek bez křižovatek. Delší pauza mezi bloky taky lapem. Poslední krok „Z2 a dojezd“ lapem ukončíš trénink.</li>
+    <li><b>Z2 jízda:</b> Z2 končí lapem – zmáčkni ho, až budeš ~5 min od domova, a dojeď lehce (vyjetí). Když se cítíš dobře a chceš jízdu protáhnout, prostě jeď dál – hodinky ti Z2 samy neukončí.</li>
+    <li><b>Rychlý závěr:</b> lapem na konci Z2 spustíš závěr (ten běží na čas), pak vyjetí do lapu.</li>
+    <li>Lap navíc uprostřed kroku nemačkej – rozdělí okruh a pak nesedí s plánem. Běh a běžky jsou bez lapů, vše na čas.</li></ul></details>
+  <details class="gcmp"><summary>Jak se hodnotí intervaly</summary><ul class="rules3">
+    <li>Každý krok tréninku = jeden okruh (lap). Proto je důležité mačkat lap jen tam, kde ho plán čeká. V intervals.icu zapni <b>Use laps for intervals</b>, jinak se okruhy z hodinek nenačtou.</li>
+    <li>Za interval se počítá okruh s délkou ±25 % plánu. U kvality se pak hodnotí průměrný výkon proti pásmu a nárůst tepu od prvního k poslednímu intervalu:</li>
+    <li>✅ <b>posun</b> (příště o stupeň těžší): všechny v pásmu, poslední aspoň 98 % prvního, tep +5 bpm nebo méně. U cíle Udržet a Zima se jen opakuje.</li>
+    <li>🔁 <b>zopakovat</b>: poslední interval pod pásmem, tep +8 bpm a víc, nebo výkon nedržel.</li>
+    <li>⬇️ <b>ubrat</b> (o stupeň níž): nedokončeno nebo 2+ intervaly pod pásmem.</li>
+    <li>Bez okruhů rozhoduje splnění z intervals.icu: 95 %+ posun, 75–94 % zopakovat, méně ubrat. Bez wattmetru se hodnotí podle splnění.</li></ul></details>
+  <details class="gcmp"><summary>Zátěž, kondice a forma</summary><ul class="rules3">
+    <li><b>Zátěž (TSS)</b>: 100 = hodina na prahu. Z výkonu, bez wattmetru z tepu (HRSS); na trenažéru vyšší z obou.</li>
+    <li><b>Kondice (CTL)</b> = průměrná denní zátěž 6 týdnů, <b>únava (ATL)</b> = 7 dní, <b>forma (TSB)</b> = kondice − únava.</li>
+    <li>Splněno = intervals.icu hlásí aspoň 80 % (nebo zátěž 80–125 % plánu).</li></ul></details>
+</div>`;
+
 const RULES3 = `<ul class="rules3">
   <li><b>Cíl týdne</b> = 7 × kondice + 45,6 × růst. Zlepšit +3 za týden (nad kondicí 45 +4), Udržet 0, Zima k zimnímu základu (vrchol sezóny − 42,5 %), ladění −2. <small>TrainingPeaks, Friel</small></li>
   <li><b>Přidávání</b> nejvýš +30 % proti obvyklým 4 týdnům, pak +15 % za týden. Každý 4. týden lehčí, o 40–50 % méně. <small>Friel 3:1</small></li>
@@ -1364,12 +1395,13 @@ async function pageTrener(el) {
   const weatherCard = card("c12 t-weather", "🌤️ Počasí na trénink · 7 dní", "Open-Meteo", weatherList(p.days.map((x) => ({ label: x.isToday ? "Dnes" : dayDm(x.date), w: x.weather })).filter((x) => x.w)) + `<p style="margin-top:10px"><a class="btn sm" href="#/pocasi">Počasí po hodinách →</a></p>`, 'id="pocasi" data-tt="pocasi"');
   const loadsCard = card("t-loads", "📈 Zátěž po týdnech", "TSS / HRSS", weekLoadsHtml(d.weeks), 'data-tt="proc"');
   const intens = d.hasPower === false ? "" : card("t-int", "Průvodce intenzitou", "FTP", `<details><summary>Watty pro jednotlivé jednotky (FTP ${d.intensity.ftp} W)</summary><table class="t"><tr><th>Jednotka</th><th class="r">% FTP</th><th class="r">Watty</th></tr>${d.intensity.targets.map((x) => `<tr><td>${esc(x.name)}</td><td class="r">${x.pct[0]}–${x.pct[1]} %</td><td class="r">${x.w[0]}–${x.w[1]} W</td></tr>`).join("")}</table></details>`, 'data-tt="cil"');
+  const helpCard = card("t-help", "📘 Jak s trenérem pracovat", "nápověda", COACH_HELP, 'data-tt="cil"');
   const TABS = [["tyden", "Týden"], ["proc", "Stav"], ["pocasi", "Počasí"], ["cil", "Cíl"]];
   el.innerHTML = `<div class="head"><div><h1>Trenér</h1><div class="sub">cíl ${esc(d.goalLabel || "")}</div></div><button class="btn sm" id="coachOff" title="Jezdit podle sebe bez plánu – třeba v zimě">Vypnout trenéra</button></div>
   <div class="ioseg ttabs" role="tablist">${TABS.map(([k, l]) => `<button type="button" role="tab" data-ttab="${k}" class="${tTab === k ? "on" : ""}" aria-selected="${tTab === k}">${l}</button>`).join("")}</div>
   <div class="grid tgrid">
     <div class="c7 col tcol">${todayCard}${weekCard}${coachCalendar(d, co, ccOpen, ccDetail)}${planCard}</div>
-    <div class="c5 col tcol">${stateCard}${recentCard}${histCard}${chatCard}${goalCard}${loadsCard}${intens}</div>
+    <div class="c5 col tcol">${stateCard}${recentCard}${histCard}${chatCard}${goalCard}${loadsCard}${intens}${helpCard}</div>
     ${weatherCard}
   </div>${pendBar}`;
   el.querySelector("#coachOff")?.addEventListener("click", (e) => setCoachOn(el, false, e.currentTarget));
@@ -1779,7 +1811,7 @@ function streamsChart(s, opts = {}) {
   return `<svg class="chart streams" id="${id}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><defs>${defs}</defs>${svg}<line class="cur" y1="${P.t}" y2="${H - P.b}"/><g class="dots"></g>${xl}</svg>${opts.noLegend ? "" : leg}`;
 }
 
-/** 1. vs. 2. polovina jízdy: tep, výkon, decoupling, drift, výkon na konci Z2 tepu. */
+/** 1. vs. 2. polovina jízdy: tep, výkon, aerobní drift (decoupling), výkon na konci Z2 tepu. */
 function halvesHtml(h, a) {
   const rows = [];
   if (h) {
@@ -1793,11 +1825,11 @@ function halvesHtml(h, a) {
   const dec = a.icuDecoupling != null ? a.icuDecoupling : h ? h.dec : null;
   const decTone = dec == null ? "" : Math.abs(dec) < 5 ? "good" : dec <= 8 ? "warn" : "bad";
   const tiles = [
-    dec != null ? stat("Decoupling", signed(dec, 1), " %", `${a.icuDecoupling != null ? "intervals.icu" : "z průběhu"} · pod 5 % = dobrá vytrvalost`, decTone) : "",
-    a.drift != null && (a.icuDecoupling == null || Math.abs(a.icuDecoupling - a.drift) > 0.05) ? stat("Aerobní drift", num(a.drift, 1), " %", "Garmin průběh, ustálená část", Math.abs(a.drift) < 5 ? "good" : a.drift <= 8 ? "warn" : "bad") : "",
+    dec != null ? stat("Aerobní drift", signed(dec, 1), " %", `decoupling · ${a.icuDecoupling != null ? "intervals.icu" : "z průběhu"} · pod 5 % = dobrá vytrvalost`, decTone) : "",
+    a.drift != null && (a.icuDecoupling == null || Math.abs(a.icuDecoupling - a.drift) > 0.05) ? stat("Drift ustálené části", num(a.drift, 1), " %", "Garmin průběh", Math.abs(a.drift) < 5 ? "good" : a.drift <= 8 ? "warn" : "bad") : "",
     a.z2Power ? stat("Výkon na konci Z2", num(a.z2Power.w), " W", `při ${a.z2Power.hr} bpm · ${num(a.z2Power.min)} min v Z2`, "") : "",
   ].join("");
-  return `${tiles ? `<div class="stats halves">${tiles}</div>` : ""}${table}<p class="note">Decoupling = o kolik % klesl výkon na jeden tep ve 2. polovině. Pod 5 % je aerobní základ dobrý, nad 8 % únava, horko nebo málo jídla. Výkon na konci Z2 = výkon, který tě v této aktivitě stál tep ${a.z2Power ? a.z2Power.hr : "na horní hranici Z2"} (výkon/tep v Z2 × hranice Z2) – roste-li v čase, zlepšuje se vytrvalost.</p>`;
+  return `${tiles ? `<div class="stats halves">${tiles}</div>` : ""}${a.driftNote && dec != null ? `<p class="note"><b>${esc(a.driftNote)}</b></p>` : ""}${table}<p class="note">Aerobní drift (decoupling, Pw:HR) = o kolik % klesl výkon na jeden tep ve 2. polovině. Pod 5 % je aerobní základ dobrý, nad 8 % únava, horko nebo málo jídla. Výkon na konci Z2 = výkon, který tě v této aktivitě stál tep ${a.z2Power ? a.z2Power.hr : "na horní hranici Z2"} (výkon/tep v Z2 × hranice Z2) – roste-li v čase, zlepšuje se vytrvalost.</p>`;
 }
 
 /**
@@ -1814,6 +1846,8 @@ function extraHtml(a) {
     // průměrná rychlost je nahoře → tady jen maximální
     x.max_speed && !foot ? ["🚀 Max. rychlost", u(num(x.max_speed, 1), "km/h"), ""] : null,
     run && a.avgPower ? ["⚡ Výkon", u(num(a.avgPower), "W"), a.np ? `NP ${num(a.np)} W` : ""] : null,
+    // VI = NP / průměrný výkon (jak nárazová byla jízda); intenzita = NP / FTP
+    a.vi ? ["📊 VI (variabilita)", num(a.vi.value, 2), `${a.vi.text}${a.vi.intensity != null ? ` · intenzita ${a.vi.intensity} % FTP` : ""}`] : null,
     a.avgCad ? [run ? "👟 Kadence" : "🔄 Kadence", u(num(x.run_cad || a.avgCad), run ? "kr/min" : "ot/min"), x.max_cad ? `max ${num(x.max_cad)} ${run ? "kr/min" : "ot/min"}` : ""] : null,
     x.strokes ? [run || foot ? "👟 Kroků" : "🔄 Otáček", thou(x.strokes), "celkem"] : a.avgCad && a.moving && !run ? ["🔄 Otáček", thou((a.avgCad * a.moving) / 60), "celkem (odhad)"] : null,
     x.stride_m ? ["📏 Délka kroku", u(num(x.stride_m, 2), "m"), ""] : null,

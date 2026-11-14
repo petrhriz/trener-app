@@ -127,7 +127,7 @@ function hrEasy(hr: HrZones | null, minutes: number, z: number, ride: boolean): 
   return {
     blocks: [
       { label: "Rozjeti", kind: "warmup", steps: [hrStep(hr, 1, warm * 60)] },
-      { label: "Z2", kind: "main", steps: [hrStep(hr, 2, main * 60)] },
+      { label: "Z2", kind: "main", steps: [hrStep(hr, 2, main * 60, ride)] }, // na kole Z2 do lapu (viz z2Workout)
       { label: "Vyjeti", kind: "cooldown", steps: [hrStep(hr, 1, 300, ride)] },
     ],
   };

@@ -95,6 +95,10 @@ export interface ActivityAnalysis {
   indoor: boolean;
   basics: [string, string][];
   basicsNote: string;
+  /** VI = NP / průměrný výkon a slovní hodnocení (zobrazuje se v Dalších údajích) */
+  vi: { value: number; intensity: number | null; text: string } | null;
+  /** hodnocení aerobního driftu (decoupling) – u intervalů, krátkých a kopcovitých jízd s výhradou */
+  driftNote: string | null;
   laps: { show: boolean; rows: LapRow[]; note: string; c3: boolean };
   hrZones: ZoneRow[] | null;
   hrZonesNote: string | null;
@@ -198,7 +202,8 @@ export function analyzeActivity(a: ActRow, plan: PlannedForAct | null, ftp: numb
   const vi = hasPower && a.avg_power ? a.np! / a.avg_power : null;
   const intensity = hasPower && ftp ? (a.np! / ftp) * 100 : null;
   const hilly = km != null && km > 0 && (a.elev_gain ?? 0) / km > 10;
-  const steady = !isQuality && (vi == null || vi <= 1.15);
+  // ustálená jízda: naplánovaná Z2 se počítá jako ustálená, i když ji třídění označilo jako kvalitu; rozhoduje VI
+  const steady = (isZ2Plan || !isQuality) && (vi == null || vi <= 1.15);
   const planLoad = plan?.target_load ?? null;
   const compliance = plan?.compliance ?? (planLoad && a.load ? Math.min(150, Math.round((a.load / planLoad) * 100)) : null);
 
@@ -220,16 +225,12 @@ export function analyzeActivity(a: ActRow, plan: PlannedForAct | null, ftp: numb
   basics.push(["🔋 Zátěž", `${num(a.load)}${loadUnit}${planLoad ? ` (plán ${num(planLoad)})` : ""}`]);
   if (compliance != null) basics.push(["✅ Splnění plánu", `${compliance} %${plan?.compliance != null ? " (intervals.icu)" : ""}`]);
   if (a.avg_hr) basics.push(["❤️ Tep", `${num(a.avg_hr)} bpm${a.max_hr ? ` (max ${num(a.max_hr)} bpm)` : ""}`]);
-  if (hasPower) {
-    basics.push(["⚡ Výkon", `${num(a.avg_power)} W (NP ${num(a.np)} W)`]);
-    basics.push(["⚡ VI", `${num(vi, 2)}${intensity != null ? ` (intenzita ${num(intensity)} %)` : ""}`]);
-    basics.push(["Aerobní drift", steady && a.drift != null ? `${num(a.drift, 1)} %` : "–"]);
-  }
+  // VI a aerobní drift nejsou nahoře: VI je v Dalších údajích, drift (= decoupling) v kartě 1. vs. 2. polovina
+  if (hasPower) basics.push(["⚡ Výkon", `${num(a.avg_power)} W (NP ${num(a.np)} W)`]);
+  const viInfo = hasPower && vi != null ? { value: Math.round(vi * 100) / 100, intensity: intensity != null ? Math.round(intensity) : null, text: vi <= 1.1 ? "rovnoměrná jízda" : vi <= 1.25 ? "kopce nebo intervaly" : "hodně nárazová jízda" } : null;
+  const driftNote = isBike ? driftText(a.drift, steady, hilly, moving, a.max_temp) : null;
   let basicsNote = "";
-  if (hasPower && vi != null) {
-    const viT = vi <= 1.1 ? "rovnoměrná jízda" : vi <= 1.25 ? "normální na kopcích nebo s intervaly" : "hodně nárazová jízda";
-    basicsNote = `VI ${num(vi, 2)}: ${viT}. ${driftText(a.drift, steady, hilly, moving, a.max_temp)}`;
-  } else if (isBike && !hasPower) basicsNote = "Bez wattmetru: hodnotím tep a zóny tepu, zátěž je odhad z tepu.";
+  if (isBike && !hasPower) basicsNote = "Bez wattmetru: hodnotím tep a zóny tepu, zátěž je odhad z tepu.";
   if (a.load_source === "hr_indoor") {
     const pw = powerLoad({ ...a, tss_garmin: a.tss_garmin ?? null }, ftp);
     basicsNote += `${basicsNote ? " " : ""}Zátěž je z tepu${pw ? ` (z výkonu by byla ${num(pw.load)} TSS)` : ""}: na trenažéru chybí proudění vzduchu a pauzy ve šlapání, takže tě stejný výkon stojí víc. Počítá se vyšší z obou hodnot.`;
@@ -267,6 +268,8 @@ export function analyzeActivity(a: ActRow, plan: PlannedForAct | null, ftp: numb
     indoor,
     basics,
     basicsNote: basicsNote.trim(),
+    vi: viInfo,
+    driftNote,
     laps,
     hrZones,
     hrZonesNote,

@@ -29,7 +29,7 @@ Cíl se bere z **křivky výkonu**, ne jen z % FTP: když 5min výkon roste, ros
 **VO2 30/15**: 2×10 · 2×12 · **2×13** (start) · 3×10 · 3×12 opakování 30 s práce / 15 s volně, mezi sériemi 3 min.
 
 Stavba jednotky: rozjetí 25 min venku / 15 min na trenažéru (končí stiskem lapu) → intervaly → u dvou dlouhých
-bloků delší pauza 5 min (lapem) → „Z2 a dojezd“ do zbytku plánované délky (lapem). Lapy platí jen pro kolo (7.3).
+bloků delší pauza 5 min (lapem) → „Z2 a dojezd“ do zbytku plánované délky (lapem). Z2 jízda: rozjetí 5 min, Z2 do lapu (domů se nedojede přesně na čas – lap zmáčkneš sám ~5 min před cílem, takže protažená jízda nerozbije okruhy), vyjetí 5 min do lapu. Lapy platí jen pro kolo (7.3).
 
 ## 3. Výběr zaměření (krok 2)
 

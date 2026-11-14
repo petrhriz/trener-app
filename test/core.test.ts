@@ -230,8 +230,8 @@ describe("kvalita a limity (5, 6.1)", () => {
 
 // ---------- workout 7.3 ----------
 describe("stavba workoutu a lapy (7.3)", () => {
-  it("Z2 pro FTP 298 přesně jako v pravidlech", () => {
-    expect(renderIcu(z2Workout({ ftp: 298 }, 90))).toBe("Rozjeti\n- 5m 120-170w\n\nZ2\n- 1h20m 170-215w\n\nVyjeti\n- 5m 120-160w press lap");
+  it("Z2 pro FTP 298: Z2 končí lapem (konec si jezdec určí sám)", () => {
+    expect(renderIcu(z2Workout({ ftp: 298 }, 90))).toBe("Rozjeti\n- 5m 120-170w\n\nZ2\n- 1h20m 170-215w press lap\n\nVyjeti\n- 5m 120-160w press lap");
   });
   it("cílová pásma z FTP 298", () => {
     expect(pctRange(298, TARGET_PCT.warmupPre)).toEqual([135, 210]);

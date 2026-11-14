@@ -88,14 +88,18 @@ export interface Ctx {
   mtb?: boolean;
 }
 
-/** Z2 jízda: rozjetí 5 min na čas, Z2 na čas, vyjetí do lapu (7.3 bod 5). */
+/**
+ * Z2 jízda: rozjetí 5 min na čas, Z2 do lapu, vyjetí do lapu (7.3 bod 5).
+ * Z2 končí lapem: domů se nedojede přesně na čas – jezdec sám zmáčkne lap, až je ~5 min od cíle,
+ * a když chce jízdu protáhnout, hodinky mu Z2 samy neukončí (jinak se rozbijí okruhy).
+ */
 export function z2Workout(c: Ctx, totalMin: number): Workout {
   const z2min = Math.max(10, totalMin - 10);
   if (c.mtb) {
     return {
       blocks: [
         { label: "Rozjeti", kind: "warmup", steps: [{ dur_s: 300, hr: "Z1 HR" }] },
-        { label: "Z2", kind: "main", steps: [{ dur_s: z2min * 60, hr: "Z2 HR" }] },
+        { label: "Z2", kind: "main", steps: [{ dur_s: z2min * 60, hr: "Z2 HR", lap: true }] },
         { label: "Vyjeti", kind: "cooldown", steps: [{ dur_s: 300, hr: "Z1 HR", lap: true }] },
       ],
     };
@@ -106,7 +110,7 @@ export function z2Workout(c: Ctx, totalMin: number): Workout {
   return {
     blocks: [
       { label: "Rozjeti", kind: "warmup", steps: [{ dur_s: 300, lo: wl, hi: wh }] },
-      { label: "Z2", kind: "main", steps: [{ dur_s: z2min * 60, lo: zl, hi: zh }] },
+      { label: "Z2", kind: "main", steps: [{ dur_s: z2min * 60, lo: zl, hi: zh, lap: true }] },
       { label: "Vyjeti", kind: "cooldown", steps: [{ dur_s: 300, lo: rl, hi: rh, lap: true }] },
     ],
   };
