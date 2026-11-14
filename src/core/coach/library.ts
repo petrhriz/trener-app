@@ -302,9 +302,9 @@ export function buildWorkout(inp: BuildInput): Built {
     }
     if (power) {
       const [zl, zh] = pctRange(zones.ftp!, TARGET_PCT.z2);
-      return done(z2Workout({ ftp: zones.ftp! }, minutes), indoor ? "Trenažér – Z2" : "Z2 vytrvalost", { family: inp.family === "ff" ? "end" : inp.family, targetText: `${zl}–${zh} W (57–72 % FTP)${bpm(hr, 2) ? ` · tep Z2 (${bpm(hr, 2)} bpm)` : ""}` });
+      return done(z2Workout({ ftp: zones.ftp! }, minutes), indoor ? "Trenažér – Z2" : "Z2", { family: inp.family === "ff" ? "end" : inp.family, targetText: `${zl}–${zh} W (57–72 % FTP)${bpm(hr, 2) ? ` · tep Z2 (${bpm(hr, 2)} bpm)` : ""}` });
     }
-    const nm = sport === "ride" ? (indoor ? "Trenažér – Z2" : "Z2 vytrvalost") : `${L} – Z2`;
+    const nm = sport === "ride" ? (indoor ? "Trenažér – Z2" : "Z2") : `${L} – Z2`;
     return done(hrEasy(hr, minutes, 2, sport === "ride"), nm, { family: inp.family === "ff" ? "end" : inp.family, targetText: hrText(hr, 2) });
   }
 
@@ -322,7 +322,7 @@ export function buildWorkout(inp: BuildInput): Built {
     const b = fromLibrary(w, cat, ftp, minutes, indoor);
     const hot = cat === "vo2" || cat === "vo2s" || cat === "ana" || cat === "nm";
     const hz = hr && hr.floors.length >= 5 ? `${hrZoneRange(hr, hot ? 4 : 3)[0]}–${hrZoneRange(hr, hot ? 5 : 4)[1]} bpm` : null;
-    return done(b.workout, workoutName(`${w.n} ${CAT_NAME[cat]}`, indoor), {
+    return done(b.workout, workoutName(`${w.n} ${CAT_NAME[cat]} ${b.band[0]}–${b.band[1]} W`, indoor), {
       tizMin: Math.round(w.t),
       qualityType: CAT_QT[cat],
       level: tierOf(w),

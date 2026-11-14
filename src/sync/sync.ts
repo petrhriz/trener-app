@@ -1,5 +1,4 @@
 // Synchronizace po malých dávkách (free plán: 10 ms CPU, 50 fetchů, 50 D1 dotazů na spuštění).
-import { PLAN_NAME_SQL } from "../core/actName";
 import type { Env } from "../env";
 import { GarminClient } from "../datasource/garmin";
 import { IntervalsClient } from "../datasource/intervals";
@@ -110,7 +109,7 @@ export async function upsertActivities(env: Env, acts: NActivity[], s: Settings)
     (await all<{ id: string }>(env.DB, `SELECT id FROM activities WHERE id IN (${ids.map(() => "?").join(",")})`, ...ids)).map((r) => r.id),
   );
   const pq = await plannedQualityMap(env.DB, [...new Set(acts.map((a) => a.date))]);
-  await execAll(env.DB, [...activitySql(acts, s, pq), `UPDATE activities SET seen_at = '${new Date().toISOString()}' WHERE seen_at IS NULL`, ICU_LOAD_SQL, PLAN_NAME_SQL]);
+  await execAll(env.DB, [...activitySql(acts, s, pq), `UPDATE activities SET seen_at = '${new Date().toISOString()}' WHERE seen_at IS NULL`, ICU_LOAD_SQL]);
   const newIds = ids.filter((i) => !existing.has(i));
   const minDate = acts.filter((a) => !existing.has(a.id)).reduce<string | null>((m, a) => (!m || a.date < m ? a.date : m), null);
   return { newIds, minDate };
@@ -323,7 +322,7 @@ export async function syncTick(env: Env, opts: { force?: boolean; manual?: boole
           `enrich_state = ${state} WHERE id = ${lit(a.id)}`,
       );
     }
-    sqls.push(ICU_LOAD_SQL, PLAN_NAME_SQL);
+    sqls.push(ICU_LOAD_SQL);
     await execAll(env.DB, sqls);
     await markDirty(env.DB, minDate);
     rep.steps.push(`doplnění (${rows.length})`);
@@ -395,7 +394,7 @@ export async function syncTick(env: Env, opts: { force?: boolean; manual?: boole
         sqls.push(`UPDATE activities SET icu_id = COALESCE(icu_id, ${lit(String(r.id))}), icu_load = ${lit(r.icu_training_load)}, icu_decoupling = COALESCE(icu_decoupling, ${lit(r.decoupling ?? null)}), icu_intensity = COALESCE(icu_intensity, ${lit(r.icu_intensity ?? null)}) WHERE id = ${lit(a.id)}`);
       }
       if (sqls.length) {
-        await execAll(env.DB, [...sqls, ICU_LOAD_SQL, PLAN_NAME_SQL]);
+        await execAll(env.DB, [...sqls, ICU_LOAD_SQL]);
         await markDirty(env.DB, from);
       }
       rep.steps.push(`icu zátěž historie (${sqls.length}/${rows.length}, do ${from})`);

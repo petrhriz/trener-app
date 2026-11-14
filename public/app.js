@@ -1389,7 +1389,7 @@ async function pageTrener(el) {
   const weekCard = card("c12 t-week", "", "", strip + bars, 'data-tt="tyden"');
   // --- dny: podrobný plán (8 dní) + výhled trenéra (4 týdny, jen druh / sport / délka) ---
   const HZ_KIND = { key: "quality", long: "long", endurance: "z2", easy: "z2", rest: "rest" };
-  const HZ_NAME = { key: "Kvalita", long: "Z2 vytrvalost", endurance: "Z2 vytrvalost", easy: "Lehce" };
+  const HZ_NAME = { key: "Kvalita", long: "Z2", endurance: "Z2", easy: "Lehce" };
   const hzDays = hz ? hz.flatMap((w) => w.days.map((x) => ({ ...x, orient: !w.detail }))) : [];
   /** den pro úpravy: z podrobného plánu, jinak z výhledu trenéra (orient = náhled, kroky se upřesní 2 týdny předem) */
   const dayAt = (date) => {
