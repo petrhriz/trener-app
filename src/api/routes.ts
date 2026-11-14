@@ -21,7 +21,7 @@ import { baseFor, nightsBefore, sleepBankMin } from "../core/sleepCalc";
 import { constraintNoteOk } from "../core/coach/common";
 import { RPE_ASK_DAYS, RPE_LABEL, rpeOk, rpeToAsk } from "../core/rpe";
 import { addConstraint, applyChanges, claimProposal, finishProposal, getProposal, openProposal, removeConstraint, saveProposal } from "../plan/proposals";
-import { activityReport, eftpOf, ftpCheckOf, fitnessTable, recoveryFor, plannedFor, planFor, readiness, weatherMap, weekly } from "../report/build";
+import { activityReport, eftpOf, freePlan, ftpCheckOf, fitnessTable, metricOn, recoveryFor, plannedFor, planFor, readiness, weatherMap, weekly } from "../report/build";
 import { hasPowerMeter, loadCtx } from "../report/context";
 import { compliance, ctlPlan, efficiency, intensityVerdict, intensityWeeks, monotonyWeeks, weeklyCompliance } from "../core/analytics";
 import { recomputeLoads } from "../sync/metrics";
@@ -327,6 +327,7 @@ api.get("/analytics", async (c) => c.json(await analyticsOf(c.env, await loadCtx
 
 api.get("/coach", async (c) => {
   const ctx = await loadCtx(c.env);
+  if (ctx.s.coach_on === false) return c.json(freeCoachView(ctx));
   const r = await readiness(ctx);
   const ftp = ctx.s.ftp ?? 250;
   const T = ctx.T;
@@ -439,6 +440,27 @@ function goalsView(ctx: CtxT, plan: Awaited<ReturnType<typeof planFor>>) {
     g("zavod", "Závod", `Příprava na ${ctx.s.goal_name || "závod"}${ctx.s.goal_date ? ` (${dm(ctx.s.goal_date)})` : ""}: Základ, pak Rozvoj a posledních 10–14 dní ladění.`),
   ];
 }
+
+/** Trenér vypnutý: tento týden proti zátěži na udržení kondice, odjeté tréninky a zátěž po týdnech (bez plánu). */
+function freeCoachView(ctx: CtxT) {
+  const p = freePlan(ctx);
+  const mon = mondayOf(ctx.T);
+  const ctlStart = metricOn(ctx, addDays(mon, -1))?.ctl ?? null;
+  const done = Math.round(ctx.acts.filter((a) => a.date >= mon && a.date <= ctx.T).reduce((s, a) => s + (a.load ?? 0), 0));
+  const acts = ctx.acts
+    .filter((a) => a.date >= mon && a.date <= ctx.T && ((a.load ?? 0) >= 5 || (a.moving_s ?? 0) >= 900))
+    .map((a) => ({ id: a.id, date: a.date, name: a.name, sport: a.sport, moving_s: a.moving_s, km: a.distance_m ? Math.round(a.distance_m / 100) / 10 : null, load: Math.round(a.load ?? 0) }))
+    .reverse();
+  const w = weekLoadsView(ctx, p);
+  return {
+    free: true,
+    week: { from: mon, done, target: p.weeklyTarget, left: Math.max(0, p.weeklyTarget.mid - done), ctl: ctlStart != null ? Math.round(ctlStart * 10) / 10 : null, daysLeft: daysLeftInWeek(ctx.T) },
+    acts,
+    weeks: { ...w, weeks: w.weeks.filter((x) => !x.future) },
+  };
+}
+/** dny do konce týdne včetně dneška (po = 7, ne = 1) */
+const daysLeftInWeek = (T: string) => 8 - dow(T);
 
 /** Zátěž po týdnech: 4 ukončené týdny, tento týden (hotovo + plán) a příští (plán), s cílovým pásmem. */
 function weekLoadsView(ctx: CtxT, plan: Awaited<ReturnType<typeof planFor>>) {
@@ -1135,7 +1157,7 @@ api.post("/secrets/test", async (c) => {
 api.post("/settings", async (c) => {
   const body = (await c.req.json()) as Partial<Settings>;
   // profil trenéra má vlastní cestu s kontrolou (/coach/profile)
-  const allowed = (Object.keys(DEFAULTS) as (keyof Settings)[]).filter((k) => k !== "coach_profile" && k !== "status_log");
+  const allowed = (Object.keys(DEFAULTS) as (keyof Settings)[]).filter((k) => k !== "coach_profile" && k !== "status_log" && k !== "coach_on");
   const before = await getSettings(c.env.DB);
   // povinné údaje (časy zpráv, místo, tréninky týdně, cíl) nesmí být prázdné ani ve špatném tvaru – null by
   // v plánovači zpráv spadl (hm(null)) a ranní / večerní zprávy by tiše přestaly chodit

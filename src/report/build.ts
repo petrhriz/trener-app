@@ -336,7 +336,24 @@ export async function planForCoach(ctx: Ctx, rec: RecoveryResult, opt: { dryRun?
 
 /** Plán trenéra (src/core/coach/, docs/trener/). */
 export async function planFor(ctx: Ctx, rec?: RecoveryResult): Promise<PlanResult> {
+  if (ctx.s.coach_on === false) return freePlan(ctx);
   return planForCoach(ctx, rec ?? recoveryFor(ctx));
+}
+
+/**
+ * Trenér vypnutý: žádné tréninky ani návrhy změn. Cíl týdne = zátěž na udržení kondice (7 × kondice z konce
+ * minulého týdne, pásmo ± 10 %) – tak se kondice nemění (TrainingPeaks / Friel, src/core/fitness.ts).
+ */
+export function freePlan(ctx: Ctx): PlanResult {
+  const T = ctx.T;
+  const mon = mondayOf(T);
+  const ctl = metricOn(ctx, addDays(mon, -1))?.ctl ?? ctx.metrics[ctx.metrics.length - 1]?.ctl ?? 0;
+  const sum = (from: string, to: string) => Math.round(ctx.acts.filter((a) => a.date >= from && a.date <= to).reduce((s, a) => s + (a.load ?? 0), 0));
+  return {
+    from: T, to: T, days: [], changes: [], chart: [], qualityWeeks: [], warnings: [], missed: [], done: [],
+    loadPast7: sum(addDays(T, -6), T), loadNext7: 0,
+    weeklyTarget: weeklyLoadTarget(ctl, "udrzeni"),
+  };
 }
 
 /**

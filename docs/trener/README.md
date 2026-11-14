@@ -32,6 +32,9 @@ kondice (`coach/target.ts`), únava, pravidla kontroly týdne (`coach/validate.t
    Každá změna budoucích dnů se uloží jako verze s důvodem (Trenér → Plnění a změny plánu).
 11. **AI**: testy v `test/ai.test.ts` – čísla jen z dat (druhý pokus, příznak „nekontrolováno“), soukromí, žádné
    klíče v promptu, bezpečnostní pravidla promptů; změna promptu musí projít revizí (hash v testu).
+12. **Vypnutý trenér** (`coach_on`, tlačítko na stránce Trenér): nic se neplánuje ani nenavrhuje, budoucí naplánované
+   tréninky se při vypnutí smažou i v intervals.icu. Stránka ukáže tento týden proti zátěži na udržení kondice
+   (7 × kondice z konce minulého týdne, pásmo ± 10 %, `freePlan` v `src/report/build.ts`) a zátěž po týdnech.
 
 ## Jak vyzkoušet
 

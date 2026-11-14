@@ -37,6 +37,8 @@ export interface Settings {
   place_lon: number | null;
   /** Trenér: profil sportovce (hlavní sport, další sporty); null = odhadne se z historie */
   coach_profile: CoachProfile | null;
+  /** Trenér zapnutý; vypnutý = nic se neplánuje, jen odjeté tréninky proti zátěži na udržení kondice */
+  coach_on: boolean;
 }
 
 export const DEFAULTS: Settings = {
@@ -63,6 +65,7 @@ export const DEFAULTS: Settings = {
   place_lat: null,
   place_lon: null,
   coach_profile: null,
+  coach_on: true,
 };
 
 /** Platný stav k datu (po „until“ automaticky zpět aktivní). */

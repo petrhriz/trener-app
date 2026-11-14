@@ -8,7 +8,7 @@ import { ownRideNote, readOwnRide } from "../core/ownRide";
 import { all, run } from "../lib/db";
 import { dayDm } from "../lib/format";
 import { runLlm } from "../llm/llm";
-import { addConstraint, saveProposal } from "../plan/proposals";
+import { addConstraint, clearFuturePlan, saveProposal } from "../plan/proposals";
 import { planFor, recoveryFor } from "../report/build";
 import { loadCtx } from "../report/context";
 import { profileFromHistory, profileSummary, validateProfile } from "../core/coach/profile";
@@ -77,6 +77,16 @@ async function proposalAfter(env: Env) {
   const p = await planFor(await loadCtx(env));
   return { id: await saveProposal(env, "trener", p.changes), changes: p.changes.length };
 }
+
+/** Trenér zapnout / vypnout. Vypnutí smaže budoucí naplánované tréninky (i v intervals.icu); zapnutí jen přepne –
+ *  plán trenér navrhne znovu a zapíše se po potvrzení jako vždy. */
+coachApi.post("/coach/enabled", async (c) => {
+  const { on } = (await c.req.json()) as { on: boolean };
+  if (typeof on !== "boolean") return c.json({ error: "bad input" }, 400);
+  await setSetting(c.env.DB, "coach_on", on);
+  const removed = on ? 0 : await clearFuturePlan(c.env, (await loadCtx(c.env)).T);
+  return c.json({ ok: true, on, removed });
+});
 
 coachApi.post("/plan/shift", async (c) => {
   const { from, to } = (await c.req.json()) as { from: string; to: string };

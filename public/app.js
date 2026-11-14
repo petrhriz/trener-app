@@ -1155,8 +1155,40 @@ function why3(d, co, p, f) {
   return `<div class="twhy"><div class="kv why3">${rows.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join("")}</div>${sum}${kHtml}${more.length ? `<details class="gcmp"><summary>Podrobnosti k cíli (${more.length})</summary><ul class="rules3">${more.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></details>` : ""}${zHtml}</div>`;
 }
 
+/** Trenér zapnout / vypnout (vypnutí smaže budoucí naplánované tréninky i v kalendáři). */
+async function setCoachOn(el, on, btn) {
+  if (!on && !confirm("Vypnout trenéra?\n\nNaplánované tréninky od zítřka se smažou (i z kalendáře intervals.icu a Garminu). Odjeté tréninky a dnešek zůstanou. Trenér se dá kdykoli zase zapnout – plán pak navrhne znovu.")) return;
+  btn.disabled = true;
+  try { await api("coach/enabled", { method: "POST", body: JSON.stringify({ on }) }); await pageTrener(el); } catch (err) { fail(err, btn); }
+}
+
+/** Trenér vypnutý: jezdíš sám, stránka ukazuje tento týden proti zátěži na udržení kondice. */
+function pageTrenerFree(el, d) {
+  const w = d.week, t = w.target;
+  const pct = t.mid ? Math.min(100, Math.round((w.done / t.mid) * 100)) : 0;
+  const tone = w.done >= t.lo ? "good" : "";
+  const perDay = w.left && w.daysLeft ? Math.round(w.left / w.daysLeft) : 0;
+  const status = !t.mid ? "Kondici zatím neznám – cíl se spočítá po prvních týdnech dat."
+    : w.done >= t.hi ? `Splněno s rezervou – ${num(w.done)} z ${num(t.mid)}. Kondice poroste, další jízdy už jsou navíc.`
+    : w.done >= t.lo ? `Splněno – ${num(w.done)} z ${num(t.mid)}. Kondice se udrží.`
+    : `Do udržení kondice chybí ${num(w.left)}${w.daysLeft > 1 ? ` (${w.daysLeft} dní do konce týdne, asi ${num(perDay)} denně)` : " (poslední den týdne)"}.`;
+  const bar = `<div class="fbar"><div class="fbar-in ${tone}" style="width:${pct}%"></div><div class="fbar-t" style="left:${t.mid ? Math.min(100, (t.lo / t.mid) * 100) : 0}%"></div></div>`;
+  const weekCard = card("c12", "🎯 Tento týden", w.ctl != null ? `kondice ${num(w.ctl, 1)}` : "",
+    `<div class="stats tight">${stat("Hotovo", num(w.done), "", `${pct} % cíle`, tone)}${stat("Na udržení", num(t.mid), "", `pásmo ${t.lo}–${t.hi}`, "")}${stat("Zbývá", num(w.left), "", w.daysLeft > 1 ? `${w.daysLeft} dní` : "dnes", "")}</div>${bar}<p class="note">${esc(status)}</p>
+    <p class="note">Cíl = 7 × kondice z konce minulého týdne: s takovou zátěží týdne kondice zůstane stejná (TrainingPeaks, Friel). Víc = kondice roste, míň = klesá.</p>`);
+  const list = d.acts.length ? `<div class="alist">${d.acts.map((a) => `<a class="row" href="#/aktivita/${a.id}"><span class="d">${dayDm(a.date)}</span><span class="t">${SPORT_ICON[a.sport] || "🏅"} ${esc(a.name || "aktivita")}</span><span class="r">${hmm(a.moving_s)} h${a.km ? ` · ${num(a.km, 1)} km` : ""} · <b>${num(a.load)}</b></span></a>`).join("")}</div>` : `<div class="empty">Tento týden zatím nic odjeto.</div>`;
+  el.innerHTML = `<div class="head"><div><h1>Trenér</h1><div class="sub">vypnutý · jezdíš podle sebe</div></div><button class="btn pri" id="coachOn">Zapnout trenéra</button></div>
+  <div class="grid">
+    ${weekCard}
+    ${card("c6", "🚴 Odjeto tento týden", `${d.acts.length}×`, list)}
+    ${card("c6", "📈 Zátěž po týdnech", "TSS / HRSS", weekLoadsHtml(d.weeks))}
+  </div>`;
+  el.querySelector("#coachOn").addEventListener("click", (e) => setCoachOn(el, true, e.currentTarget));
+}
+
 async function pageTrener(el) {
   const [d, mine] = await Promise.all([api("coach"), api("plan/mine").catch(() => [])]);
+  if (d.free) return pageTrenerFree(el, d);
   const r = d.readiness, rec = r.recovery, f = r.fitness, p = r.plan;
   const co = d.coach; // Trenér v2 (uložený plán podle profilu); null = starý trenér
   const hTxt = (x) => String(x).replace(".", ",");
@@ -1333,13 +1365,14 @@ async function pageTrener(el) {
   const loadsCard = card("t-loads", "📈 Zátěž po týdnech", "TSS / HRSS", weekLoadsHtml(d.weeks), 'data-tt="proc"');
   const intens = d.hasPower === false ? "" : card("t-int", "Průvodce intenzitou", "FTP", `<details><summary>Watty pro jednotlivé jednotky (FTP ${d.intensity.ftp} W)</summary><table class="t"><tr><th>Jednotka</th><th class="r">% FTP</th><th class="r">Watty</th></tr>${d.intensity.targets.map((x) => `<tr><td>${esc(x.name)}</td><td class="r">${x.pct[0]}–${x.pct[1]} %</td><td class="r">${x.w[0]}–${x.w[1]} W</td></tr>`).join("")}</table></details>`, 'data-tt="cil"');
   const TABS = [["tyden", "Týden"], ["proc", "Stav"], ["pocasi", "Počasí"], ["cil", "Cíl"]];
-  el.innerHTML = `<div class="head"><div><h1>Trenér</h1><div class="sub">cíl ${esc(d.goalLabel || "")}</div></div></div>
+  el.innerHTML = `<div class="head"><div><h1>Trenér</h1><div class="sub">cíl ${esc(d.goalLabel || "")}</div></div><button class="btn sm" id="coachOff" title="Jezdit podle sebe bez plánu – třeba v zimě">Vypnout trenéra</button></div>
   <div class="ioseg ttabs" role="tablist">${TABS.map(([k, l]) => `<button type="button" role="tab" data-ttab="${k}" class="${tTab === k ? "on" : ""}" aria-selected="${tTab === k}">${l}</button>`).join("")}</div>
   <div class="grid tgrid">
     <div class="c7 col tcol">${todayCard}${weekCard}${coachCalendar(d, co, ccOpen, ccDetail)}${planCard}</div>
     <div class="c5 col tcol">${stateCard}${recentCard}${histCard}${chatCard}${goalCard}${loadsCard}${intens}</div>
     ${weatherCard}
   </div>${pendBar}`;
+  el.querySelector("#coachOff")?.addEventListener("click", (e) => setCoachOn(el, false, e.currentTarget));
   // záložky (jen na mobilu – na počítači je vidět vše)
   const showTab = (k) => { tTab = k; try { localStorage.setItem("tTab", k); } catch {} el.querySelectorAll("[data-ttab]").forEach((b) => { b.classList.toggle("on", b.dataset.ttab === k); b.setAttribute("aria-selected", b.dataset.ttab === k); }); el.querySelectorAll("[data-tt]").forEach((c) => c.classList.toggle("tt-off", c.dataset.tt !== k)); };
   showTab(tTab);

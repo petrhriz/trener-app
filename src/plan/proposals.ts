@@ -89,6 +89,19 @@ export async function retryIcuDeletes(env: Env): Promise<number> {
   return q.length - left.length;
 }
 
+/**
+ * Vypnutí trenéra: smaže naplánované tréninky po dni `after` (dnešek a odjeté zůstanou) i v intervals.icu
+ * a zavře otevřený návrh změn. Nesmazané události v intervals.icu se zkusí znovu (fronta).
+ */
+export async function clearFuturePlan(env: Env, after: string): Promise<number> {
+  const rows = await all<{ id: number; icu_event_id: string | null }>(env.DB, "SELECT id, icu_event_id FROM planned_workouts WHERE date > ? AND status = 'planned'", after);
+  const icu = new IntervalsClient(env);
+  for (const r of rows) if (r.icu_event_id && icu.configured) await deleteIcuEvent(env, icu, r.icu_event_id);
+  await run(env.DB, "DELETE FROM planned_workouts WHERE date > ? AND status = 'planned'", after);
+  await run(env.DB, "UPDATE proposals SET status = 'superseded' WHERE status = 'open'");
+  return rows.length;
+}
+
 /** Zápis vybraných změn (7.2). Před zápisem znovu načte dotčené dny, po zápisu ověří zpětným čtením. */
 export async function applyChanges(env: Env, items: Change[]): Promise<ApplyResult> {
   const s = await getSettings(env.DB);
