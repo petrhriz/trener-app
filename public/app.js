@@ -969,7 +969,7 @@ async function pagePrehled(el) {
     : card("c12", "Poslední aktivita", "", `<div class="empty">Žádná aktivita za 90 dní.</div>`);
 
   const longDate = new Date(d.date + "T12:00").toLocaleDateString("cs-CZ", { weekday: "long", day: "numeric", month: "long" });
-  el.innerHTML = `<div class="head"><div><h1>${greeting(d.hour)}${d.name ? `, <span class="acc">${esc(d.name)}</span>` : ""}</h1><div class="sub"><span class="plong">${longDate[0].toUpperCase() + longDate.slice(1)}</span>${d.isToday ? `<span id="watchAt">${d.lastSync ? ` · sync ${syncAgo(new Date(d.lastSync).getTime())}` : ""}</span>` : ""}</div></div></div>
+  el.innerHTML = `<div class="head"><div><h1>${greeting(d.hour)}${d.name ? `, <span class="acc">${esc(d.name)}</span>` : ""}</h1><div class="sub"><span class="plong">${longDate[0].toUpperCase() + longDate.slice(1)}</span>${d.isToday ? `<span id="watchAt">${d.lastSync ? ` · aktualizováno ${syncAgo(new Date(d.lastSync).getTime())}` : ""}</span>` : ""}</div></div></div>
   <div class="pbar">${dateNav(d.date, d.minDate, d.todayDate, "pnav", true)}${d.isToday ? weatherPill(d.weatherNow) : d.weatherDay ? weatherDayPill(d.weatherDay) : ""}${statusPill(d.status)}</div>
   <div class="grid prehled">${dnes}${sleepCard}${tiles}${bbCard}${hrCard}${laCard}</div>`;
   el.querySelector("#aiDay")?.addEventListener("click", () => openAiPanel({ title: `Den ${dayDm(d.date)}`,
@@ -982,7 +982,7 @@ async function pagePrehled(el) {
     // poslední data z hodinek = nejnovější bod tepu / Body Battery (hodinky je pošlou až po synchronizaci s telefonem)
     const lastT = Math.max(0, ...(day.hr || []).map((x) => x[0]), ...(day.bb || []).map((x) => x[0]));
     const wa = el.querySelector("#watchAt");
-    if (wa && lastT && d.isToday) wa.innerHTML = ` · sync ${syncAgo(lastT)}`;
+    if (wa && lastT && d.isToday) wa.innerHTML = ` · aktualizováno ${syncAgo(lastT)}`;
   }).catch(() => {});
 }
 
