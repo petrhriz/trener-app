@@ -332,12 +332,12 @@ function lineChartW({ W = 760, x, series, band, bands = null, bandSeries = null,
  * mode: 'simple' | 'stack' | 'range'
  */
 function barChart(o) { return o.W ? barChartW(o) : sized((W) => barChartW({ ...o, W })); }
-function barChartW({ W = 760, x, bars, height = 170, fmt = (v) => num(v), xfmt = (l) => l, todayIndex = null, mode = "simple", yfmt = null, tipFn = null, refLine = null, maxV = null }) {
+function barChartW({ W = 760, x, bars, height = 170, fmt = (v) => num(v), xfmt = (l) => l, todayIndex = null, mode = "simple", yfmt = null, tipFn = null, refLine = null, maxV = null, band = null }) {
   const H = hScale(height, W), P = { l: 34, r: 6, t: 10, b: 26 };
   const n = x.length;
   const top = (b) => (mode === "stack" ? (b.parts || []).reduce((s, p) => s + (p.v || 0), 0) : mode === "range" ? b.hi ?? 0 : b.v ?? 0);
   const mn = mode === "range" ? Math.min(...bars.map((b) => b.lo ?? Infinity).filter(isFinite), refLine ?? Infinity) : 0;
-  let mx = maxV ?? Math.max(1, ...bars.map(top), refLine ?? 0);
+  let mx = maxV ?? Math.max(1, ...bars.map(top), refLine ?? 0, ...(band ? band.hi.filter((v) => v != null) : []));
   const lo = mode === "range" ? Math.max(0, Math.floor((mn - 5) / 10) * 10) : 0;
   if (maxV == null) mx = mx * 1.08;
   const bw = (W - P.l - P.r) / n;
@@ -369,9 +369,18 @@ function barChartW({ W = 760, x, bars, height = 170, fmt = (v) => num(v), xfmt =
     }
     if (i % step === 0 || i === todayIndex) xl += `<text class="xl ${i === todayIndex ? "today" : ""}" x="${P.l + i * bw + bw / 2}" y="${H - 7}" text-anchor="middle">${esc(xfmt(x[i]))}</text>`;
   });
+  // pásmo normy (lo–hi po sloupcích) jako plocha za sloupci
+  let bandSvg = "";
+  if (band) {
+    const pts = band.lo.map((v, i) => (v != null && band.hi[i] != null ? i : null)).filter((i) => i != null);
+    if (pts.length > 1) {
+      const cx = (i) => P.l + i * bw + bw / 2;
+      bandSvg = `<path d="M${pts.map((i) => `${cx(i)},${Y(band.hi[i])}`).join("L")}L${pts.slice().reverse().map((i) => `${cx(i)},${Y(band.lo[i])}`).join("L")}Z" fill="color-mix(in srgb, ${band.color || "var(--acc)"} 22%, transparent)"/>`;
+    }
+  }
   const ref = refLine != null ? `<line x1="${P.l}" x2="${W - P.r}" y1="${Y(refLine)}" y2="${Y(refLine)}" stroke="var(--muted)" stroke-dasharray="4 4"/>` : "";
   bindHover(id, W, (cx) => { const i = Math.floor((cx - P.l) / bw); return i >= 0 && i < n ? i : null; }, (i) => P.l + i * bw + bw / 2, (i) => ({ html: tipFn ? tipFn(i) : `<b>${esc(xfmt(x[i]))}</b><div>${esc(fmt(top(bars[i])))}${bars[i].dashed ? " (plán)" : ""}</div>` }));
-  return `<svg class="chart" id="${id}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${g}${ref}${out}<line class="cur band" y1="${P.t}" y2="${H - P.b}" style="stroke-width:${Math.max(1, bw - gap)}"/>${xl}</svg>`;
+  return `<svg class="chart" id="${id}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${g}${bandSvg}${out}${ref}<line class="cur band" y1="${P.t}" y2="${H - P.b}" style="stroke-width:${Math.max(1, bw - gap)}"/>${xl}</svg>`;
 }
 
 /** Sparkline (bez os) – volitelně s pásmem normy (průměr ± 1 SD). */
@@ -848,7 +857,7 @@ function sleepBalTile(sb) {
   const word = m >= 60 ? "rezerva" : m >= -60 ? "vyrovnaná" : m >= -240 ? "mírný dluh" : "dluh";
   const mx = Math.max(60, ...sb.nights.map((n) => Math.abs(n.d ?? 0)));
   const bars = sb.nights.map((n) => n.d == null ? `<span></span>` : `<span><i class="${n.d >= 0 ? "up" : "dn"}" style="height:${Math.max(3, (Math.abs(n.d) / mx) * 50)}%"></i></span>`).join("");
-  return metricTile({ label: "😴 Spánková bilance", value: h, unit: "h", state: word, tone, spark: `<div class="sbal">${bars}</div>`, href: "#/detail/spanek", foot: `7 nocí · cíl ${hmm(sb.goalMin * 60)} h` });
+  return metricTile({ label: "😴 Spánková bilance", value: h, unit: "h", state: word, tone, spark: `<div class="sbal">${bars}</div>`, href: "#/detail/spanek", foot: `7 nocí · proti tvým obvyklým ${hmm(sb.baseMin * 60)} h` });
 }
 /** Dlaždice metriky: popisek, hodnota, stav proti normě, sparkline 30 dní. */
 function metricTile({ label, value, unit = "", state = "", tone = "", spark: sp = "", href = "", foot = "" }) {
@@ -2333,27 +2342,30 @@ function dheroHtml(M, v, last, today, st, tone, nLo, nHi, okV, u) {
   return `<section class="card c12 dhero" style="--mc:${M.color}"><div class="dh-row"><div class="dh-v"><div class="dh-ico">${M.ico}</div><div><div class="dh-big">${M.fmtBig(v)}<small>${esc(u)}</small></div><div class="sub">${last ? (last.date === today ? "dnes" : dayDm(last.date)) : ""}${st ? ` · <span class="${tone}">${st}</span>` : ""}</div></div></div>${nLo != null ? `<div class="nrange"><span class="${tone}">Normální rozsah</span><b>${M.fmt(nLo)}–${M.fmt(nHi)}${esc(u)}</b><small>průměr ± 1 SD za 30 dní</small></div>` : ""}</div>${gauge}</section>`;
 }
 /**
- * Spánková banka: součet (spánek − cíl) za posledních 7 nocí. Nad nulou = naspáno do zásoby,
+ * Spánková banka: součet (spánek − tvůj obvyklý spánek) za posledních 7 nocí. Nad nulou = naspáno do zásoby,
  * pod nulou = spánkový dluh. Noc bez dat se nepočítá.
  */
-function sleepBankCard(all, goalMin, range) {
+function sleepBankCard(all, range) {
+  // obvyklý spánek (medián 60 dní) platný v den noci – počítá server (src/core/sleepCalc.ts)
+  const baseOf = (r) => r.sleep_base ?? 480;
   const bank = all.map((r, i) => {
     // 7 nocí, novější víc (váha 0,74^stáří: dnes 1, včera 0,74 … nejstarší 0,16)
     const w = all.slice(Math.max(0, i - 6), i + 1);
     if (w.filter((x) => x.sleep_s).length < 4) return null;
-    return w.reduce((t, x, k) => t + (x.sleep_s ? (x.sleep_s / 60 - goalMin) * Math.pow(0.74, w.length - 1 - k) : 0), 0) / 60;
+    return w.reduce((t, x, k) => t + (x.sleep_s ? (x.sleep_s / 60 - baseOf(x)) * Math.pow(0.74, w.length - 1 - k) : 0), 0) / 60;
   });
-  const night = all.map((r) => (r.sleep_s ? (r.sleep_s / 60 - goalMin) / 60 : null));
+  const night = all.map((r) => (r.sleep_s ? (r.sleep_s / 60 - baseOf(r)) / 60 : null));
+  const baseNow = baseOf(all[all.length - 1] || {});
   const k = all.length - Math.min(range, all.length);
   const xs = all.slice(k).map((r) => r.date), b = bank.slice(k), nv = night.slice(k);
   const now = [...b].reverse().find((v) => v != null);
   const hm = (h) => (h == null ? DASH : `${h < 0 ? "−" : "+"}${hmm(Math.abs(h) * 3600)}`);
   const tone = now == null ? "" : now >= -1 ? "good" : now >= -4 ? "warn" : "bad";
   const word = now == null ? "" : now >= 1 ? "naspáno do zásoby" : now >= -1 ? "vyrovnaná" : now >= -4 ? "mírný dluh" : "velký dluh";
-  return card("c12", "😴 Spánková bilance · 7 nocí", "výpočet", `<div class="stats tight">${stat("Bilance teď", hm(now), " h", word, tone)}${stat("Poslední noc", hm(nv[nv.length - 1]), " h", `proti cíli ${hmm(goalMin * 60)} h`, "")}</div>`
+  return card("c12", "😴 Spánková bilance · 7 nocí", "výpočet", `<div class="stats tight">${stat("Bilance teď", hm(now), " h", word, tone)}${stat("Poslední noc", hm(nv[nv.length - 1]), " h", `proti obvyklým ${hmm(baseNow * 60)} h`, "")}</div>`
     + lineChart({ x: xs, xfmt: dm, height: 180, fmt: (v) => hm(v) + " h", yfmt: (v) => (v > 0 ? "+" : "") + num(v) + " h", avgLine: { v: 0, label: "vyrovnáno", color: "var(--muted)" }, include: [-2, 2], minSpan: 3,
         series: [{ name: "bilance 7 nocí", values: b, color: "var(--srem)", width: 2.4, area: true }, { name: "noc proti cíli", values: nv, color: "var(--slight)", width: 0.01, dots: true }] })
-    + `<p class="note">Bilance = rozdíly „spánek − cíl ${hmm(goalMin * 60)} h“ za posledních 7 nocí, novější noci víc (dnešní 100 %, včerejší 74 %, … nejstarší 16 %), tečky = jednotlivé noci. Pod nulou máš spánkový dluh – ten zvyšuje potřebu spánku na další noci. Cíl spánku změníš v Nastavení.</p>`);
+    + `<p class="note">Bilance = rozdíly „spánek − tvůj obvyklý spánek“ (medián 60 dní, teď ${hmm(baseNow * 60)} h) za posledních 7 nocí, novější noci víc (dnešní 100 %, včerejší 74 %, … nejstarší 16 %), tečky = jednotlivé noci. Pod nulou máš spánkový dluh – ten zvyšuje potřebu spánku na další noci. Cíl spánku změníš v Nastavení.</p>`);
 }
 let detRange = 30;
 async function pageDetail(el, which) {
@@ -2389,10 +2401,10 @@ async function pageDetail(el, which) {
       ? card("c12 energy", `Energie a stres · ${day && day.date !== d.today ? dayDm(day.date) : "dnes"}`, day?.energySource === "garmin" ? "Garmin" : "výpočet", day ? `<div class="energy">${energyHtml(day, day.date === d.today, { latest: last?.date === d.today ? last.bb_latest ?? null : null })}</div>` + dayEnergyHtml(day) : `<div class="empty">Průběh dne nemám.</div>`)
       : dheroHtml(M, lastV, last, d.today, st, tone, nLo, nHi, okV, u);
   const main = M.hours
-    ? barChart({ x: rows.map((r) => r.date), xfmt: dm, mode: "stack", height: 220, yfmt: (v) => num(v) + " h", refLine: nrm ? nrm.mean : null,
+    ? barChart({ x: rows.map((r) => r.date), xfmt: dm, mode: "stack", height: 220, yfmt: (v) => num(v) + " h", refLine: last?.sleep_base ? last.sleep_base / 60 : null, band: { lo: rn.lo, hi: rn.hi, color: M.color },
         bars: rows.map((r) => ({ parts: [{ v: (r.deep || 0) / 3600, color: "var(--sdeep)" }, { v: (r.rem || 0) / 3600, color: "var(--srem)" }, { v: (r.light || (r.deep == null && r.sleep_s ? r.sleep_s : 0)) / 3600, color: "var(--slight)" }, { v: (r.awake || 0) / 3600, color: "var(--sawake)" }] })),
         tipFn: (i) => { const r = rows[i]; return `<b>${dayDm(r.date)}</b><div>spánek ${hmm(r.sleep_s)} h · skóre ${num(r.sleep_score)}</div><div>hluboký ${hmm(r.deep)} · REM ${hmm(r.rem)} · lehký ${hmm(r.light)} · bdění ${hmm(r.awake)}</div>`; } })
-      + `<div class="legend"><span><i style="background:var(--sdeep)"></i>hluboký</span><span><i style="background:var(--srem)"></i>REM</span><span><i style="background:var(--slight)"></i>lehký</span><span><i style="background:var(--sawake)"></i>bdění</span><span class="sub">čárkovaně = tvůj průměr</span></div>`
+      + `<div class="legend"><span><i style="background:var(--sdeep)"></i>hluboký</span><span><i style="background:var(--srem)"></i>REM</span><span><i style="background:var(--slight)"></i>lehký</span><span><i style="background:var(--sawake)"></i>bdění</span><span><i style="background:color-mix(in srgb, ${M.color} 22%, transparent)"></i>normální rozsah (± 1 SD za 30 dní)</span><span class="sub">čárkovaně = tvůj obvyklý spánek (medián 60 dní)</span></div>`
     : which === "bb"
       ? barChart({ x: rows.map((r) => r.date), xfmt: dm, mode: "range", maxV: 100, height: 210,
           bars: rows.map((r) => ({ lo: r.bb_min, hi: r.bb_max, color: bbColor(r.bb_max ?? 0) })),
@@ -2400,7 +2412,7 @@ async function pageDetail(el, which) {
         + `<div class="legend"><span><i style="background:${bbColor(85)}"></i>ráno ≥ 70</span><span><i style="background:${bbColor(60)}"></i>50–69</span><span><i style="background:${bbColor(35)}"></i>25–49</span><span><i style="background:${bbColor(10)}"></i>pod 25</span><span class="sub">sloupec = od minima dne po ranní maximum</span></div>`
       : lineChart({ x: rows.map((r) => r.date), xfmt: dm, height: 320, fmt: (v) => M.fmt(v) + u, bandSeries: { lo: rn.lo, hi: rn.hi, color: M.color, name: "normální rozsah (± 1 SD za 30 dní)" }, avgLine: avg != null ? { v: avg, label: `⌀ ${M.fmt(avg)}${u}`, color: M.color } : null, series: [{ name: M.name, values: vals, color: M.color, width: 2.4, points: true }], minSpan: M.key === "stress" ? 10 : M.key === "resp" ? 1.5 : 4 });
   let extra = "";
-  if (M.hours) extra = sleepBankCard(all, d.sleepGoal || 480, detRange) + card("c12", "Skóre spánku", "výpočet × Garmin", lineChart({ x: rows.map((r) => r.date), xfmt: dm, height: 170, fmt: (v) => num(v), series: [{ name: "Garmin", values: rows.map((r) => r.sleep_score_g ?? null), color: "var(--z1)", width: 1.4 }, { name: "skóre", values: rows.map((r) => r.sleep_score), color: "var(--srem)", width: 2.2, points: true }], minSpan: 10 }) + `<p class="note">Skóre proti tvé potřebě spánku (cíl + spánkový dluh za 7 nocí), přísnější než Garmin. Pravidelnost (14 dní): ${esc(d.sleepReg.text)}</p>`);
+  if (M.hours) extra = sleepBankCard(all, detRange) + card("c12", "Skóre spánku", "výpočet × Garmin", lineChart({ x: rows.map((r) => r.date), xfmt: dm, height: 170, fmt: (v) => num(v), series: [{ name: "Garmin", values: rows.map((r) => r.sleep_score_g ?? null), color: "var(--z1)", width: 1.4 }, { name: "skóre", values: rows.map((r) => r.sleep_score), color: "var(--srem)", width: 2.2, points: true }], minSpan: 10 }) + `<p class="note">Skóre proti tvé potřebě spánku (cíl + spánkový dluh za 7 nocí), přísnější než Garmin. Pravidelnost (14 dní): ${esc(d.sleepReg.text)}</p>`);
   else if (M.key === "stress") extra = card("c12", "Stres ve spánku a maximum dne", "Garmin", lineChart({ x: rows.map((r) => r.date), xfmt: dm, height: 170, fmt: (v) => num(v), series: [{ name: "max dne", values: rows.map((r) => r.stress_max), color: "var(--z6)", width: 1.6 }, { name: "ve spánku", values: rows.map((r) => r.sleep_stress), color: "var(--z2)", width: 2 }] }));
   else if (M.key === "rhr" && d.recovery?.rhr?.yellowThr) extra = card("c12", "Hranice v ranním semaforu", "trenér", kv([["Žlutá od", num(d.recovery.rhr.yellowThr) + " bpm"], ["Červená od", num(d.recovery.rhr.redThr) + " bpm"], ["Norma (60 dní)", nrm ? `${num(nrm.mean)} ± ${num(nrm.sd, 1)} bpm` : DASH]]));
   else if (M.key === "hrv" && d.recovery?.hrv) extra = card("c12", "V ranním semaforu", "trenér", kv([["Dnešní hodnocení", esc(d.recovery.hrv.rating || "nemám")], ["Norma (60 dní)", esc(d.recovery.hrv.rangeText || DASH) + " ms"]]));
@@ -2876,7 +2888,6 @@ async function pageNastaveni(el) {
      ${f("goal_date", "Datum cíle", "date")}
      ${f("goal_ctl", "Cílová kondice CTL k datu cíle (prázdné = návrh)", "number", 'min="10" max="150"')}
      ${f("year_km_goal", "Roční cíl km", "number")}
-     <label>Cíl spánku (h:mm, základ potřeby a skóre spánku)<input name="sleep_goal" type="time" min="06:00" max="10:00" value="${String(Math.floor((s.sleep_goal_min ?? 480) / 60)).padStart(2, "0")}:${String((s.sleep_goal_min ?? 480) % 60).padStart(2, "0")}"></label>
      ${f("garmin_key_created", "Garmin klíč vytvořen", "date")}
      <label class="chk"><input type="checkbox" name="llm_enabled" ${s.llm_enabled ? "checked" : ""}> AI pro volné otázky a chat</label>
      <label class="chk"><input type="checkbox" name="ai_private" ${s.ai_private ? "checked" : ""}> AI nedostane zdravotní údaje (VST, spánek, klidový tep, stres, Body Battery, váha) – jen trénink</label>
@@ -2908,7 +2919,6 @@ async function pageNastaveni(el) {
     for (const k of ["ftp", "year_km_goal", "goal_ctl"]) body[k] = fd.get(k) ? Number(fd.get(k)) : null;
     for (const k of ["goal_name", "goal_date", "garmin_key_created"]) body[k] = fd.get(k) || null;
     for (const k of ["goal", "place_name"]) if (String(fd.get(k) ?? "").trim()) body[k] = String(fd.get(k)).trim();
-    { const m = /^(\d{1,2}):(\d{2})$/.exec(String(fd.get("sleep_goal") ?? "").trim()); if (m) body.sleep_goal_min = +m[1] * 60 + +m[2]; }
     for (const k of ["llm_enabled", "ai_private", "icu_sync", "floor_strength"]) body[k] = fd.get(k) === "on";
     const numOr = (k, d) => { const v = String(fd.get(k) ?? "").trim(); return v !== "" && isFinite(+v) ? +v : d; };
     body.ride_temps = { cold: numOr("t_cold", s.ride_temps?.cold ?? 3), hot: numOr("t_hot", s.ride_temps?.hot ?? 30), ideal: numOr("t_ideal", s.ride_temps?.ideal ?? 18) };

@@ -41,7 +41,7 @@ export interface RecoveryScore {
 // z_tep = odchylka průměrného tepu ve spánku (celá noc, ne Garminův klidový tep) od 60 nocí.
 // Zkoušená plynulá (exponenciální) norma ani jiné délky oken křížově nepomohly – zbytek chyby jsou vstupy,
 // které Garmin přes API nedává (teplota zápěstí, SpO2, VST z jednotlivých úderů místo průměru za noc).
-// Potřeba = cíl + spánkový dluh (sleepCalc).
+// Potřeba = tvůj obvyklý spánek + část spánkového dluhu (sleepCalc).
 // Zátěž ani klidový tep přímo nevstupují – trénink se projeví přes noční VST a tep.
 const K = { a: 0.174, hrv: 0.403, sleepHr: 0.39, dur: 1.02 };
 const HRV_BASE = 30; // nocí pro základnu VST (tep ve spánku: 60)
@@ -117,7 +117,7 @@ export interface CoachingInput {
   strain: { score: number; load: number; base: number; basis: "plan" | "ctl" };
   sleepS: number | null;
   sleepNeedMin: number | null;
-  /** potřeba spánku na dnešní noc (cíl + spánkový dluh, src/core/sleepCalc.ts) */
+  /** potřeba spánku na dnešní noc (obvyklý spánek + část dluhu, src/core/sleepCalc.ts) */
   nextNeedMin: number | null;
   /** typické probuzení „HH:MM“ (medián 14 dní) */
   wakeTypical: string | null;
@@ -146,7 +146,7 @@ const minToClock = (m: number) => {
 export function coaching(i: CoachingInput): Coaching {
   const period: Coaching["period"] = i.hour < 12 ? "rano" : i.hour < 18 ? "den" : "vecer";
   const needs: string[] = [];
-  // spánek dnes v noci: potřeba (cíl + dluh) → kdy jít spát
+  // spánek dnes v noci: potřeba (obvyklý spánek + část dluhu) → kdy jít spát
   const need = i.nextNeedMin ?? i.sleepNeedMin;
   let bedtime: string | null = null;
   if (need && i.wakeTypical) {

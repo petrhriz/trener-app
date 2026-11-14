@@ -1,6 +1,7 @@
 // Rozbor spánku a ranních hodnot (bod 10): fáze, probuzení, stres a tep ve spánku proti normě. Deterministicky.
 import { hmm, num } from "../lib/format";
 import { avg, norm } from "./recovery";
+import { baseFor, SLEEP_REC_MIN } from "./sleepCalc";
 
 export interface SleepNight {
   date: string;
@@ -60,7 +61,9 @@ export interface SleepReport {
   respLo: number | null;
   respHi: number | null;
   hrv: number | null;
-  /** potřeba spánku na následující (dnešní) noc: cíl + spánkový dluh (src/core/sleepCalc.ts) */
+  /** tvůj obvyklý spánek (medián 60 dní, min) – základ potřeby (src/core/sleepCalc.ts) */
+  baseMin: number | null;
+  /** potřeba spánku na následující (dnešní) noc: obvyklý spánek + část spánkového dluhu (src/core/sleepCalc.ts) */
   nextNeedMin: number | null;
   awakeCount: number | null;
 }
@@ -107,6 +110,7 @@ export function sleepReport(night: SleepNight | null, history: SleepNight[]): Sl
   });
 
   const hist = history.filter((h) => h.date < night.date);
+  const baseMin = baseFor(new Map(history.map((h) => [h.date, h])), night.date);
   const hrN = norm(hist.map((h) => h.sleep_hr));
   const durN = norm(hist.map((h) => h.sleep_s));
   const stressAvg = avg(hist.slice(-30).map((h) => h.sleep_stress));
@@ -117,7 +121,8 @@ export function sleepReport(night: SleepNight | null, history: SleepNight[]): Sl
   if (night.sleep_s != null) {
     if (need) {
       const diff = Math.round(night.sleep_s / 60 - need);
-      points.push({ tone: diff >= -15 ? "good" : diff >= -60 ? "ok" : "bad", text: `Délka ${hmm(night.sleep_s)} h, potřeba pro tuto noc ${hmm(need * 60)} h – cíl + spánkový dluh (${diff >= 0 ? "+" : "−"}${Math.abs(diff)} min).` });
+      points.push({ tone: diff >= -15 ? "good" : diff >= -60 ? "ok" : "bad", text: `Délka ${hmm(night.sleep_s)} h, potřeba pro tuto noc ${hmm(need * 60)} h – tvůj obvyklý spánek ${hmm(baseMin * 60)} h${need > baseMin ? ` + část spánkového dluhu` : ""} (${diff >= 0 ? "+" : "−"}${Math.abs(diff)} min).` });
+      if (baseMin < SLEEP_REC_MIN) points.push({ tone: "ok", text: `Dlouhodobě spíš v průměru ${hmm(baseMin * 60)} h. Hodnotím tě proti tvému zvyku, ale doporučení pro dospělé je aspoň 7 h (AASM) – při kratším spánku bývá pomalejší regenerace po tréninku.` });
     } else if (durN.n) {
       points.push({ tone: night.sleep_s >= durN.mean - 1800 ? "good" : "ok", text: `Délka ${hmm(night.sleep_s)} h, tvůj průměr ${hmm(durN.mean)} h.` });
     }
@@ -161,6 +166,7 @@ export function sleepReport(night: SleepNight | null, history: SleepNight[]): Sl
     respLo: night.sleep_resp_lo ?? null,
     respHi: night.sleep_resp_hi ?? null,
     hrv: night.hrv ?? null,
+    baseMin,
     nextNeedMin: night.next_sleep_need_min ?? null,
     awakeCount: night.awake_count,
   };

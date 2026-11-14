@@ -31,7 +31,7 @@
 | Údaj | Ze kterých dat | Kde je vzorec |
 |---|---|---|
 | Skóre spánku 0–100 | délka a fáze spánku proti tvé potřebě | `src/core/sleepCalc.ts` |
-| Potřeba spánku (dnes, další noc) | cíl spánku + vážený dluh 7 nocí | `src/core/sleepCalc.ts` |
+| Potřeba spánku (dnes, další noc) | tvůj obvyklý spánek (medián 60 dní, 6–9 h) + čtvrtina dluhu 7 nocí, nejvýš +1 h | `src/core/sleepCalc.ts` |
 | Spánková banka | spánek − cíl, součet 7 nocí | `public/app.js` (`sleepBankCard`) |
 | Optimum fází spánku (v optimu / pod) | podíl fáze z celkového spánku, rozsahy jako v Garminu | `src/core/sleep.ts` |
 | Pravidelnost spánku | časy usnutí a probuzení 14 dní | `src/core/extras.ts` |

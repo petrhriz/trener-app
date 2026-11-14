@@ -16,7 +16,8 @@ import { dayDm, dm } from "../lib/format";
 import { DEFAULTS, getSettings, setSetting, statusOn, type Settings } from "../lib/settings";
 import { STATUS_LABEL, coaching, strainScore, typicalWake, type StatusKind } from "../core/readinessScore";
 import { misc } from "./misc";
-import { addDays, dow, localNow, mondayOf, tzOffsetMin, daysBetween } from "../lib/time";
+import { addDays, dow, localNow, mondayOf, tzOffsetMin } from "../lib/time";
+import { baseFor, nightsBefore, sleepBankMin } from "../core/sleepCalc";
 import { constraintNoteOk } from "../core/coach/common";
 import { RPE_ASK_DAYS, RPE_LABEL, rpeOk, rpeToAsk } from "../core/rpe";
 import { addConstraint, applyChanges, claimProposal, finishProposal, getProposal, openProposal, removeConstraint, saveProposal } from "../plan/proposals";
@@ -24,7 +25,6 @@ import { activityReport, eftpOf, ftpCheckOf, fitnessTable, recoveryFor, plannedF
 import { hasPowerMeter, loadCtx } from "../report/context";
 import { compliance, ctlPlan, efficiency, intensityVerdict, intensityWeeks, monotonyWeeks, weeklyCompliance } from "../core/analytics";
 import { recomputeLoads } from "../sync/metrics";
-import { recomputeSleep } from "../sync/sleep";
 import { geocode } from "../sync/weather";
 import { syncTick } from "../sync/sync";
 import { listModels, modelChain } from "../llm/providers";
@@ -121,11 +121,12 @@ api.get("/overview", async (c) => {
   const load7 = Math.round(ctx.acts.filter((a) => a.date > addDays(D, -7) && a.date <= D).reduce((s, a) => s + (a.load ?? 0), 0));
   // VST: průměr každé noci za 14 dní (jen přehled, detail po 5 min není potřeba)
   const hrv14 = ctx.well.filter((w) => w.date > addDays(D, -14) && w.date <= D).map((w) => ({ date: w.date, v: w.hrv ?? null }));
-  // spánková bilance: Σ 0,74^k × (spánek − cíl) za 7 nocí (dnešní noc váha 1, nejstarší 0,16)
-  const goalMin = ctx.s.sleep_goal_min ?? 480;
-  const nights7 = ctx.well.filter((w) => w.date > addDays(D, -7) && w.date <= D).map((w) => ({ date: w.date, d: w.sleep_s ? Math.round(w.sleep_s / 60 - goalMin) : null }));
+  // spánková bilance: Σ 0,74^k × (spánek − tvůj obvyklý spánek) za 7 nocí (dnešní noc váha 1, nejstarší 0,16) – src/core/sleepCalc.ts
+  const wBy = new Map(ctx.well.map((w) => [w.date, w]));
+  const baseMin = baseFor(wBy, D);
+  const nights7 = ctx.well.filter((w) => w.date > addDays(D, -7) && w.date <= D).map((w) => ({ date: w.date, d: w.sleep_s ? Math.round(w.sleep_s / 60 - baseMin) : null }));
   const nOk = nights7.filter((x) => x.d != null);
-  const sleepBal = nOk.length >= 4 ? { min: Math.round(nights7.reduce((t, x) => t + (x.d == null ? 0 : x.d * Math.pow(0.74, daysBetween(x.date, D))), 0)), nights: nights7, goalMin } : null;
+  const sleepBal = nOk.length >= 4 ? { min: Math.round(sleepBankMin([...nightsBefore(wBy, D, 6), wBy.get(D)?.sleep_s ?? null], baseMin)), nights: nights7, baseMin } : null;
   const fit = r.fitness;
   const day = r.today.day;
   const wm = weatherMap(ctx, T, 7);
@@ -867,13 +868,13 @@ api.get("/recovery", async (c) => {
     return { n: x.n, mean: Math.round(x.mean * 10) / 10, sd: Math.round(x.sd * 10) / 10 };
   };
   const r = await readiness(ctx);
+  const wBy = new Map(ctx.well.map((w) => [w.date, w]));
   return c.json({
     date: T,
     today: T0,
     minDate: await firstDay(c.env, T0),
-    sleepGoal: ctx.s.sleep_goal_min ?? 480,
     rows: ctx.well.filter((w) => w.date <= T).map((w) => ({
-      date: w.date, hrv: w.hrv, rhr: w.rhr, sleep_s: w.sleep_s, sleep_need: (w as any).sleep_need_min ?? null, sleep_score: w.sleep_score, sleep_score_g: w.sleep_score_g ?? null, bb_max: w.bb_max, bb_min: w.bb_min,
+      date: w.date, hrv: w.hrv, rhr: w.rhr, sleep_s: w.sleep_s, sleep_base: baseFor(wBy, w.date), sleep_need: (w as any).sleep_need_min ?? null, sleep_score: w.sleep_score, sleep_score_g: w.sleep_score_g ?? null, bb_max: w.bb_max, bb_min: w.bb_min,
       bb_charged: w.bb_charged, bb_drained: w.bb_drained, stress: w.stress_avg, stress_max: w.stress_max,
       deep: w.deep_s, rem: w.rem_s, light: w.light_s, awake: w.awake_s, sleep_hr: w.sleep_hr, sleep_stress: w.sleep_stress, resp: w.sleep_resp,
       stress_dist: (() => { try { return w.stress_dist ? JSON.parse(w.stress_dist) : null; } catch { return null; } })(),
@@ -1140,7 +1141,6 @@ api.post("/settings", async (c) => {
   // v plánovači zpráv spadl (hm(null)) a ranní / večerní zprávy by tiše přestaly chodit
   const bad = (k: keyof Settings, v: unknown): string | null => {
     if (k === "rides_per_week") return Number.isInteger(v) && (v as number) >= 2 && (v as number) <= 5 ? null : "tréninky týdně 2–5";
-    if (k === "sleep_goal_min") return Number.isInteger(v) && (v as number) >= 360 && (v as number) <= 600 ? null : "cíl spánku 6:00–10:00";
     if (k === "place_name") return typeof v === "string" && v.trim() ? null : "místo nesmí být prázdné";
     if (k === "first_name") return typeof v === "string" && v.trim() && v.length <= 40 ? null : "jméno 1–40 znaků";
     if (k === "goal") return ["udrzeni", "zvyseni", "pokles", "zavod"].includes(v as string) ? null : "neznámý cíl";
@@ -1168,8 +1168,6 @@ api.post("/settings", async (c) => {
     await setState(c.env.DB, "ftp_manual", true);
     await setState(c.env.DB, "ftp_set_at", localNow(new Date(), c.env.TZ_NAME).date);
   }
-  // jiný cíl spánku → přepočítat skóre a potřebu spánku v celé historii
-  if (before.sleep_goal_min !== after.sleep_goal_min) await recomputeSleep(c.env.DB, after.sleep_goal_min);
   if (before.ftp !== after.ftp || JSON.stringify(before.hr_zones) !== JSON.stringify(after.hr_zones)) {
     await recordZones(c.env.DB, localNow(new Date(), c.env.TZ_NAME).date, after);
     await recomputeLoads(c.env.DB, after);

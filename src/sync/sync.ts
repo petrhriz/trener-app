@@ -18,7 +18,7 @@ import { refreshWeather } from "./weather";
 import { recomputeSleep } from "./sleep";
 import { computeEnergy } from "./energy";
 import { ENERGY_V } from "../core/energy";
-import { SLEEP_CALC_V } from "../core/sleepCalc";
+import { BASE_DAYS, SLEEP_CALC_V } from "../core/sleepCalc";
 
 const ACT_COLS = [
   "id", "start_local", "date", "type_key", "sport", "name", "distance_m", "duration_s", "moving_s", "elev_gain",
@@ -233,7 +233,7 @@ export async function syncTick(env: Env, opts: { force?: boolean; manual?: boole
         await logEvent(env.DB, "info", "sync: 😴 spánek za dnešní noc stažen a přepočten");
       }
       // vlastní skóre a potřeba spánku (Garmin čísla zůstávají v *_g)
-      if (parts.includes("sleep")) await recomputeSleep(env.DB, s.sleep_goal_min, addDays(T, -2), T);
+      if (parts.includes("sleep")) await recomputeSleep(env.DB, addDays(T, -2), T);
       rep.steps.push(`wellness (${ws.length} dní)`);
     });
   }
@@ -258,10 +258,10 @@ export async function syncTick(env: Env, opts: { force?: boolean; manual?: boole
     rep.steps.push(`energie (${n} dní: ${dates[0]}–${dates[dates.length - 1]})`);
   });
 
-  // 2b) jednorázový přepočet spánku celé historie (nová verze výpočtu nebo jiný cíl spánku)
+  // 2b) jednorázový přepočet spánku celé historie (nová verze výpočtu)
   await guard("spánek", async () => {
     if ((await getState<number>(env.DB, "sleep_calc_v")) === SLEEP_CALC_V) return;
-    const n = await recomputeSleep(env.DB, s.sleep_goal_min);
+    const n = await recomputeSleep(env.DB);
     await execAll(env.DB, [setStateSql("sleep_calc_v", SLEEP_CALC_V)]);
     rep.steps.push(`spánek přepočten (${n} nocí)`);
   });
@@ -495,8 +495,8 @@ export async function syncTick(env: Env, opts: { force?: boolean; manual?: boole
     const ws = await ds.wellnessRange(from, st.cursor);
     const useful = ws.filter((w) => w.hrv != null || w.rhr != null || w.sleep_s != null || w.steps != null);
     await execAll(env.DB, wellnessSql(ws));
-    // dluh se přenáší 7 nocí dopředu → přepočet i týden za koncem stažené dávky
-    await recomputeSleep(env.DB, s.sleep_goal_min, from, addDays(st.cursor, 7));
+    // základ spánku bere 60 dní a dluh 7 nocí → přepočet i 67 dní za koncem stažené dávky
+    await recomputeSleep(env.DB, from, addDays(st.cursor, BASE_DAYS + 7));
     st.empty = useful.length ? 0 : st.empty + 1;
     if (useful.length) st.found = true;
     st.cursor = addDays(from, -1);
