@@ -121,7 +121,17 @@ describe("Trenér v3 – plán", () => {
     for (const d of days.filter((y) => y.date >= addDays(T, 7) && y.date < addDays(T, 14) && y.role === "key")) expect(d.name ?? "").toMatch(/tempo|sweet spot/i);
     expect(p.coach.reentry).toMatch(/návrat po \d+ dnech pauzy/);
   });
-  it("výstup sedí pro dashboard: dny 7–8, cíl týdne, změny pro zápis, kontrola týdne", () => {
+  it("podrobný plán končí nedělí příštího týdne (celá zátěž příštího týdne)", () => {
+    const p = runCoach(input());
+    const sunNext = addDays(mondayOf(T), 13);
+    expect(p.to).toBe(sunNext);
+    expect(p.days[p.days.length - 1]!.date).toBe(sunNext);
+    // součet plánu příštího týdne = zátěž týdne z výhledu trenéra
+    const next = p.days.filter((d) => d.date >= addDays(mondayOf(T), 7));
+    expect(next).toHaveLength(7);
+    expect(next.reduce((t, d) => t + d.load, 0)).toBe(Math.round(p.coach.horizon[1]!.load));
+  });
+  it("výstup sedí pro dashboard: dny do konce příštího týdne, cíl týdne, změny pro zápis, kontrola týdne", () => {
     const p = runCoach(input());
     expect(p.days.length).toBeGreaterThanOrEqual(7);
     expect(p.weeklyTarget.mid).toBe(p.coach.load);

@@ -44,7 +44,7 @@ async function place(env: Env, date: string, s: Session | null) {
 /** Den orientačního týdne (trenér zná druh, sport a délku, ne kroky). */
 type HorizonDay = { date: string; role: string; sport: string; minutes: number; name: string | null; blocked: boolean };
 const ROLE_NAME: Record<string, string> = { key: "Kvalita", long: "Dlouhá", endurance: "Z2", easy: "Lehce" };
-/** Trénink dne: nejdřív z podrobného plánu (8 dní), jinak z výhledu trenéra (4 týdny). undefined = den mimo plán. */
+/** Trénink dne: nejdřív z podrobného plánu (do neděle příštího týdne), jinak z výhledu trenéra (4 týdny). undefined = den mimo plán. */
 function slotAt(days: Day[], horizon: HorizonDay[], date: string): { name: string; s: Session | null } | undefined {
   const d = days.find((x) => x.date === date);
   if (d) return { name: d.name ?? "volno", s: sessionOf(d) };
@@ -144,7 +144,7 @@ coachApi.post("/plan/reset", async (c) => {
 });
 
 /** Systémový prompt AI trenéra (hlídá ho test promptů v test/ai.test.ts). */
-export const COACH_ASK_SYS = `Jsi cyklistický trenér. Uživatel upravuje plán na 7 dní. Odpověz POUZE JSON objektem:
+export const COACH_ASK_SYS = `Jsi cyklistický trenér. Uživatel upravuje plán do neděle příštího týdne. Odpověz POUZE JSON objektem:
 {"reply":"krátká česká odpověď, tykej, 1–3 věty","actions":[...]}
 Povolené akce (data jen z plánu níže):
 {"a":"move","from":"YYYY-MM-DD","to":"YYYY-MM-DD"}  přesun tréninku – obsazený den se prohodí SÁM, opačný přesun nepiš

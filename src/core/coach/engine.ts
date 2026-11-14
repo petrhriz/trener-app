@@ -807,7 +807,9 @@ function toPlan(inp: CoachInput, weeks: Week3[], o: { reentry: string | null; ou
   const includeToday = !o.todayDone && !!today0 && (today0.role !== "rest" || calBy.has(T) || !!today0.blocked);
   const dates: string[] = [];
   if (includeToday) dates.push(T);
-  for (let i = 1; i <= 7; i++) dates.push(addDays(T, i));
+  // podrobný plán do neděle příštího týdne – ať je vidět celá zátěž příštího týdne (v neděli = 7 dní)
+  const planEnd = addDays(mondayOf(T), 13);
+  for (let d = addDays(T, 1); d <= planEnd; d = addDays(d, 1)) dates.push(d);
 
   // výhled kondice a formy po dnech celého horizontu
   const projDates: string[] = [];

@@ -40,7 +40,7 @@ const CTX = {
   spanek: { delka_h: 6.2, skore: 58 },
   kondice: { ctl: 41.8, atl: 16.8, forma: 24 },
   dnesni_rozhodnuti: "Dnes Z2: 🟡 VST pod normou",
-  plan_7_dni: [{ datum: "2026-11-13", trenink: "Z2 vytrvalost", minut: 75, zatez: 54 }],
+  plan_do_nedele_pristiho_tydne: [{ datum: "2026-11-13", trenink: "Z2 vytrvalost", minut: 75, zatez: 54 }],
   zdravi_30_dni: [{ d: "11-11", vst: 52, tep: 51, spanek_h: 7.1 }],
 };
 const ask = (q: string) => [{ role: "user" as const, content: q }];
@@ -120,4 +120,4 @@ describe("AI: bezpečnostní pravidla v promptech", () => {
   });
 });
 
-const PROMPT_HASH = "b1d00922704470a4";
+const PROMPT_HASH = "3100e1af9c874972";

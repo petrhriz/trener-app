@@ -163,7 +163,7 @@ export async function aiContext(env: Env, ctx: Awaited<ReturnType<typeof loadCtx
     kondice: { ctl: r.fitness.ctl, atl: r.fitness.atl, forma: r.fitness.form, zatez_7_dni: r.fitness.load7 },
     dnesni_rozhodnuti: `${r.today.decision}: ${r.today.decisionWhy}`,
     dnesni_trenink: r.today.done.length ? `odjeto: ${r.today.done.map((x) => x.name).join(", ")}` : r.today.day?.name ? `${r.today.day.name}, ${r.today.day.durationMin} min, ${r.today.day.targetText ?? ""}` : "volno",
-    plan_7_dni: r.plan.days.map((d) => ({ datum: d.date, trenink: d.name ?? d.tag, druh: d.kind, sport: d.sport, minut: d.durationMin, zatez: d.load, cil: d.targetText, kroky: d.steps })),
+    plan_do_nedele_pristiho_tydne: r.plan.days.map((d) => ({ datum: d.date, trenink: d.name ?? d.tag, druh: d.kind, sport: d.sport, minut: d.durationMin, zatez: d.load, cil: d.targetText, kroky: d.steps })),
     tydenni_cil_zateze: r.plan.weeklyTarget,
     posledni_aktivity: ctx.acts.slice(-8).reverse().map((a) => ({ datum: a.date, sport: a.sport, nazev: a.name, s_kym: tags.get(a.id) ?? null, km: a.distance_m ? Math.round(a.distance_m / 100) / 10 : null, minut: Math.round((a.moving_s ?? 0) / 60), zatez: a.load, np_w: a.np, tep: a.avg_hr })),
     pocasi_dnes: r.plan.days.find((d) => d.date === ctx.T)?.weatherText ?? null,

@@ -37,6 +37,11 @@ export interface Settings {
   /** souřadnice místa pro počasí (dohledané z place_name); null = výchozí z wrangler.jsonc */
   place_lat: number | null;
   place_lon: number | null;
+  /** druhé místo pro počasí (hory, chata) – přepínač na stránce Počasí; null = žádné */
+  place2_name: string | null;
+  /** souřadnice druhého místa (dohledané z place2_name) */
+  place2_lat: number | null;
+  place2_lon: number | null;
   /** Trenér: profil sportovce (hlavní sport, další sporty); null = odhadne se z historie */
   coach_profile: CoachProfile | null;
   /** Trenér zapnutý; vypnutý = nic se neplánuje, jen odjeté tréninky proti zátěži na udržení kondice */
@@ -67,6 +72,9 @@ export const DEFAULTS: Settings = {
   ride_temps: { cold: 3, hot: 30, ideal: 18 },
   place_lat: null,
   place_lon: null,
+  place2_name: "Cínovec",
+  place2_lat: 50.73,
+  place2_lon: 13.77,
   coach_profile: null,
   coach_on: true,
 };

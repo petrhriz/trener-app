@@ -956,19 +956,18 @@ api.get("/fitness-years", async (c) => {
 });
 
 /** Počasí na 3 dny po hodinách (stránka Počasí z Přehledu) + souřadnice pro Windy / Ventusky. */
-/** místa pro stránku Počasí: domov (Nastavení) a hory */
-const WX_PLACES: Record<string, { name: string; lat: number; lon: number }> = { cinovec: { name: "Cínovec", lat: 50.732, lon: 13.769 } };
 /** modely: best = nejlepší mix Open-Meteo (výchozí, stejné jako v plánu), aladin = ČHMÚ ALADIN 1 km (3 dny) */
 const WX_MODELS: Record<string, string | null> = { best: null, aladin: "chmi_aladin_seamless" };
 
-/** Počasí na 3 dny po hodinách (stránka Počasí z Přehledu) + souřadnice; ?model=best|aladin, ?loc=home|cinovec. */
+/** Počasí na 3 dny po hodinách (stránka Počasí z Přehledu) + souřadnice; ?model=best|aladin, ?loc=home|p2 (druhé místo z Nastavení). */
 api.get("/weather-hours", async (c) => {
   const ctx = await loadCtx(c.env);
   const T = ctx.T, end = addDays(T, 3);
   const model = c.req.query("model") === "aladin" ? "aladin" : "best";
-  const loc = WX_PLACES[c.req.query("loc") ?? ""] ? c.req.query("loc")! : "home";
+  const p2 = ctx.s.place2_name && ctx.s.place2_lat != null && ctx.s.place2_lon != null ? { name: ctx.s.place2_name, lat: ctx.s.place2_lat, lon: ctx.s.place2_lon } : null;
+  const loc = c.req.query("loc") === "p2" && p2 ? "p2" : "home";
   const homeLat = ctx.s.place_lat ?? (c.env.LAT ? Number(c.env.LAT) : null), homeLon = ctx.s.place_lon ?? (c.env.LON ? Number(c.env.LON) : null);
-  const base = { today: T, nowHour: ctx.now.hh, model, loc, places: [{ key: "home", name: ctx.s.place_name || "Domov" }, ...Object.entries(WX_PLACES).map(([key, p]) => ({ key, name: p.name }))] };
+  const base = { today: T, nowHour: ctx.now.hh, model, loc, places: [{ key: "home", name: ctx.s.place_name || "Domov" }, ...(p2 ? [{ key: "p2", name: p2.name }] : [])] };
   // výchozí (domov, nejlepší mix): data, která už má sync v databázi
   if (model === "best" && loc === "home") {
     return c.json({ ...base, place: ctx.s.place_name, lat: homeLat, lon: homeLon,
@@ -977,7 +976,7 @@ api.get("/weather-hours", async (c) => {
       sun: ((await getState<{ date: string; rise: string | null; set: string | null }[]>(c.env.DB, "weather_sun")) ?? []).filter((x) => x.date >= T && x.date < end) });
   }
   // jiný model nebo místo: přímo z Open-Meteo, v KV na 1 h
-  const p = loc === "home" ? { name: ctx.s.place_name || "Domov", lat: homeLat, lon: homeLon } : WX_PLACES[loc]!;
+  const p = loc === "p2" && p2 ? p2 : { name: ctx.s.place_name || "Domov", lat: homeLat, lon: homeLon };
   if (p.lat == null || p.lon == null) return c.json({ error: "Nemám polohu – zadej místo v Nastavení." }, 400);
   const key = `wxh:${model}:${p.lat}:${p.lon}:${T}`;
   let data = (await c.env.KV.get(key, "json").catch(() => null)) as { hours: any[]; sun: any[]; updatedAt: number } | null;
@@ -1069,7 +1068,7 @@ api.get("/plan/fit", async (c) => {
   let name = cal?.name ?? "";
   if (!w) {
     const p = await planFor(ctx);
-    // podrobný plán (8 dní), jinak náhled z výhledu trenéra (4 týdny)
+    // podrobný plán (do neděle příštího týdne), jinak náhled z výhledu trenéra (4 týdny)
     const hzDays = ((p as { coach?: { horizon?: { days: { date: string; name: string | null; workout: unknown }[] }[] } }).coach?.horizon ?? []).flatMap((x) => x.days);
     const d = p.days.find((x) => x.date === date && x.workout) ?? hzDays.find((x) => x.date === date && x.workout);
     if (d?.workout) { w = d.workout; name = d.name ?? "Workout"; }
@@ -1165,6 +1164,8 @@ api.post("/settings", async (c) => {
   const bad = (k: keyof Settings, v: unknown): string | null => {
     if (k === "rides_per_week") return Number.isInteger(v) && (v as number) >= 2 && (v as number) <= 5 ? null : "tréninky týdně 2–5";
     if (k === "place_name") return typeof v === "string" && v.trim() ? null : "místo nesmí být prázdné";
+    if (k === "place2_name") return v == null || (typeof v === "string" && v.trim().length > 0 && v.length <= 60) ? null : "druhé místo 1–60 znaků";
+    if (k === "place2_lat" || k === "place2_lon" || k === "place_lat" || k === "place_lon") return "souřadnice se dohledají z názvu místa";
     if (k === "first_name") return typeof v === "string" && v.trim() && v.length <= 40 ? null : "jméno 1–40 znaků";
     if (k === "goal") return ["udrzeni", "zvyseni", "pokles", "zavod"].includes(v as string) ? null : "neznámý cíl";
     if (k === "goal_date") return v == null || (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) ? null : "datum cíle";
@@ -1187,6 +1188,18 @@ api.post("/settings", async (c) => {
       await setState(c.env.DB, "weather_at", 0);
     }
   }
+  // druhé místo (hory) → dohledat souřadnice; nenalezené místo neuložit, ať přepínač nevede nikam
+  let warning: string | null = null;
+  if (before.place2_name !== after.place2_name) {
+    const g = after.place2_name ? await geocode(after.place2_name).catch(() => null) : null;
+    if (after.place2_name && !g) {
+      await setSetting(c.env.DB, "place2_name", before.place2_name);
+      warning = `Místo „${after.place2_name}“ jsem nenašel – zkus jiný název (obec, vrchol).`;
+    } else {
+      await setSetting(c.env.DB, "place2_lat", g?.lat ?? null);
+      await setSetting(c.env.DB, "place2_lon", g?.lon ?? null);
+    }
+  }
   if (before.ftp !== after.ftp) {
     await setState(c.env.DB, "ftp_manual", true);
     await setState(c.env.DB, "ftp_set_at", localNow(new Date(), c.env.TZ_NAME).date);
@@ -1203,7 +1216,8 @@ api.post("/settings", async (c) => {
     const p = await planFor(await loadCtx(c.env));
     proposal = { id: await saveProposal(c.env, "cil", p.changes), count: p.changes.length };
   }
-  return c.json({ ...after, proposal });
+  if (warning) return c.json({ error: warning }, 400);
+  return c.json({ ...(await getSettings(c.env.DB)), proposal });
 });
 
 api.get("/status", async (c) => {
