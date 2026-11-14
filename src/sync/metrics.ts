@@ -32,13 +32,15 @@ export async function recomputeMetrics(db: D1Database, today: string): Promise<n
 
 /** Po změně FTP / zón: přepočítat zátěž aktivit, které na nich závisí. */
 export async function recomputeLoads(db: D1Database, s: Settings): Promise<number> {
-  const rows = await all<any>(db, "SELECT id, date, sport, moving_s, np, tss_garmin, hr_z, avg_hr, load FROM activities WHERE load_source IN ('np_ftp', 'hr_avg', 'hr_zones', 'none') OR load IS NULL");
+  const rows = await all<any>(db, "SELECT id, date, sport, moving_s, np, tss_garmin, hr_z, avg_hr, load, load_source FROM activities WHERE load_source IN ('np_ftp', 'hr_avg', 'hr_zones', 'hr_indoor', 'none') OR load IS NULL OR sport = 'indoor'");
   const upd: unknown[][] = [];
   // FTP a zóny platné v den aktivity, ne dnešní
   const hist = await loadZoneHistory(db);
   for (const r of rows) {
     const z = zonesFor(hist, r.date, s);
     const ld = activityLoad({ ...r, hr_z: r.hr_z ? JSON.parse(r.hr_z) : null }, { ftp: z.ftp, hr: z.hr });
+    // trenažér se zátěží z Garminu / intervals.icu: přepsat jen tam, kde vyšší zátěž dává tep
+    if (r.sport === "indoor" && ld.source !== "hr_indoor" && r.load_source !== "hr_indoor" && r.load != null) continue;
     if (ld.load !== r.load) upd.push([r.id, ld.load, ld.source]);
   }
   // UPDATE přes INSERT … ON CONFLICT (jen existující id)

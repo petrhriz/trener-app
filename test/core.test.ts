@@ -118,6 +118,18 @@ describe("zátěž aktivity", () => {
     expect(r.source).toBe("hr_avg");
     expect(r.load).toBeCloseTo(hrTssFromAvg(3600, 155, 196, 54), 0);
   });
+  it("trenažér: Z2 – tep dá víc než výkon → hrTSS", () => {
+    const hr = { floors: [55, 135, 165, 184, 202], max: 204, lthr: 196, rest: 54 };
+    const r = activityLoad({ sport: "indoor", moving_s: 3625, np: 179, tss_garmin: 36.2, hr_z: null, avg_hr: 155 }, { ftp: 298, hr });
+    expect(r.source).toBe("hr_indoor");
+    expect(r.load).toBeGreaterThan(45);
+  });
+  it("trenažér: intervaly – výkon dá víc než tep → TSS; venku vždy TSS", () => {
+    const hr = { floors: [55, 135, 165, 184, 202], max: 204, lthr: 196, rest: 54 };
+    expect(activityLoad({ sport: "indoor", moving_s: 3600, np: 250, tss_garmin: 70, hr_z: null, avg_hr: 150 }, { ftp: 298, hr })).toEqual({ load: 70, source: "garmin_tss" });
+    expect(activityLoad({ sport: "ride", moving_s: 3625, np: 179, tss_garmin: 36.2, hr_z: null, avg_hr: 155 }, { ftp: 298, hr })).toEqual({ load: 36.2, source: "garmin_tss" });
+    expect(activityLoad({ sport: "indoor", moving_s: 3600, np: null, tss_garmin: null, hr_z: null, avg_hr: 155 }, { ftp: 298, hr }).source).toBe("hr_avg");
+  });
   it("bez LTHR záloha zóny tepu, bez tepu 0", () => {
     expect(activityLoad({ sport: "walk", moving_s: 3600, np: null, tss_garmin: null, hr_z: [3600, 0, 0, 0, 0], avg_hr: 90 }, { ftp: null, hr: null }).source).toBe("hr_zones");
     expect(activityLoad({ sport: "other", moving_s: 600, np: null, tss_garmin: null, hr_z: null, avg_hr: null }, { ftp: null, hr: null })).toEqual({ load: 0, source: "none" });

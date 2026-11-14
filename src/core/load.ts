@@ -2,7 +2,7 @@
 import { BIKE_SPORTS, type NActivity } from "../datasource/types";
 import type { HrZones } from "./zones";
 
-export type LoadSource = "garmin_tss" | "np_ftp" | "hr_zones" | "hr_avg" | "none";
+export type LoadSource = "garmin_tss" | "np_ftp" | "hr_zones" | "hr_avg" | "hr_indoor" | "none";
 
 /**
  * Hodinová zátěž (TSS/h) podle zóny tepu Z1..Z5 – jen záloha, když chybí LTHR / klidový tep.
@@ -32,18 +32,28 @@ export function activityLoad(
   a: Pick<NActivity, "sport" | "moving_s" | "np" | "tss_garmin" | "hr_z" | "avg_hr">,
   ctx: { ftp: number | null; hr: HrZones | null },
 ): { load: number; source: LoadSource } {
+  const pw = powerLoad(a, ctx.ftp);
+  const hr = hrLoad(a, ctx.hr);
+  // Trenažér: platí vyšší z TSS a hrTSS. Uvnitř chybí proudění vzduchu a pauzy ve šlapání → při stejném výkonu vyšší tep
+  // a únava, kterou TSS z výkonu nezachytí (Z2). U intervalů tep reaguje pozdě a hrTSS je podhodnocuje → tam vyhraje výkon.
+  if (a.sport === "indoor" && pw && hr && hr.load > pw.load) return { load: hr.load, source: "hr_indoor" };
+  return pw ?? hr ?? { load: 0, source: "none" };
+}
+
+/** TSS z wattmetru (jen kolo); Garmin TSS počítá s FTP platným v den jízdy → historicky přesnější než dnešní FTP. */
+export function powerLoad(a: Pick<NActivity, "sport" | "moving_s" | "np" | "tss_garmin">, ftp: number | null): { load: number; source: LoadSource } | null {
+  if (!BIKE_SPORTS.includes(a.sport) || !a.np) return null;
+  if (a.tss_garmin) return { load: r1(a.tss_garmin), source: "garmin_tss" };
+  if (ftp) return { load: r1(tssFromPower(a.moving_s ?? 0, a.np, ftp)), source: "np_ftp" };
+  return null;
+}
+
+/** hrTSS z průměrného tepu a LTHR (kalibrace: MAE 13 proti intervals.icu HRSS), záloha zóny tepu. */
+function hrLoad(a: Pick<NActivity, "moving_s" | "hr_z" | "avg_hr">, hz: HrZones | null): { load: number; source: LoadSource } | null {
   const secs = a.moving_s ?? 0;
-  const bike = BIKE_SPORTS.includes(a.sport);
-  if (bike && a.np) {
-    // Garmin TSS počítá s FTP platným v den jízdy → historicky přesnější než dnešní FTP
-    if (a.tss_garmin) return { load: r1(a.tss_garmin), source: "garmin_tss" };
-    if (ctx.ftp) return { load: r1(tssFromPower(secs, a.np, ctx.ftp)), source: "np_ftp" };
-  }
-  // hrTSS z průměrného tepu a LTHR (kalibrace: MAE 13 proti intervals.icu HRSS), záloha zóny tepu
-  if (a.avg_hr && ctx.hr?.lthr && ctx.hr.rest && secs > 0)
-    return { load: r1(hrTssFromAvg(secs, a.avg_hr, ctx.hr.lthr, ctx.hr.rest)), source: "hr_avg" };
+  if (a.avg_hr && hz?.lthr && hz.rest && secs > 0) return { load: r1(hrTssFromAvg(secs, a.avg_hr, hz.lthr, hz.rest)), source: "hr_avg" };
   if (a.hr_z && a.hr_z.some((x) => x > 0)) return { load: r1(hrTssFromZones(a.hr_z)), source: "hr_zones" };
-  return { load: 0, source: "none" };
+  return null;
 }
 
 const r1 = (x: number) => Math.round(x * 10) / 10;

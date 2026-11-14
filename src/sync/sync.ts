@@ -35,8 +35,8 @@ const WELL_COLS = [
   "icu_ctl", "icu_atl", "icu_ramp", "floors_up", "floors_down", "sleep_resp_lo", "sleep_resp_hi", "sleep_score_g", "sleep_need_g_min", "next_sleep_need_g_min", "updated_at",
 ];
 
-/** Zátěž z intervals.icu má přednost (stejná čísla jako v intervals.icu). */
-const ICU_LOAD_SQL = "UPDATE activities SET load = icu_load, load_source = 'icu' WHERE icu_load IS NOT NULL AND (load_source != 'icu' OR load != icu_load)";
+/** Zátěž z intervals.icu má přednost (stejná čísla jako v intervals.icu) – kromě trenažéru, kde vyhrál tep (core/load.ts). */
+const ICU_LOAD_SQL = "UPDATE activities SET load = icu_load, load_source = 'icu' WHERE icu_load IS NOT NULL AND load_source != 'hr_indoor' AND (load_source != 'icu' OR load != icu_load)";
 
 /** intervals.icu wellness → kondice/únava (+ VO2max). */
 function icuFitnessRows(w: any[]): NWellness[] {
