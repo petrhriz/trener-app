@@ -1015,7 +1015,7 @@ function tSportIco(s) { return ({ run: "🏃", xc_ski: XC_SVG, walk: "🚶" })[s
 function coachCalendar(d, co, sel, detail) {
   if (!co || co.version !== 3 || !co.horizon) return "";
   const T = d.readiness.date;
-  const ROLE = { key: ["K", "kvalita", "q"], long: ["D", "dlouhá", "l"], endurance: ["Z2", "Z2", "e"], easy: ["Z1", "lehce", "z"], rest: ["", "volno", "r"] };
+  const ROLE = { key: ["K", "kvalita", "q"], long: ["Z2", "Z2", "e"], endurance: ["Z2", "Z2", "e"], easy: ["Z1", "lehce", "z"], rest: ["", "volno", "r"] };
   const pastBy = new Map((d.past || []).map((x) => [x.date, x]));
   const futBy = new Map(co.horizon.flatMap((w) => w.days.map((x) => [x.date, x])));
   const hm = (m) => (m >= 60 ? `${Math.floor(m / 60)}:${String(Math.round(m % 60)).padStart(2, "0")}` : `${Math.round(m)}′`);
@@ -1057,7 +1057,7 @@ function coachCalendar(d, co, sel, detail) {
     return `<div class="cc-w ${i === 0 ? "cur" : orient ? "orient" : "next"}"><div class="cc-s"><span class="cc-wl">${span(w.weekStart)} <em>${tag}</em>${w.recoveryWeek ? ' <em class="lt">lehčí</em>' : ""}</span><span class="cc-num"><b>${total}</b><small> / ${goal}</small> · ${n1(w.ctlStart)} → <b>${n1(w.ctlEnd)}</b></span>${bar}</div>${grid(w.weekStart, orient)}${inWeek(w.weekStart) ? detail : ""}</div>`;
   }).join("");
   const head = `<div class="cc-h">${DAYS.map((x, k) => `<span class="${k + 1 === dow(T) ? "now" : ""}">${x}</span>`).join("")}</div>`;
-  const legend = `<div class="cc-leg"><span><i class="r-q"></i>kvalita</span><span><i class="r-l"></i>dlouhá</span><span><i class="r-e"></i>Z2</span><span><i class="dn"></i>odjeto ✓</span><span class="sub">pruh = zátěž týdne, čárka = cíl · kondice začátek → konec</span></div>`;
+  const legend = `<div class="cc-leg"><span><i class="r-q"></i>kvalita</span><span><i class="r-e"></i>Z2</span><span><i class="dn"></i>odjeto ✓</span><span class="sub">pruh = zátěž týdne, čárka = cíl · kondice začátek → konec</span></div>`;
   return card("c12 t-cal", "📅 Plán na 4 týdny", W0 ? `${dm(W0)}–${dm(addDay(W0, 27))}` : "", `<div class="ccal">${past}${head}${weeks}</div>${legend}<p class="note">Klikni na kterýkoli budoucí den – otevře se jeho úprava. Tento a příští týden mají konkrétní tréninky, další dva jsou orientační (druh, délka, zátěž); kroky se doplní 2 týdny předem.</p>`, 'data-tt="tyden"');
 }
 
@@ -1222,7 +1222,7 @@ async function pageTrener(el) {
   const dayRow = (x) => {
     const ride = !!x.name;
     const q = x.kind === "quality";
-    const tags = [x.kind === "long" ? '<span class="ttag">dlouhá</span>' : "", x.own ? '<span class="ttag">vlastní jízda</span>' : ""].join("");
+    const tags = [x.own ? '<span class="ttag">vlastní jízda</span>' : ""].join("");
     const w = x.weather;
     const wtxt = w ? `${weatherIcon(w)} ${num(w.tmax)}°${w.window && ride && !x.indoor && x.sport === "ride" ? ` · okno ${String(w.window.from).padStart(2, "0")}–${String(w.window.to).padStart(2, "0")} h` : ""}${x.indoor ? " · trenažér" : ""}` : "";
     const open = tOpen === x.date;
@@ -1285,7 +1285,7 @@ async function pageTrener(el) {
   const split = dist && dist.ride && dist.run ? ` Zvlášť: ${sportDist(dist.ride, "kolo")}; ${sportDist(dist.run, "běh")}.` : "";
   const distTxt = co ? `<p class="tproj">${dist ? `Posledních ${dist.days} dní: lehce <b>${dist.low} %</b> · středně ${dist.mid} % · intenzivně ${dist.high} % času (${num(dist.hours, 1)} h v zónách).${split}` : "Rozdělení intenzity zatím nemám (málo dat o čase v zónách)."} V plánu tohoto týdne je nad Z2 ${co.plannedHard} % času.</p>` : "";
   const rulesTxt = co
-    ? "Zátěž týdne = 7 × kondice + 45,6 × růst podle fáze (zimní pokles −1, udržování 0, základ +1, rozvoj +1,5 až +3 body týdně). Strop: nejvýš +30 % proti průměru posledních 4 týdnů. Délky jízd vycházejí ze zátěže a mají strop podle toho, co poslední měsíc jezdíš (dlouhá nejvýš o 15 % delší než tvoje nejdelší). Forma nesmí v plánu spadnout pod −20 (v rozvoji −30). Pořadí důležitosti je kvalita, dlouhý trénink, pak Z2: když týden vyjde jen na dva tréninky, zůstanou ty důležité. Kvality se střídají (práh, sweet spot, tempo, over-under, VO2, krátké VO2, anaerobní, sprinty) a vybírají se z knihovny tak, aby se neopakovaly; po zvládnuté kvalitě je další o stupeň těžší. Pravidla: nejvýš 3 tréninky za sebou, kvalita nikdy den po kvalitě ani po dlouhém tréninku, nad Z2 nejvýš pětina času. Ráno podle zotavení: 🟡 kvalita se přesune, 🔴 volno nebo Z1. Vynechaná kvalita se sama posune na další vhodný den, vynechaná Z2 propadne. Když trénink přetáhneš jinam, zbytek týdne se přeskládá. Plán je uložený – mění se jen, když se změní zotavení, počasí, odjeté tréninky nebo tvoje úpravy."
+    ? "Zátěž týdne = 7 × kondice + 45,6 × růst podle fáze (zimní pokles −1, udržování 0, základ +1, rozvoj +1,5 až +3 body týdně). Strop: nejvýš +30 % proti průměru posledních 4 týdnů. Délky jízd vycházejí ze zátěže a mají strop podle toho, co poslední měsíc jezdíš (nejdelší Z2 týdne nejvýš o 15 % delší než tvoje nejdelší jízda). Forma nesmí v plánu spadnout pod −20 (v rozvoji −30). Pořadí důležitosti je kvalita, nejdelší Z2 týdne, pak ostatní Z2: když týden vyjde jen na dva tréninky, zůstanou ty důležité. Kvality se střídají (práh, sweet spot, tempo, over-under, VO2, krátké VO2, anaerobní, sprinty) a vybírají se z knihovny tak, aby se neopakovaly; po zvládnuté kvalitě je další o stupeň těžší. Pravidla: nejvýš 3 tréninky za sebou, kvalita nikdy den po kvalitě ani po nejdelší Z2 týdne, nad Z2 nejvýš pětina času. Ráno podle zotavení: 🟡 kvalita se přesune, 🔴 volno nebo Z1. Vynechaná kvalita se sama posune na další vhodný den, vynechaná Z2 propadne. Když trénink přetáhneš jinam, zbytek týdne se přeskládá. Plán je uložený – mění se jen, když se změní zotavení, počasí, odjeté tréninky nebo tvoje úpravy."
     : "Týdenní zátěž z kondice a cíle (max. +30 % proti běžnému týdnu). Forma pod −20 → týden o 12 % lehčí, pod −30 o 25 %. Kvalita 1× (zima) / 2× (sezóna) týdně, nikdy dva dny po sobě; když týden zaplní tvoje volby, dá se na kolový den. Ráno podle zotavení: 🟡 kvalita → Z2 nebo zkrácení, 🔴 volno / Z1. Tvoje úpravy (přesun, délka, sport, vlastní jízda) mají přednost, zbytek týdne se dopočítá.";
   // odhad: kondice (CTL, 42 dní) a únava (ATL, 7 dní) za 7 dní, když odjedeš plán
   const sunday = addDay(r.date, 7 - dow(r.date));
@@ -3046,7 +3046,7 @@ async function pageKalendar(el) {
     const acts = aBy.get(x) || [], w = wBy.get(x), p = pBy.get(x), l = dayLoad(x);
     const inStatus = d.status && d.status.kind !== "active" && (!d.status.from || x >= d.status.from) && (!d.status.until || x <= d.status.until);
     const we = dow(x) >= 6;
-    const planned = !acts.length && p && x >= d.today ? `<div class="cp ${p.kind === "quality" ? "q" : ""}" title="${esc(p.name)}"><span>${p.kind === "quality" ? "⚡" : p.kind === "long" ? "🛣️" : "○"}</span>${esc(p.name.replace(/^Trenažér – /, "🏠 "))}</div>` : "";
+    const planned = !acts.length && p && x >= d.today ? `<div class="cp ${p.kind === "quality" ? "q" : ""}" title="${esc(p.name)}"><span>${p.kind === "quality" ? "⚡" : "○"}</span>${esc(p.name.replace(/^Trenažér – /, "🏠 "))}</div>` : "";
     const missed = !acts.length && p && x < d.today && p.status === "missed" ? `<div class="cp miss">✕ vynecháno</div>` : "";
     return `<div class="cday ${x === d.today ? "today" : ""} ${x > d.today ? "fut" : ""} ${inStatus ? "st" : ""} ${we ? "we" : ""}" style="--heat:${heat(l).toFixed(2)}"><div class="cd-h"><b>${+x.slice(8, 10)}</b>${metric(w)}</div>
       <div class="cacts">${acts.map((a) => `<a class="ca" href="#/aktivita/${a.id}" title="${esc(a.name || "")}" style="--sc:${SPORT_COLOR[a.sport] || "var(--z1)"}"><span class="ca-i">${SPORT_ICON[a.sport] || "🏅"}</span><span class="ca-t">${a.km ? `${num(a.km, a.km < 20 ? 1 : 0)} km` : `${a.min} min`}</span></a>`).join("")}</div>
@@ -3072,7 +3072,7 @@ async function pageKalendar(el) {
   <div class="ctiles">${tile("🏅", d.acts.length, "aktivit")}${tile("🛣️", thou(km), "km")}${tile("⏱️", hmm(mins * 60), "hodin")}${tile("🔥", thou(load), "zátěž")}${tile("🌙", ss.length ? num(ss.reduce((a, b) => a + b, 0) / ss.length) : DASH, "spánek ⌀ skóre")}${tile("👣", `${stepsOk}`, `dní ${num(d.stepsGoal / 1000)}k+ kroků`)}</div>
   <div class="seg sm calseg">${[["sleep", "🌙 Spánek"], ["steps", "👣 Kroky"], ["bb", "🔋 Energie"]].map(([k, l]) => `<button class="${calShow === k ? "on" : ""}" data-cs="${k}">${l}</button>`).join("")}</div>
   <section class="card cal"><div class="cgrid">${DAYS.map((x) => `<div class="cdow">${x}</div>`).join("")}<div class="cdow">Týden</div>${grid}</div>
-  <div class="legend"><span>⚡ plánovaná kvalita · 🛣️ dlouhá · ○ plánovaný trénink</span><span>${calShow === "sleep" ? "skóre spánku: zelená ≥ 80, žlutá 60–79" : calShow === "steps" ? `zelená = aspoň ${thou(d.stepsGoal)} kroků` : "Body Battery ráno: zelená ≥ 75"}</span></div></section>`;
+  <div class="legend"><span>⚡ plánovaná kvalita · ○ plánovaný trénink</span><span>${calShow === "sleep" ? "skóre spánku: zelená ≥ 80, žlutá 60–79" : calShow === "steps" ? `zelená = aspoň ${thou(d.stepsGoal)} kroků` : "Body Battery ráno: zelená ≥ 75"}</span></div></section>`;
   el.querySelectorAll("[data-m]").forEach((b) => b.addEventListener("click", () => { calMonth = b.dataset.m; pageKalendar(el); }));
   el.querySelectorAll("[data-cs]").forEach((b) => b.addEventListener("click", () => { calShow = b.dataset.cs; pageKalendar(el); }));
 }

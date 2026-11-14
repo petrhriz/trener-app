@@ -286,7 +286,6 @@ export function buildWorkout(inp: BuildInput): Built {
     return done(hrEasy(hr, m, 1, sport === "ride"), sport === "ride" ? workoutName("Z1 regenerace", indoor) : `${L} – Z1 regenerace`, { targetText: hrText(hr, 1) });
   }
   if (inp.family === "end" || inp.family === "long" || inp.family === "ff") {
-    const long = inp.family === "long";
     if (inp.family === "ff" && minutes >= 60) {
       const lvl = Math.max(0, Math.min(FF_LADDER.length - 1, Math.round(inp.level)));
       const fin = FF_LADDER[lvl]!;
@@ -303,9 +302,9 @@ export function buildWorkout(inp: BuildInput): Built {
     }
     if (power) {
       const [zl, zh] = pctRange(zones.ftp!, TARGET_PCT.z2);
-      return done(z2Workout({ ftp: zones.ftp! }, minutes), indoor ? "Trenažér – Z2" : long ? "Z2 dlouhá jízda" : "Z2 vytrvalost", { family: inp.family === "ff" ? "end" : inp.family, targetText: `⚡ ${zl}–${zh} W (57–72 % FTP)${bpm(hr, 2) ? ` · ❤️ Z2 (${bpm(hr, 2)} bpm)` : ""}` });
+      return done(z2Workout({ ftp: zones.ftp! }, minutes), indoor ? "Trenažér – Z2" : "Z2 vytrvalost", { family: inp.family === "ff" ? "end" : inp.family, targetText: `⚡ ${zl}–${zh} W (57–72 % FTP)${bpm(hr, 2) ? ` · ❤️ Z2 (${bpm(hr, 2)} bpm)` : ""}` });
     }
-    const nm = sport === "ride" ? (indoor ? "Trenažér – Z2" : long ? "Z2 dlouhá jízda" : "Z2 vytrvalost") : long ? `${L} – Z2 dlouhá` : `${L} – Z2`;
+    const nm = sport === "ride" ? (indoor ? "Trenažér – Z2" : "Z2 vytrvalost") : `${L} – Z2`;
     return done(hrEasy(hr, minutes, 2, sport === "ride"), nm, { family: inp.family === "ff" ? "end" : inp.family, targetText: hrText(hr, 2) });
   }
 

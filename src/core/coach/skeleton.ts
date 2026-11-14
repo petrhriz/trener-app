@@ -116,7 +116,7 @@ export function solveWeek(inp: SkInput): SkResult {
       const kk = [...r.values()].filter((x) => x === "key").length;
       const ll = [...r.values()].includes("long");
       if (n < inp.sessions) notes.push(`Tréninků ${n} místo ${inp.sessions} – víc se mezi volné a blokované dny nevejde podle pravidel (nejvýš ${MAX_STREAK} dny za sebou).`);
-      if (kk < inp.keys) notes.push(`Kvalita ${kk}× místo ${inp.keys}× – nevešla se (ne den po kvalitě ani po dlouhém${days.some((d) => d.noKey) ? ", dnes ne kvůli rannímu stavu" : ""}).`);
+      if (kk < inp.keys) notes.push(`Kvalita ${kk}× místo ${inp.keys}× – nevešla se (ne den po kvalitě ani po nejdelší Z2${days.some((d) => d.noKey) ? ", dnes ne kvůli rannímu stavu" : ""}).`);
       if (inp.long && !ll) notes.push("Dlouhý trénink se tento týden nevešel.");
       return { roles: r, sessions: n, keys: kk, long: ll, notes };
     }

@@ -1,6 +1,6 @@
 {
   "name": "trener-app",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "private": true,
   "type": "module",
   "description": "Osobní AI trenér cyklistiky a zdraví na Cloudflare Workers (Garmin, intervals.icu, dashboard)",

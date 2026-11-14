@@ -575,10 +575,10 @@ export function runCoach(inp: CoachInput): CoachPlan {
         x.indoor = indoorOf(x, preview);
         const calib = rateAt(x.sport, inRate(x)).calib;
         if (x.sport === "ride") {
-          if (f?.indoor != null) { const msg = f.indoor ? "tvoje volba: trenažér (šlape se pořád – Z2 a dlouhá kratší při stejné zátěži)" : "tvoje volba: venku"; if (!x.why.includes(msg)) x.why.push(msg); }
+          if (f?.indoor != null) { const msg = f.indoor ? "tvoje volba: trenažér (šlape se pořád – Z2 kratší při stejné zátěži)" : "tvoje volba: venku"; if (!x.why.includes(msg)) x.why.push(msg); }
           else if (x.indoor && w?.bad && !x.why.includes(`${w.text} → trenažér`)) x.why.push(`${w.text} → trenažér`);
           // dlouhá na trenažéru nejvýš INDOOR_LONG_MAX (hodina na trenažéru ≈ 1,25–1,5 h venku)
-          if (x.indoor && x.role === "long" && !x.own && !f?.minutes && x.minutes > INDOOR_LONG_MAX) { x.minutes = INDOOR_LONG_MAX; if (!x.why.some((s) => s.startsWith("dlouhá na trenažéru"))) x.why.push(`dlouhá na trenažéru nejvýš ${INDOOR_LONG_MAX / 60} h (hodina uvnitř ≈ 1,25–1,5 h venku), zbytek dostanou ostatní dny`); }
+          if (x.indoor && x.role === "long" && !x.own && !f?.minutes && x.minutes > INDOOR_LONG_MAX) { x.minutes = INDOOR_LONG_MAX; if (!x.why.some((s) => s.startsWith("Z2 na trenažéru"))) x.why.push(`Z2 na trenažéru nejvýš ${INDOOR_LONG_MAX / 60} h (hodina uvnitř ≈ 1,25–1,5 h venku), zbytek dostanou ostatní dny`); }
         }
         let b: Built;
         if (x.role === "key") {
@@ -673,7 +673,7 @@ export function runCoach(inp: CoachInput): CoachPlan {
           x.role = "endurance";
           x.minutes = Math.max(e.min, Math.min(e.max, cut));
           build(x);
-          x.why.push(`🟡 ráno: místo dlouhé Z2 ${x.minutes} min`);
+          x.why.push(`🟡 ráno: Z2 zkrácená na ${x.minutes} min`);
         } else if (x.minutes > c.min) {
           x.minutes = cut;
           build(x);
@@ -788,7 +788,7 @@ export function horizonSummary(weeks: Pick<Week3, "planned" | "ctlEnd" | "target
   if (r.length) why.push(`${r.map(wk).join(" a ")} týden je lehčí (po 3 zátěžových týdnech)`);
   // plán nedá ani cíl po omezeních: tréninky se nevejdou do stropů délek (v zimě Z2 i dlouhá do 2 h)
   const short = weeks.filter((w) => !w.target.recoveryWeek && w.planned < w.target.load * 0.93);
-  if (short.length) why.push(weeks[0]!.target.shortDays ? "do zimních délek (Z2 i dlouhá do 2 h, kvalita 1 h) se víc zátěže nevejde" : "do délek tréninků a volných dní se víc zátěže nevejde");
+  if (short.length) why.push(weeks[0]!.target.shortDays ? "do zimních délek (Z2 do 2 h, kvalita 1 h) se víc zátěže nevejde" : "do délek tréninků a volných dní se víc zátěže nevejde");
   if (!why.length) why.push("tréninky se do délek a volných dní víc nevejdou");
   const cur = weeks[weeks.length - 1]!.target;
   const settled = cur.limit == null && cur.load >= cur.need - 5;
@@ -822,7 +822,7 @@ function toPlan(inp: CoachInput, weeks: Week3[], o: { reentry: string | null; ou
     const pj = projBy.get(date);
     const w = inp.weather.get(date) ?? null;
     const ride = x.role !== "rest" && !x.blocked;
-    const tag0 = x.role === "key" ? "Kvalita" : x.role === "endurance" ? "Z2" : x.role === "long" ? "Z2 dlouhá" : x.role === "easy" ? "Z1" : "Volno";
+    const tag0 = x.role === "key" ? "Kvalita" : x.role === "endurance" || x.role === "long" ? "Z2" : x.role === "easy" ? "Z1" : "Volno";
     const tag = x.own ? "Vlastní" : ride && x.sport !== inp.profile.primary ? `${SPORT_WORD[x.sport][0]!.toUpperCase()}${SPORT_WORD[x.sport].slice(1)} · ${tag0}` : tag0;
     const note = [...(date === T && inp.recovery === "green" && ride ? ["🟢 ráno zotavený, beze změny."] : []), ...(date === T && inp.recovery === "yellow" ? ["🟡 ráno částečně zotavený: dnes lehčí."] : []), ...x.why.map((s) => (/[.!]$/.test(s) ? s : `${s}.`))].map((s) => s[0]!.toUpperCase() + s.slice(1)).join(" ");
     return {
@@ -871,7 +871,7 @@ function toPlan(inp: CoachInput, weeks: Week3[], o: { reentry: string | null; ou
     const same = cal && cal.name === day.name && (cal.duration_min ?? 0) === day.durationMin && ((cal.sport as string) || "ride") === day.sport && !!cal.indoor === day.indoor && (cal.steps_text ?? "") === stepsTxt;
     if (same) continue;
     const payload: Payload = { date: day.date, kind: day.kind as Kind, quality_type: day.qualityType, name: day.name, indoor: day.indoor ? 1 : 0, duration_min: day.durationMin ?? 0, steps_json: JSON.stringify(day.workout), steps_text: stepsTxt, target_load: day.load, reason: day.note, moved_from: null, sport: day.sport, goal: inp.goal };
-    const why = x?.why.join(", ") || (day.kind === "quality" ? "kvalita týdne" : day.kind === "long" ? "dlouhý trénink" : day.kind === "recovery" ? "lehký den" : "Z2 objem");
+    const why = x?.why.join(", ") || (day.kind === "quality" ? "kvalita týdne" : day.kind === "recovery" ? "lehký den" : "Z2 objem");
     day.changed = cal ? "upravit" : "nová";
     changes.push({ code: `#${++n}`, date: day.date, action: cal ? "upravit" : "nová", name: day.name, why, targetId: cal?.id, payload });
   }

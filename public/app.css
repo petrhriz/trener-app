@@ -1976,7 +1976,7 @@ table, .tip, .chip, .astats, .tabbar, .seg, .btn { overflow-wrap: normal; }
 .stepf input { width: 76px; }
 
 /* kalendář trenéra na 4 týdny: dlaždice s proužkem podle druhu, pruh zátěže týdne, úprava dne pod týdnem */
-.ccal { display: flex; flex-direction: column; gap: 12px; --cc-q: var(--z5); --cc-l: var(--z2); --cc-e: var(--z3); --cc-z: var(--z1); }
+.ccal { display: flex; flex-direction: column; gap: 12px; --cc-q: var(--z5); --cc-e: var(--z3); --cc-z: var(--z1); }
 .cc-h, .cc-r { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
 .cc-h { padding: 2px 0 0; }
 .cc-h span { font-size: 11px; color: var(--muted); text-align: center; font-weight: 600; letter-spacing: .02em; }
@@ -2013,7 +2013,6 @@ table, .tip, .chip, .astats, .tabbar, .seg, .btn { overflow-wrap: normal; }
 .cc-d.plan:hover { background: color-mix(in srgb, var(--rc, var(--line)) 12%, var(--card2)); }
 .cc-d.plan:active { transform: scale(.97); }
 .cc-d.r-q { --rc: var(--cc-q); } .cc-d.r-q i { color: var(--cc-q); }
-.cc-d.r-l { --rc: var(--cc-l); } .cc-d.r-l i { color: var(--cc-l); }
 .cc-d.r-e { --rc: var(--cc-e); } .cc-d.r-e i { color: var(--cc-e); }
 .cc-d.r-z { --rc: var(--cc-z); } .cc-d.r-z i { color: var(--muted); }
 .cc-d.or.plan { background: transparent; border: 1px dashed color-mix(in srgb, var(--rc, var(--line)) 55%, var(--line)); }
@@ -2043,7 +2042,7 @@ table, .tip, .chip, .astats, .tabbar, .seg, .btn { overflow-wrap: normal; }
 .cc-leg { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; font-size: 12px; color: var(--muted); margin-top: 10px; }
 .cc-leg span { display: inline-flex; align-items: center; gap: 5px; }
 .cc-leg i { width: 4px; height: 12px; border-radius: 2px; background: var(--line); }
-.cc-leg i.r-q { background: var(--z5); } .cc-leg i.r-l { background: var(--z2); } .cc-leg i.r-e { background: var(--z3); }
+.cc-leg i.r-q { background: var(--z5); } .cc-leg i.r-e { background: var(--z3); }
 .cc-leg i.dn { width: 12px; background: var(--okbg); box-shadow: inset 3px 0 0 var(--z3); }
 @media (max-width: 600px) {
   .cc-h, .cc-r { gap: 3px; }

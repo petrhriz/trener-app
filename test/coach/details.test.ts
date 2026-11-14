@@ -27,7 +27,7 @@ describe("dlouhá jízda a počasí", () => {
     const pd = p.days.find((d) => d.date === lg.date)!;
     expect(pd.indoor).toBe(true);
     expect(pd.durationMin!).toBeLessThanOrEqual(INDOOR_LONG_MAX + 5);
-    expect(pd.note).toMatch(/dlouhá na trenažéru nejvýš 2 h/i);
+    expect(pd.note).toMatch(/Z2 na trenažéru nejvýš 2 h/i);
   });
   it("když se dlouhý na prvním suchém víkendovém dni nevejde na trenažér, zkusí druhý suchý den", () => {
     // Zátěž odpovídá 3h+ dlouhé jízdě; sobota prší, neděle je suchá.

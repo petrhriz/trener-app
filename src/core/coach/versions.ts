@@ -28,7 +28,7 @@ export interface Drivers {
   profile: string;
 }
 
-const ROLE_CZ: Record<string, string> = { key: "kvalita", long: "dlouhá", endurance: "Z2", easy: "lehce", rest: "volno" };
+const ROLE_CZ: Record<string, string> = { key: "kvalita", long: "Z2", endurance: "Z2", easy: "lehce", rest: "volno" };
 const DAY_CZ = ["po", "út", "st", "čt", "pá", "so", "ne"];
 const dayDm = (d: string) => `${DAY_CZ[(new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7]} ${Number(d.slice(8, 10))}. ${Number(d.slice(5, 7))}.`;
 const hm = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}:${String(Math.round(m % 60)).padStart(2, "0")}` : `${Math.round(m)} min`);

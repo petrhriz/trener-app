@@ -82,7 +82,7 @@ export function relabel(w: Workout, sport: PlanSport): Workout {
   return { blocks: w.blocks.map((b) => ({ ...b, label: lab(b) })) };
 }
 
-/** Název jednotky bez slov jiného sportu („Z2 dlouhá jízda“ u běhu → „Běh – Z2 dlouhá“). */
+/** Název jednotky bez slov jiného sportu („Trenažér – Z2“ u běhu → „Z2“). */
 export function nameFor(name: string, sport: PlanSport): string {
   if (sport === "ride") return name;
   return name.replace(/\s*jízda\b/gi, "").replace(/^Trenažér\s*–\s*/i, "").trim();
