@@ -39,6 +39,8 @@ export function setDevVar(key, value) {
 export const SECRET_KEYS = [
   "GARMIN_API_KEY",
   "ADMIN_TOKEN",
+  "SESSION_SECRET",
+  "SECRETS_KEY",
   "INTERVALS_API_KEY",
   "INTERVALS_ATHLETE_ID",
 ];

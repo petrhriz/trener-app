@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "fs";
 import path from "path";
-import { TENANT_TABLES, rewriteSql, splitSql, userForTick } from "../src/lib/tenant";
+import { TENANT_TABLES, bareTenantTable, rewriteSql, splitSql, tenantSql, userForTick } from "../src/lib/tenant";
 
 const P = "u7_";
 /** Najde odkaz na tabulku bez předpony (za klíčovým slovem nebo jako tabulka.sloupec). */
@@ -13,6 +13,8 @@ function leaks(sql: string): string[] {
     const q = new RegExp(`(?<![\\w.'"$])${t}\\.[a-z_]`);
     if (kw.test(sql) || q.test(sql)) out.push(t);
   }
+  const bare = bareTenantTable(sql);
+  if (bare && !out.includes(bare)) out.push(bare);
   return out;
 }
 
@@ -56,6 +58,17 @@ describe("přepis SQL na tabulky uživatele", () => {
         expect(leaks(rewriteSql(st, P))).toEqual([]);
       }
     }
+  });
+});
+
+describe("pojistka proti úniku dat vlastníka", () => {
+  it("tabulka bez předpony (spojení čárkou) se nespustí", () => {
+    expect(() => tenantSql("SELECT * FROM activities a, wellness w WHERE a.date = w.date", P)).toThrow(/wellness/);
+    expect(bareTenantTable(rewriteSql("SELECT * FROM activities a JOIN wellness w ON w.date = a.date", P))).toBeNull();
+  });
+  it("textové hodnoty a komentáře nevadí", () => {
+    expect(tenantSql("SELECT * FROM gear WHERE note = 'wellness a activities' -- settings", P)).toContain("u7_gear");
+    expect(tenantSql("SELECT id FROM users", P)).toBe("SELECT id FROM users");
   });
 });
 

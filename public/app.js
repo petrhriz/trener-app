@@ -65,7 +65,10 @@ const dm = (d) => `${+d.slice(8, 10)}.${+d.slice(5, 7)}.`;
 const dayDm = (d) => `${DAYS[dow(d) - 1]} ${dm(d)}`;
 const hmm = (s) => { if (s == null) return DASH; const m = Math.round(s / 60); return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`; };
 const mmss = (s) => { s = Math.round(s || 0); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = String(s % 60).padStart(2, "0"); return h ? `${h}:${String(m).padStart(2, "0")}:${x}` : `${m}:${x}`; };
-const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+// escapuje i apostrof – hodnoty jdou i do atributů v apostrofech (data-t='…')
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+// odkaz Počasí → Trenér: po přechodu sjet na okna (bez inline onclick kvůli CSP)
+document.addEventListener("click", (e) => { if (e.target.closest?.("[data-topocasi]")) setTimeout(() => document.getElementById("pocasi")?.scrollIntoView({ behavior: "smooth" }), 900); });
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 // běžky: emoji běžkaře neexistuje (⛷️ je sjezdař) → vlastní ikona; v SVG textu grafů 🎿
 const XC_SVG = '<svg class="emo" viewBox="0 0 24 24" aria-label="běžky"><g fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9.5 9 19.5M18.5 8.5l-1.7 11" stroke="#8b939c" stroke-width="1.4"/><path d="M13.6 6.6 10.4 11l3.2 2.4-1.6 4.4" stroke="#2f3b4c" stroke-width="2.1"/><path d="M13.6 6.6 10.4 11" stroke="#2f7fd6" stroke-width="3.2"/><path d="M13.6 6.6l3.4 3 2.6-.6M10.4 11l-3.6 1.6" stroke="#2f7fd6" stroke-width="1.9"/><path d="M2.5 20.6h19" stroke="#e0483e" stroke-width="2"/><circle cx="14.5" cy="3.6" r="2.1" fill="#f2b27a" stroke="none"/><path d="M12.5 3.1a2.1 2.1 0 0 1 4 0z" fill="#e0483e" stroke="none"/></g></svg>';
@@ -3322,7 +3325,8 @@ async function accountCard(el) {
   if (!me) return "";
   const users = me.role === "owner" ? await api("users").catch(() => []) : [];
   const box = `<div class="form-grid"><label>Přihlašovací jméno<input id="acUser" value="${esc(me.username || "")}" autocapitalize="none"></label>${me.hasPassword ? `<label>Současné heslo<input id="acOld" type="password" autocomplete="current-password"></label>` : ""}<label>${me.hasPassword ? "Nové heslo" : "Heslo"}<input id="acPass" type="password" autocomplete="new-password"></label></div>
-    <div class="btns"><button class="btn pri" id="acSave">${me.hasPassword ? "Změnit heslo" : "Nastavit jméno a heslo"}</button><span class="note" id="acMsg"></span></div>`;
+    <div class="btns"><button class="btn pri" id="acSave">${me.hasPassword ? "Změnit heslo" : "Nastavit jméno a heslo"}</button><span class="note" id="acMsg"></span></div>
+    <div class="btns"><button class="btn sm" id="acOut">Odhlásit ostatní zařízení</button><span class="note">Přihlášení na jiných zařízeních přestane platit, tady zůstaneš přihlášený. Změna hesla to udělá taky.</span></div>`;
   const ulist = me.role === "owner" ? `<div class="sl" style="margin:16px 0 6px">Uživatelé (${users.filter((u) => u.active).length} / 10)</div>
     <table class="t"><tr><th>Jméno</th><th>Přihlášení</th><th class="r"></th></tr>${users.map((u) => `<tr><td><b>${esc(u.name || (u.role === "owner" ? "ty" : "–"))}</b>${u.role === "owner" ? ' <span class="sub">vlastník</span>' : ""}</td><td>${esc(u.username || "–")}</td><td class="r">${u.role === "owner" ? "" : `<button class="btn sm" data-uact="${u.id}" data-on="${u.active ? 0 : 1}">${u.active ? "Vypnout" : "Zapnout"}</button>`}</td></tr>`).join("")}</table>
     <div class="btns"><button class="btn pri" id="invBtn">＋ Pozvat (odkaz)</button></div><div id="invOut"></div>
@@ -3330,8 +3334,12 @@ async function accountCard(el) {
   setTimeout(() => {
     el.querySelector("#acSave")?.addEventListener("click", async () => {
       const msg = el.querySelector("#acMsg");
-      try { await api("me/password", { method: "POST", body: JSON.stringify({ username: el.querySelector("#acUser").value, password: el.querySelector("#acPass").value, old: el.querySelector("#acOld")?.value }) }); msg.textContent = "✓ Uloženo."; el.querySelector("#acPass").value = ""; }
+      try { await api("me/password", { method: "POST", body: JSON.stringify({ username: el.querySelector("#acUser").value, password: el.querySelector("#acPass").value, old: el.querySelector("#acOld")?.value }) }); msg.textContent = "✓ Uloženo. Ostatní zařízení jsou odhlášená."; el.querySelector("#acPass").value = ""; }
       catch (e) { msg.textContent = e.message; }
+    });
+    el.querySelector("#acOut")?.addEventListener("click", async () => {
+      if (!confirm("Odhlásit všechna ostatní zařízení?")) return;
+      try { await api("me/logout-all", { method: "POST" }); toast("Ostatní zařízení jsou odhlášená"); } catch (e) { fail(e); }
     });
     el.querySelector("#invBtn")?.addEventListener("click", async () => {
       try {
@@ -3448,7 +3456,7 @@ async function pagePocasi(el, keep = false) {
   <div class="grid">
     ${card("c12 wxcard", "🕐 Po hodinách", `aktualizováno ${updTxt}`, table + `<p class="note">Srážky v mm za hodinu (modře, čím víc, tím sytější), šance na déšť, vítr a nárazy v km/h (zeleně od 15, oranžově od 35, červeně od 50). Posuň do strany pro další hodiny a dny. Přepínače nahoře: 🏠 / ⛰️ místo, 🌍 mix modelů (Open-Meteo vybere nejlepší model, víc dní), 🎯 ALADIN 1 km (model ČHMÚ, nejpřesnější pro Česko, ~2,5 dne).</p>`)}
     ${card("c12", "📈 Průběh dne", "Open-Meteo", `<div id="wxBody"></div>`)}
-    ${card("c12", "🔗 Další", "", `<div class="wx-links">${has ? `<a class="btn sm" href="https://www.windy.com/${lat}/${lon}?${lat},${lon},9" target="_blank" rel="noopener">Windy ↗</a><a class="btn sm" href="https://www.ventusky.com/?p=${lat};${lon};9&l=rain-3h" target="_blank" rel="noopener">Ventusky ↗</a>` : ""}<a class="btn sm" href="#/trener" onclick="setTimeout(() => document.getElementById('pocasi')?.scrollIntoView({ behavior: 'smooth' }), 900)">Trenér → okna na trénink</a></div>`)}
+    ${card("c12", "🔗 Další", "", `<div class="wx-links">${has ? `<a class="btn sm" href="https://www.windy.com/${lat}/${lon}?${lat},${lon},9" target="_blank" rel="noopener">Windy ↗</a><a class="btn sm" href="https://www.ventusky.com/?p=${lat};${lon};9&l=rain-3h" target="_blank" rel="noopener">Ventusky ↗</a>` : ""}<a class="btn sm" href="#/trener" data-topocasi>Trenér → okna na trénink</a></div>`)}
   </div>`;
   el.querySelectorAll("[data-wloc]").forEach((b) => b.addEventListener("click", () => { if (wxLoc === b.dataset.wloc) return; wxLoc = b.dataset.wloc; wxKeepLeft = el.querySelector("#wxScroll")?.scrollLeft ?? null; pagePocasi(el, true).catch((e) => toast(e.message)); }));
   el.querySelectorAll("[data-wmod]").forEach((b) => b.addEventListener("click", () => { if (wxModel === b.dataset.wmod) return; wxModel = b.dataset.wmod; try { localStorage.setItem("wxModel", wxModel); } catch {} wxKeepLeft = el.querySelector("#wxScroll")?.scrollLeft ?? null; pagePocasi(el, true).catch((e) => toast(e.message)); }));

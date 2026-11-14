@@ -50,7 +50,7 @@ selhání synchronizace. „Rozumím“ = stejné upozornění se už neukáže.
    tam uprav i `PUBLIC_URL` (adresa Workeru) a `LAT` / `LON` (výchozí místo pro počasí).
 4. Zkopíruj `.dev.vars.example` na `.dev.vars` a vyplň `GARMIN_API_KEY`, `INTERVALS_API_KEY`,
    `INTERVALS_ATHLETE_ID`, `WORKER_URL`.
-5. `npm run secrets:push` (vygeneruje `ADMIN_TOKEN` a nahraje klíče).
+5. `npm run secrets:push` (vygeneruje `ADMIN_TOKEN`, `SESSION_SECRET` a `SECRETS_KEY` a nahraje klíče).
 6. `npm run deploy`, pak `npm run sync:backfill`.
 7. `npm run admin -- login-link` → otevři odkaz → v Nastavení → Účet si nastav přihlašovací jméno a heslo.
 

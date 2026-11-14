@@ -1,5 +1,5 @@
 // Nahraje vyplněné klíče z .dev.vars na Cloudflare (wrangler secret bulk).
-// Prázdný ADMIN_TOKEN nejdřív vygeneruje. Hodnoty nikdy nevypisuje.
+// Prázdný ADMIN_TOKEN, SESSION_SECRET a SECRETS_KEY nejdřív vygeneruje. Hodnoty nikdy nevypisuje.
 import { randomBytes } from "node:crypto";
 import { writeFileSync, unlinkSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { readDevVars, setDevVar, SECRET_KEYS, ROOT } from "./devvars.mjs";
 
-for (const k of ["ADMIN_TOKEN"]) {
+for (const k of ["ADMIN_TOKEN", "SESSION_SECRET", "SECRETS_KEY"]) {
   if (!readDevVars().vars[k]) {
     setDevVar(k, randomBytes(24).toString("hex"));
     console.log(`${k}: vygenerován`);

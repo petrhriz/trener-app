@@ -63,6 +63,30 @@ export function rewriteSql(sql: string, prefix: string): string {
     .join("");
 }
 
+// pojistka: jakýkoli název tabulky uživatele bez předpony mimo textové hodnoty a komentáře
+const BARE = new RegExp(`\\b(${TBL})\\b`, "i");
+
+/**
+ * Tabulka vlastníka, která po přepisu zůstala bez předpony (např. „FROM a, wellness“ – přepis zná jen tabulku za
+ * klíčovým slovem), nebo null. Názvy tabulek se jako názvy sloupců nepoužívají, takže každý výskyt je únik.
+ */
+export function bareTenantTable(sql: string): string | null {
+  const code = sql
+    .split(/('(?:[^']|'')*')/)
+    .filter((_, i) => i % 2 === 0)
+    .join("''")
+    .replace(/--[^\n]*/g, "");
+  return BARE.exec(code)?.[1] ?? null;
+}
+
+/** Přepis s kontrolou: dotaz, který by sáhl na data vlastníka, se nespustí (raději chyba než únik dat). */
+export function tenantSql(sql: string, prefix: string): string {
+  const out = rewriteSql(sql, prefix);
+  const bad = bareTenantTable(out);
+  if (bad) throw new Error(`SQL by sáhlo na tabulku vlastníka (${bad}) – dotaz zastaven`);
+  return out;
+}
+
 /** Příkazy migrace: bez komentářů, rozdělené po střednících na konci řádku. */
 export function splitSql(sql: string): string[] {
   return sql
@@ -74,9 +98,9 @@ export function splitSql(sql: string): string[] {
 
 function proxyDb(db: D1Database, prefix: string): D1Database {
   return {
-    prepare: (sql: string) => db.prepare(rewriteSql(sql, prefix)),
+    prepare: (sql: string) => db.prepare(tenantSql(sql, prefix)),
     batch: (stmts: D1PreparedStatement[]) => db.batch(stmts),
-    exec: (sql: string) => db.exec(rewriteSql(sql, prefix)),
+    exec: (sql: string) => db.exec(tenantSql(sql, prefix)),
     dump: () => { throw new Error("dump není pro uživatele povolený"); },
     withSession: () => { throw new Error("withSession není podporované"); },
   } as unknown as D1Database;
@@ -103,6 +127,8 @@ export interface UserRow {
   role: string;
   active: number;
   schema_ver: number | null;
+  /** verze přihlášení – cookie se starší verzí neplatí (změna hesla, „Odhlásit všude“) */
+  sess_ver?: number | null;
 }
 
 /** Vytvoří / doplní tabulky uživatele (spustí chybějící migrace s předponou). */
@@ -135,7 +161,7 @@ export function forgetUser(id: number) {
 export async function getUser(base: Env, id: number): Promise<UserRow | null> {
   const c = userCache.get(id);
   if (c && Date.now() - c.at < 60_000) return c.u;
-  const u = await base.DB.prepare("SELECT id, name, username, role, active, schema_ver FROM users WHERE id = ?").bind(id).first<UserRow>().catch(() => null);
+  const u = await base.DB.prepare("SELECT id, name, username, role, active, schema_ver, sess_ver FROM users WHERE id = ?").bind(id).first<UserRow>().catch(() => null);
   if (u) userCache.set(id, { at: Date.now(), u });
   return u;
 }

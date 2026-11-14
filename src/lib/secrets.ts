@@ -1,6 +1,8 @@
-// API klíče zadané v dashboardu: šifrované v D1 (AES-GCM, klíč odvozený z ADMIN_TOKEN).
+// API klíče zadané v dashboardu: šifrované v D1 (AES-GCM, klíč odvozený ze SECRETS_KEY, bez něj z ADMIN_TOKEN).
+// Hodnoty zašifrované dřív ADMIN_TOKENem se při čtení přešifrují novým klíčem – pak jde ADMIN_TOKEN vyměnit.
 // Přednost má hodnota z dashboardu, záloha jsou secrets Workeru (.dev.vars → wrangler secret).
 import type { Env } from "../env";
+import { logEvent } from "./db";
 
 export const EDITABLE_SECRETS = ["GARMIN_API_KEY", "INTERVALS_API_KEY", "INTERVALS_ATHLETE_ID", "MAPY_API_KEY", "GEMINI_API_KEY", "NVIDIA_API_KEY"] as const;
 export type EditableSecret = (typeof EDITABLE_SECRETS)[number];
@@ -8,9 +10,10 @@ export type EditableSecret = (typeof EDITABLE_SECRETS)[number];
 const b64 = (u: Uint8Array) => btoa(String.fromCharCode(...u));
 const unb64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 
-async function aesKey(env: Env): Promise<CryptoKey> {
-  if (!env.ADMIN_TOKEN) throw new Error("ADMIN_TOKEN chybí – bez něj nejde šifrovat");
-  const raw = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`trener-secrets:${env.ADMIN_TOKEN}`));
+const keySecrets = (env: Env): string[] => [...new Set([env.SECRETS_KEY, env.ADMIN_TOKEN].filter((x): x is string => !!x))];
+async function aesKey(env: Env, secret = keySecrets(env)[0]): Promise<CryptoKey> {
+  if (!secret) throw new Error("SECRETS_KEY ani ADMIN_TOKEN není nastavený – bez něj nejde šifrovat");
+  const raw = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`trener-secrets:${secret}`));
   return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
 }
 
@@ -20,10 +23,20 @@ export async function encryptSecret(env: Env, plain: string): Promise<string> {
   return `${b64(iv)}.${b64(ct)}`;
 }
 
+/** Dešifruje; `legacy` = šlo jen starším klíčem (ADMIN_TOKEN) → hodnotu přešifrovat. */
 export async function decryptSecret(env: Env, stored: string): Promise<string> {
+  return (await decryptAny(env, stored)).value;
+}
+async function decryptAny(env: Env, stored: string): Promise<{ value: string; legacy: boolean }> {
   const [iv, ct] = stored.split(".");
-  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(iv!) }, await aesKey(env), unb64(ct!));
-  return new TextDecoder().decode(pt);
+  const secs = keySecrets(env);
+  for (let i = 0; i < secs.length; i++) {
+    try {
+      const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(iv!) }, await aesKey(env, secs[i]), unb64(ct!));
+      return { value: new TextDecoder().decode(pt), legacy: i > 0 };
+    } catch { /* zkusit další klíč */ }
+  }
+  throw new Error("klíč nejde dešifrovat");
 }
 
 // cache zvlášť pro každého uživatele (env uživatele čte jeho tabulku app_secrets)
@@ -43,7 +56,14 @@ async function valuesOf(env: Env, db: D1Database, uid: number): Promise<Partial<
       const rows = await db.prepare("SELECT key, value FROM app_secrets").all<{ key: string; value: string }>();
       for (const r of rows.results ?? []) {
         if ((EDITABLE_SECRETS as readonly string[]).includes(r.key)) {
-          try { values[r.key as EditableSecret] = await decryptSecret(env, r.value); } catch { /* jiný ADMIN_TOKEN → ignorovat */ }
+          try {
+            const d = await decryptAny(env, r.value);
+            values[r.key as EditableSecret] = d.value;
+            if (d.legacy) await db.prepare("UPDATE app_secrets SET value = ? WHERE key = ?").bind(await encryptSecret(env, d.value), r.key).run().catch(() => undefined);
+          } catch {
+            // žádný klíč nesedí (vyměněný ADMIN_TOKEN bez SECRETS_KEY) – zapsat do logu, ať to není tiché
+            await logEvent(db, "error", `klíč ${r.key} nejde dešifrovat – zadej ho znovu v Nastavení`);
+          }
         }
       }
     } catch { /* tabulka ještě není */ }

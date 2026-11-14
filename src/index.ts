@@ -19,6 +19,14 @@ const app = new Hono<{ Bindings: Env }>();
 app.use("*", async (c, next) => {
   await applySecrets(c.env);
   await next();
+  // bezpečnostní hlavičky i pro odpovědi Workeru (statické soubory je mají z public/_headers)
+  const h = c.res.headers;
+  try {
+    h.set("X-Content-Type-Options", "nosniff");
+    h.set("X-Frame-Options", "DENY");
+    h.set("Referrer-Policy", h.get("Referrer-Policy") ?? "strict-origin-when-cross-origin");
+    if ((h.get("content-type") ?? "").startsWith("text/html")) h.set("Content-Security-Policy", "default-src 'self'; script-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'");
+  } catch { /* neměnné hlavičky (odpověď z fetch) – nechat */ }
 });
 
 /** Porovnání v konstantním čase. */

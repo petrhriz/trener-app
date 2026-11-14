@@ -17,6 +17,10 @@ export interface Env {
   // secrets (wrangler secret put / .dev.vars) – nikdy nelogovat
   GARMIN_API_KEY?: string;
   ADMIN_TOKEN?: string;
+  /** podpis přihlašovací cookie; bez něj ADMIN_TOKEN (starší cookie podepsané ADMIN_TOKEN dál platí) */
+  SESSION_SECRET?: string;
+  /** šifrování klíčů v D1; bez něj ADMIN_TOKEN (starší hodnoty se při čtení přešifrují) */
+  SECRETS_KEY?: string;
   INTERVALS_API_KEY?: string;
   INTERVALS_ATHLETE_ID?: string;
   /** veřejný klíč Mapy.com (jde do prohlížeče, omezit na doménu v portálu Mapy.com) */
@@ -32,6 +36,8 @@ export function secretStatus(env: Env): Record<string, "nastavený" | "chybí"> 
   const keys = [
     "GARMIN_API_KEY",
     "ADMIN_TOKEN",
+    "SESSION_SECRET",
+    "SECRETS_KEY",
     "INTERVALS_API_KEY",
     "INTERVALS_ATHLETE_ID",
   ] as const;

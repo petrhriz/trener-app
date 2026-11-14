@@ -4,9 +4,14 @@
 # Garmin Personal API key (Garmin Connect -> Personal API)
 GARMIN_API_KEY=
 
-# Náhodný řetězec pro administrátorské volání (ruční sync, přihlašovací odkaz) a podpis přihlášení.
+# Náhodný řetězec pro administrátorské volání (ruční sync, přihlašovací odkaz).
 # Vygeneruje se sám (`npm run secrets:push`), když je prázdný.
 ADMIN_TOKEN=
+# Podpis přihlášení a šifrování klíčů v databázi – zvlášť, aby šel ADMIN_TOKEN vyměnit bez odhlášení
+# a bez ztráty uložených klíčů. Vygenerují se samy (`npm run secrets:push`). Neměnit: změna = odhlášení všech,
+# resp. ztráta klíčů zadaných v Nastavení.
+SESSION_SECRET=
+SECRETS_KEY=
 
 # intervals.icu API klíč (Settings -> Developer Settings) a ID atleta (např. i123456)
 INTERVALS_API_KEY=

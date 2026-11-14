@@ -33,17 +33,38 @@ export async function checkPassword(pass: string, stored: string | null): Promis
 const USER_RE = /^[a-z0-9._-]{3,30}$/;
 const cleanUser = (u: unknown) => String(u ?? "").trim().toLowerCase();
 
+// ---------- omezení hádání hesla ----------
+/** po tolika špatných pokusech (na jméno i na IP adresu) je přihlášení na LOCK_S zavřené */
+export const LOGIN_MAX_FAILS = 10;
+const LOCK_S = 15 * 60;
+const failKeys = (c: { req: { header: (n: string) => string | undefined } }, user: string) => [
+  `loginfail:u:${user || "-"}`,
+  `loginfail:ip:${c.req.header("cf-connecting-ip") ?? "-"}`,
+];
+async function failCount(kv: KVNamespace, keys: string[]): Promise<number> {
+  const v = await Promise.all(keys.map((k) => kv.get(k).catch(() => null)));
+  return Math.max(...v.map((x) => Number(x ?? 0) || 0));
+}
+async function addFail(kv: KVNamespace, keys: string[]): Promise<void> {
+  // KV není atomické – při souběžných pokusech se počet může o pár podhodnotit, na brzdu hádání to stačí
+  await Promise.all(keys.map(async (k) => kv.put(k, String((Number(await kv.get(k)) || 0) + 1), { expirationTtl: LOCK_S })));
+}
+
 // ---------- veřejné (bez přihlášení): /auth/login, /auth/join ----------
 export const authApp = new Hono<{ Bindings: Env }>();
 
 authApp.post("/login", async (c) => {
   const { username, password } = (await c.req.json().catch(() => ({}))) as { username?: string; password?: string };
+  const keys = failKeys(c, cleanUser(username));
+  if ((await failCount(c.env.KV, keys)) >= LOGIN_MAX_FAILS) return c.json({ error: "Moc špatných pokusů. Zkus to znovu za 15 minut." }, 429);
   const u = await c.env.DB.prepare("SELECT id, pass_hash, active FROM users WHERE username = ?").bind(cleanUser(username)).first<{ id: number; pass_hash: string | null; active: number }>().catch(() => null);
   // stejná odpověď pro neznámé jméno i špatné heslo; krátké čekání brzdí hádání
   if (!u || !u.active || !(await checkPassword(String(password ?? ""), u.pass_hash))) {
+    await addFail(c.env.KV, keys).catch(() => undefined);
     await new Promise((r) => setTimeout(r, 600));
     return c.json({ error: "Špatné jméno nebo heslo." }, 401);
   }
+  await c.env.KV.delete(keys[0]!).catch(() => undefined);
   return c.json({ ok: true }, 200, { "Set-Cookie": await sessionCookie(c.env, u.id), "Cache-Control": "no-store" });
 });
 
@@ -92,9 +113,19 @@ accountsApi.post("/me/password", async (c) => {
   if (String(password ?? "").length < 6) return c.json({ error: "Heslo aspoň 6 znaků." }, 400);
   const taken = await base.DB.prepare("SELECT id FROM users WHERE username = ? AND id != ?").bind(un, uid).first();
   if (taken) return c.json({ error: "Toto jméno už někdo má." }, 409);
-  await base.DB.prepare("UPDATE users SET username = ?, pass_hash = ? WHERE id = ?").bind(un, await hashPassword(String(password)), uid).run();
+  // nové heslo = ostatní zařízení se odhlásí, toto dostane novou cookie
+  await base.DB.prepare("UPDATE users SET username = ?, pass_hash = ?, sess_ver = sess_ver + 1 WHERE id = ?").bind(un, await hashPassword(String(password)), uid).run();
   forgetUser(uid);
-  return c.json({ ok: true });
+  return c.json({ ok: true }, 200, { "Set-Cookie": await sessionCookie(base, uid), "Cache-Control": "no-store" });
+});
+
+/** Odhlásit všude: starší přihlášení přestanou platit, toto zařízení zůstane přihlášené. */
+accountsApi.post("/me/logout-all", async (c) => {
+  const uid = c.get("uid");
+  const base = baseOf(c.env);
+  await base.DB.prepare("UPDATE users SET sess_ver = sess_ver + 1 WHERE id = ?").bind(uid).run();
+  forgetUser(uid);
+  return c.json({ ok: true }, 200, { "Set-Cookie": await sessionCookie(base, uid), "Cache-Control": "no-store" });
 });
 
 // --- jen vlastník ---
@@ -127,6 +158,8 @@ accountsApi.post("/users/:id/active", async (c) => {
 // env uživatele nese základní env (pro společnou tabulku users a sdílené KV)
 export const baseOf = (env: Env): Env => ((env as any).__base as Env) ?? env;
 async function passOf(base: Env, uid: number): Promise<string | null> {
-  const r = await base.DB.prepare("SELECT pass_hash FROM users WHERE id = ?").bind(uid).first<{ pass_hash: string | null }>().catch(() => null);
-  return r?.pass_hash ?? null;
+  // bez .catch: když se heslo nenačte, změna hesla nesmí projít bez kontroly starého hesla
+  const r = await base.DB.prepare("SELECT pass_hash FROM users WHERE id = ?").bind(uid).first<{ pass_hash: string | null }>();
+  if (!r) throw new Error("uživatel nenalezen");
+  return r.pass_hash ?? null;
 }
