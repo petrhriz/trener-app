@@ -286,6 +286,16 @@ describe("počasí (kap. 8) a okno na jízdu", () => {
     expect(w.frost).toBe(true);
     expect(w.window).toEqual({ from: 7, to: 10 });
   });
+  it("tma: okno skončí nejpozději 30 min po západu a začne nejdřív 30 min před východem", () => {
+    const w = dayWeather(mk("2026-11-14", () => ({})), "2026-11-14", undefined, { rise: "07:10", set: "16:20" })!;
+    expect(w.hours.find((x) => x.h === 15)!.green).toBe(true); // 15–16 h, před západem
+    expect(w.hours.find((x) => x.h === 16)!.kind).toBe("dark"); // 16–17 h končí po 16:50
+    expect(w.hours.find((x) => x.h === 7)!.green).toBe(true); // 7:00 ≥ 6:40
+    expect(w.hours.filter((x) => x.h >= 16).every((x) => !x.green)).toBe(true);
+    expect(w.window!.to).toBeLessThanOrEqual(16);
+    // bez údajů o slunci se nic nemění
+    expect(dayWeather(mk("2026-11-14", () => ({})), "2026-11-14")!.hours.every((x) => x.green)).toBe(true);
+  });
   it("bez předpovědi = null", () => expect(dayWeather([], "2026-11-10")).toBeNull());
 });
 

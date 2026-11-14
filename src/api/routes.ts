@@ -21,7 +21,7 @@ import { constraintNoteOk } from "../core/coach/common";
 import { RPE_ASK_DAYS, RPE_LABEL, rpeOk, rpeToAsk } from "../core/rpe";
 import { addConstraint, applyChanges, claimProposal, finishProposal, getProposal, openProposal, removeConstraint, saveProposal } from "../plan/proposals";
 import { activityReport, eftpOf, ftpCheckOf, fitnessTable, recoveryFor, plannedFor, planFor, readiness, weatherMap, weekly } from "../report/build";
-import { loadCtx } from "../report/context";
+import { hasPowerMeter, loadCtx } from "../report/context";
 import { compliance, ctlPlan, efficiency, intensityVerdict, intensityWeeks, monotonyWeeks, weeklyCompliance } from "../core/analytics";
 import { recomputeLoads } from "../sync/metrics";
 import { recomputeSleep } from "../sync/sleep";
@@ -380,6 +380,7 @@ api.get("/coach", async (c) => {
     return { weekStart: ws, load, ctlEnd: m ? Math.round(m.ctl * 10) / 10 : null };
   });
   return c.json({
+    hasPower: await hasPowerMeter(c.env.DB),
     insights,
     recent,
     past,
@@ -390,7 +391,7 @@ api.get("/coach", async (c) => {
     // graf tréninku: % FTP kroků (watty) a zóny tepu (kroky podle tepu)
     ftp: ctx.s.ftp,
     floor: [
-      { label: "Dlouhá jízda o víkendu (≥ 1:30)", done: longRide, planned: longPlanned },
+      { label: "Z2 o víkendu aspoň 1:30", done: longRide, planned: longPlanned },
       ...(ctx.s.floor_strength ? [{ label: "Síla 1× týdně", done: (strength?.n ?? 0) >= 1, planned: false, count: strength?.n ?? 0 }] : []),
       { label: "Pohyb 5 ze 7 dní (≥ 5 000 kroků)", done: moveDays >= 5, planned: false, count: moveDays },
     ],
@@ -906,7 +907,7 @@ api.get("/fitness", async (c) => {
   const metrics = ytd
     ? await all<any>(c.env.DB, "SELECT * FROM daily_metrics WHERE date >= ? AND date <= ? ORDER BY date", `${T.slice(0, 4)}-01-01`, startDate)
     : ctx.metrics.filter((m) => m.date >= addDays(T, -90) && m.date <= startDate);
-  return c.json({ range: ytd ? "ytd" : "90", loadDays: loadDaysOf(ctx, 28), ftp: ctx.s.ftp, eftp: eftpOf(ctx), ftpCheck: ftpCheckOf(ctx, await getState<string>(c.env.DB, "ftp_set_at")), ftpSetAt: await getState<string>(c.env.DB, "ftp_set_at"), metrics, today: ctx.metrics.find((m) => m.date === T) ?? last, projection: proj, chart: p.chart, table: fit, last, loadPast7: p.loadPast7, loadNext7: p.loadNext7, target: p.weeklyTarget, warnings: p.warnings });
+  return c.json({ hasPower: await hasPowerMeter(c.env.DB), range: ytd ? "ytd" : "90",loadDays: loadDaysOf(ctx, 28), ftp: ctx.s.ftp, eftp: eftpOf(ctx), ftpCheck: ftpCheckOf(ctx, await getState<string>(c.env.DB, "ftp_set_at")), ftpSetAt: await getState<string>(c.env.DB, "ftp_set_at"), metrics, today: ctx.metrics.find((m) => m.date === T) ?? last, projection: proj, chart: p.chart, table: fit, last, loadPast7: p.loadPast7, loadNext7: p.loadNext7, target: p.weeklyTarget, warnings: p.warnings });
 });
 
 /** Porovnání kondice dvou roků: CTL/ATL/forma po dnech (zarovnané na den v roce) a součty od 1. 1. do stejného dne. */
@@ -1091,7 +1092,7 @@ api.get("/settings", async (c) => c.json(await getSettings(c.env.DB)));
 api.get("/profile", async (c) => {
   const ctx = await loadCtx(c.env);
   const { athleteProfile } = await import("../report/profile");
-  return c.json(athleteProfile(ctx));
+  return c.json({ ...athleteProfile(ctx), hasPower: await hasPowerMeter(c.env.DB) });
 });
 /** FTP a zóny s datem platnosti (Nastavení) */
 /** Verze plánu (nejnovější první): kdy, proč a které dny se změnily – src/core/coach/versions.ts. */

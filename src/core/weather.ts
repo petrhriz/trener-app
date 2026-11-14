@@ -23,7 +23,7 @@ export interface DayWeather {
   gusty: boolean;
   frost: boolean;
   bad: boolean;
-  /** hodiny 7–20: zelená = srážky ≤ 30 %, nárazy ≤ 40 km/h, pocitově mezi tvými hranicemi (výchozí 3–30 °C) */
+  /** hodiny 7–20: zelená = srážky ≤ 30 %, nárazy ≤ 40 km/h, pocitově mezi tvými hranicemi (výchozí 3–30 °C), za světla */
   hours: { h: number; green: boolean; kind?: HourKind; why?: string; temp: number | null; prob: number | null; gust: number | null; feels: number | null; precip: number | null; code?: number | null }[];
   window: { from: number; to: number } | null;
   text: string;
@@ -39,8 +39,25 @@ export interface RideTemps {
 }
 export const DEFAULT_TEMPS: RideTemps = { cold: 3, hot: 30, ideal: 18 };
 
-/** ok = vhodné · cool = chladné ráno / večer v teplém dni (oblečení na celou jízdu nesedí) · cold · hot · rain · wind */
-export type HourKind = "ok" | "cool" | "cold" | "hot" | "rain" | "wind";
+/** ok = vhodné · cool = chladné ráno / večer v teplém dni (oblečení na celou jízdu nesedí) · cold · hot · rain · wind · dark = tma */
+export type HourKind = "ok" | "cool" | "cold" | "hot" | "rain" | "wind" | "dark";
+
+/** Východ a západ slunce dne (místní čas „HH:MM“, Open-Meteo). */
+export interface SunDay {
+  rise: string | null;
+  set: string | null;
+}
+
+/** Po západu je ještě asi 30–40 min občanský soumrak (u nás) → jízda může skončit nejpozději 30 min po západu
+ *  a začít nejdřív 30 min před východem. Hodina h = jízda h:00–(h+1):00. */
+export const TWILIGHT_H = 0.5;
+const hm = (s: string | null) => (s && /^\d{2}:\d{2}$/.test(s) ? +s.slice(0, 2) + +s.slice(3, 5) / 60 : null);
+export function darkWhy(h: number, sun: SunDay | null | undefined): string | null {
+  const rise = hm(sun?.rise ?? null), set = hm(sun?.set ?? null);
+  if (set != null && h + 1 > set + TWILIGHT_H) return `tma (západ ${sun!.set})`;
+  if (rise != null && h < rise - TWILIGHT_H) return `tma (východ ${sun!.rise})`;
+  return null;
+}
 
 const DAY_FROM = 7;
 const DAY_TO = 20;
@@ -64,7 +81,7 @@ export function hourKind(h: Pick<Hour, "precip_prob" | "gust" | "feels">, dayMax
   return { kind: "ok", why: "vhodné" };
 }
 
-export function dayWeather(all: Hour[], date: string, t: RideTemps = DEFAULT_TEMPS): DayWeather | null {
+export function dayWeather(all: Hour[], date: string, t: RideTemps = DEFAULT_TEMPS, sun?: SunDay | null): DayWeather | null {
   const dayAll = all.filter((h) => h.time.startsWith(date));
   const day = dayAll.filter((h) => hourOf(h.time) >= DAY_FROM && hourOf(h.time) <= DAY_TO);
   if (day.length < 10) return null; // předpověď den nepokrývá
@@ -81,17 +98,20 @@ export function dayWeather(all: Hour[], date: string, t: RideTemps = DEFAULT_TEM
   const rain = rainProb >= 50 && rainSum >= 1;
   const gusty = gustMax > 40;
   const feelsMax = Math.max(...vals(day, "feels"));
-  const hours = day.map((h) => ({
-    h: hourOf(h.time),
-    green: isGreen(h, t),
-    ...hourKind(h, isFinite(feelsMax) ? feelsMax : null, t),
-    temp: h.temp,
-    prob: h.precip_prob,
-    gust: h.gust,
-    feels: h.feels,
-    precip: h.precip,
-    code: h.code,
-  }));
+  const hours = day.map((h) => {
+    const dark = darkWhy(hourOf(h.time), sun);
+    return {
+      h: hourOf(h.time),
+      green: !dark && isGreen(h, t),
+      ...(dark ? { kind: "dark" as HourKind, why: dark } : hourKind(h, isFinite(feelsMax) ? feelsMax : null, t)),
+      temp: h.temp,
+      prob: h.precip_prob,
+      gust: h.gust,
+      feels: h.feels,
+      precip: h.precip,
+      code: h.code,
+    };
+  });
   const window = bestWindow(hours, t);
   const parts: string[] = [`${num(tmax)} / ${num(tmin)} °C`];
   if (rain) parts.push(`déšť ${num(rainProb)} % (${num(rainSum, 1)} mm)`);

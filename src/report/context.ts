@@ -2,8 +2,8 @@
 import type { Env } from "../env";
 import type { ActRow } from "../core/activity";
 import type { CalItem, Constraint } from "../core/plan";
-import type { Hour } from "../core/weather";
-import { all, getState } from "../lib/db";
+import type { Hour, SunDay } from "../core/weather";
+import { all, first, getState } from "../lib/db";
 import { getSettings, type Settings } from "../lib/settings";
 import { loadZoneHistory } from "../lib/zoneHistory";
 import type { ZoneHistRow } from "../core/zones";
@@ -104,10 +104,18 @@ export interface Ctx {
   calendar: CalItem[];
   constraints: Constraint[];
   hours: Hour[];
+  /** východ / západ slunce po dnech (předpověď) */
+  sun: Map<string, SunDay>;
   weatherOk: boolean;
   lastSyncOk: string | null;
   /** FTP a zóny s datem platnosti (staré aktivity se hodnotí podle tehdejších) */
   zh?: ZoneHistRow[];
+}
+
+/** Jezdí s wattmetrem? (aspoň jedna jízda s výkonem za rok) – bez něj stránka neukazuje FTP, křivku výkonu ani zóny výkonu. */
+export async function hasPowerMeter(db: D1Database): Promise<boolean> {
+  const r = await first<{ n: number }>(db, "SELECT COUNT(*) AS n FROM (SELECT 1 FROM activities WHERE sport IN ('ride', 'mtb', 'indoor') AND np > 0 AND date >= date('now', '-365 days') LIMIT 1)");
+  return (r?.n ?? 0) > 0;
 }
 
 export function parseAct(r: any): FullAct {
@@ -121,7 +129,7 @@ export async function loadCtx(env: Env, at?: Date): Promise<Ctx> {
   const now = localNow(at ?? new Date(), env.TZ_NAME);
   const T = now.date;
   const db = env.DB;
-  const [s, well, actsRaw, metrics, calendar, constraints, hours, wAt, lastSync, zh] = await Promise.all([
+  const [s, well, actsRaw, metrics, calendar, constraints, hours, wAt, lastSync, zh, sun] = await Promise.all([
     getSettings(db),
     all<WellRow>(db, "SELECT * FROM wellness WHERE date >= ? ORDER BY date", addDays(T, -90)),
     all<any>(db, "SELECT a.*, (SELECT rpe FROM activity_tags t WHERE t.activity_id = a.id) AS rpe FROM activities a WHERE a.date >= ? ORDER BY a.start_local", addDays(T, -90)),
@@ -132,6 +140,7 @@ export async function loadCtx(env: Env, at?: Date): Promise<Ctx> {
     getState<number>(db, "weather_at"),
     getState<string>(db, "last_sync_ok"),
     loadZoneHistory(db),
+    getState<({ date: string } & SunDay)[]>(db, "weather_sun"),
   ]);
   return {
     env,
@@ -144,6 +153,7 @@ export async function loadCtx(env: Env, at?: Date): Promise<Ctx> {
     calendar,
     constraints,
     hours,
+    sun: new Map((sun ?? []).map((x) => [x.date, x])),
     weatherOk: !!wAt && Date.now() - wAt < 12 * 3600_000 && hours.length > 24,
     lastSyncOk: lastSync,
     zh,

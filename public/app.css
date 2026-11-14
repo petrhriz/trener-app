@@ -230,6 +230,7 @@ table.t tr.iv td { background: var(--accbg); }
 .h.rain, .lg.rain { background: color-mix(in srgb, var(--z2) 95%, transparent); }
 .h.wind, .lg.wind { background: color-mix(in srgb, var(--z7) 55%, transparent); }
 .h.cool, .lg.cool { background: color-mix(in srgb, var(--z3) 35%, transparent); background-image: repeating-linear-gradient(135deg, transparent 0 3px, rgba(120, 180, 215, .55) 3px 5px); }
+.h.dark, .lg.dark { background: color-mix(in srgb, var(--muted) 35%, transparent); }
 .h.hot, .lg.hot { background: color-mix(in srgb, var(--z6) 60%, transparent); }
 .h.win, .lg.win { box-shadow: inset 0 0 0 2px var(--ok); background: color-mix(in srgb, var(--z3) 95%, transparent); }
 .lg { display: inline-block; width: 12px !important; height: 10px !important; border-radius: 3px; }

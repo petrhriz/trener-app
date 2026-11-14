@@ -169,7 +169,7 @@ export function weatherMap(ctx: Ctx, from: string, days: number): Map<string, Da
   const m = new Map<string, DayWeather | null>();
   for (let i = 0; i < days; i++) {
     const d = addDays(from, i);
-    m.set(d, ctx.weatherOk ? dayWeather(ctx.hours, d, ctx.s.ride_temps ?? undefined) : null);
+    m.set(d, ctx.weatherOk ? dayWeather(ctx.hours, d, ctx.s.ride_temps ?? undefined, ctx.sun?.get(d)) : null);
   }
   return m;
 }

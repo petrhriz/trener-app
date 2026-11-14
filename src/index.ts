@@ -73,7 +73,12 @@ app.get("/admin/raw", async (c) => {
   const { GarminClient } = await import("./datasource/garmin");
   const { HttpError } = await import("./lib/http");
   try {
-    return c.json(await new GarminClient(c.env).get(path));
+    // ?uid= : Garmin účet jiného uživatele (diagnostika)
+    const uid = Number(c.req.query("uid") ?? OWNER_ID) || OWNER_ID;
+    const env = await envFor(c.env, uid);
+    if (!env) return c.json({ error: "uživatel" }, 404);
+    if (uid !== OWNER_ID) await applySecrets(env);
+    return c.json(await new GarminClient(env).get(path));
   } catch (e) {
     return c.json({ upstreamError: e instanceof HttpError ? e.status : String(e) }, 502);
   }

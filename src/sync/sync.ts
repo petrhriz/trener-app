@@ -135,6 +135,8 @@ interface BfWell {
   cursor: string;
   done: boolean;
   empty: number;
+  /** už přišla aspoň jedna dávka s daty (prázdné dávky ukončí stahování až potom) */
+  found?: boolean;
 }
 
 /**
@@ -480,7 +482,14 @@ export async function syncTick(env: Env, opts: { force?: boolean; manual?: boole
 
   // 5) backfill wellness po 28 dnech dozadu
   await guard("backfill wellness", async () => {
-    const st = (await getState<BfWell>(env.DB, "bf_well")) ?? { cursor: addDays(T, -3), done: false, empty: 0 };
+    let st = (await getState<BfWell>(env.DB, "bf_well")) ?? { cursor: addDays(T, -3), done: false, empty: 0, found: false };
+    // Garmin u čerstvě připojeného účtu vydává historii se zpožděním: stahování, které skončilo jen na prázdných
+    // dávkách (starší stav bez příznaku found) a má málo nocí, se jednou spustí znovu
+    if (st.done && st.found === undefined) {
+      const n = await first<{ n: number }>(env.DB, "SELECT COUNT(*) AS n FROM wellness WHERE sleep_s IS NOT NULL OR hrv IS NOT NULL");
+      st = (n?.n ?? 0) < 30 ? { cursor: addDays(T, -3), done: false, empty: 0, found: false } : { ...st, found: true };
+      await setState(env.DB, "bf_well", st);
+    }
     if (st.done || !quarter || !batch) return;
     const from = addDays(st.cursor, -27);
     const ws = await ds.wellnessRange(from, st.cursor);
@@ -489,10 +498,12 @@ export async function syncTick(env: Env, opts: { force?: boolean; manual?: boole
     // dluh se přenáší 7 nocí dopředu → přepočet i týden za koncem stažené dávky
     await recomputeSleep(env.DB, s.sleep_goal_min, from, addDays(st.cursor, 7));
     st.empty = useful.length ? 0 : st.empty + 1;
+    if (useful.length) st.found = true;
     st.cursor = addDays(from, -1);
     const oldest = await first<{ d: string }>(env.DB, "SELECT MIN(date) AS d FROM activities");
     const bfAct = await getState<BfAct>(env.DB, "bf_act");
-    if (st.empty >= 4 || (bfAct?.done && oldest?.d && st.cursor < addDays(oldest.d, -30)) || daysBetween(st.cursor, T) > 3650) st.done = true;
+    // 4 prázdné dávky (16 týdnů) za sebou = začátek historie – jen když už nějaká data přišla
+    if ((st.empty >= 4 && st.found) || (bfAct?.done && oldest?.d && st.cursor < addDays(oldest.d, -30)) || daysBetween(st.cursor, T) > 3650) st.done = true;
     await setState(env.DB, "bf_well", st);
     rep.steps.push(`backfill wellness (do ${from}${st.done ? ", hotovo" : ""})`);
   });
