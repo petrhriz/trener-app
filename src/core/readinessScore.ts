@@ -110,6 +110,8 @@ export interface CoachingInput {
   hour: number;
   /** zpětný den (Přehled k minulému datu) */
   past?: boolean;
+  /** po půlnoci bez ranních dat: kroužky a dlaždice ukazují včerejšek (src/core/carryDay.ts) */
+  carried?: boolean;
   status: StatusKind;
   statusUntil: string | null;
   /** ranní semafor */
@@ -177,7 +179,9 @@ export function coaching(i: CoachingInput): Coaching {
     text = "Pro tento den chybí VST, klidový tep i spánek – zotavení nejde spočítat.";
   } else if (!sem || sem.missing) {
     title = "Ranní data zatím nemám";
-    text = "Počkej na synchronizaci hodinek (VST, klidový tep a spánek z noci).";
+    text = i.carried
+      ? "Kroužky a dlaždice zatím ukazují včerejší den. Dnešní zotavení spočítám po synchronizaci hodinek (VST, klidový tep a spánek z noci)."
+      : "Počkej na synchronizaci hodinek (VST, klidový tep a spánek z noci).";
   } else if (band === "low") {
     title = "Nezotavený – dnes volno";
     text = `${reasons ? cap(reasons) + ". " : ""}Volno, nebo jen Z1 do 45 min / procházka. Hlavně spánek.`;

@@ -1017,6 +1017,46 @@ function tomorrowHtml(t) {
 /** „před 14 min“ / „před 2 h“ (oranžově, když data z hodinek nepřišla přes 2 h) */
 const syncAgo = (t) => { const m = Math.max(0, Math.round((Date.now() - t) / 60000)); const txt = m < 60 ? `před ${m} min` : m < 48 * 60 ? `před ${Math.round(m / 60)} h` : `před ${Math.round(m / 1440)} dny`; return m > 120 ? `<span class="warn">${txt}</span>` : txt; };
 let viewDate = null; // vybraný den na Přehledu a v Zotavení (null = dnes)
+/** Nadcházející trénink na Přehledu: dnešní, nebo nejbližší další (průběh jako v Trenérovi). */
+function nextWorkoutCard(n, today) {
+  if (!n) return "";
+  const tomorrow = new Date(new Date(today + "T12:00").getTime() + 864e5).toISOString().slice(0, 10);
+  const when = n.date === today ? "Dnešní trénink" : n.date === tomorrow ? "Zítřejší trénink" : `Trénink · ${dayDm(n.date)}`;
+  const kind = [SPORT_NAME[n.sport === "ride" ? "ride" : n.sport]?.toLowerCase().replace("silniční kolo", "kolo"), n.indoor ? "trenažér" : ""].filter(Boolean).join(" · ");
+  const sub = [n.minutes ? dur(n.minutes * 60) : "", n.load ? `zátěž ${num(n.load)}` : "", n.targetText ? esc(n.targetText) : ""].filter(Boolean).join(" · ");
+  return `<section class="card c12 nxw"><header class="nxw-h"><span class="nxw-l">${when}</span><span class="nxw-k">${tSportIco(n.sport)} ${esc(kind)}</span></header>
+    <h3 class="nxw-t">${esc(n.name)}</h3>${sub ? `<div class="sub">${sub}</div>` : ""}
+    ${n.workout ? workoutSvg(n.workout, n.ftp) : ""}
+    <div class="btns"><a class="btn pri" href="#/trener" data-tfocus="${n.date}" data-tmode="peek">Otevřít trénink</a><a class="btn link" href="#/trener" data-tfocus="${n.date}" data-tmode="edit">Upravit</a></div></section>`;
+}
+/** den, na který se má Trenér po příchodu z Přehledu posunout (a případně otevřít úpravu) */
+let tFocus = null;
+document.addEventListener("click", (e) => { const a = e.target.closest?.("[data-tfocus]"); if (!a) return; tFocus = { date: a.dataset.tfocus, mode: a.dataset.tmode }; tOpen = a.dataset.tmode === "edit" ? a.dataset.tfocus : null; });
+function applyTFocus(el) {
+  const f = tFocus; tFocus = null;
+  const row = f && el.querySelector(`.tday[data-day="${f.date}"]`);
+  if (!row) return;
+  if (f.mode === "peek" && !row.classList.contains("open")) row.classList.add("peek");
+  row.scrollIntoView({ block: "center" });
+}
+/** Trasa aktivity jako svítící čára v podkladu karty (bez mapy): ~160 bodů, šířka zkrácená podle zeměpisné šířky. */
+function routeGlowSvg(route) {
+  const pts = (route || []).filter((p) => p && isFinite(p[0]) && isFinite(p[1]));
+  if (pts.length < 10) return "";
+  const step = Math.max(1, Math.floor(pts.length / 160));
+  const sp = pts.filter((_, i) => i % step === 0 || i === pts.length - 1);
+  const lats = sp.map((p) => p[0]), lons = sp.map((p) => p[1]);
+  const la0 = Math.min(...lats), la1 = Math.max(...lats), lo0 = Math.min(...lons), lo1 = Math.max(...lons);
+  const k = Math.cos((((la0 + la1) / 2) * Math.PI) / 180);
+  const w = Math.max(1e-6, (lo1 - lo0) * k), h = Math.max(1e-6, la1 - la0);
+  const S = 100 / Math.max(w, h), W = w * S, H = h * S;
+  const d = sp.map((p, i) => `${i ? "L" : "M"}${((p[1] - lo0) * k * S).toFixed(1)} ${((la1 - p[0]) * S).toFixed(1)}`).join("");
+  return `<svg viewBox="-6 -6 ${(W + 12).toFixed(1)} ${(H + 12).toFixed(1)}" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><path class="rg-glow" d="${d}"/><path class="rg-line" d="${d}"/></svg>`;
+}
+async function routeGlow(box, id) {
+  if (!box) return;
+  try { const s = await api(`activity/${id}/streams`); const svg = routeGlowSvg(s.route); if (svg) { box.innerHTML = svg; box.classList.add("on"); } } catch {}
+}
 async function pagePrehled(el) {
   const d = await api("overview" + (viewDate ? `?date=${viewDate}` : ""));
   if (!d.isToday) {
@@ -1077,14 +1117,16 @@ async function pagePrehled(el) {
   // 5) poslední aktivita + počasí
   const la = d.lastActivity;
   const laCard = la
-    ? card("c12 lacard", "Poslední aktivita", "", `<a class="lastact" href="#/aktivita/${la.id}"><span class="big-ico">${SPORT_ICON[la.sport] || ic("ostatni")}</span><div><b>${esc(la.name || SPORT_NAME[la.sport])}</b><div class="sub">${dayDm(la.date)}${la.plan ? ` · plán ${la.compliance ? `${num(la.compliance)} %` : "✓"}` : ""}</div></div><span class="go">→</span></a>
+    ? card("c12 lacard", "Poslední aktivita", "", `<div class="la-route" aria-hidden="true"></div><a class="lastact" href="#/aktivita/${la.id}"><span class="big-ico">${SPORT_ICON[la.sport] || ic("ostatni")}</span><div><b>${esc(la.name || SPORT_NAME[la.sport])}</b><div class="sub">${dayDm(la.date)}${la.plan ? ` · plán ${la.compliance ? `${num(la.compliance)} %` : "✓"}` : ""}</div></div><span class="go">→</span></a>
       <div class="la2"><div class="la2-main">${la.km ? `<div><span>Vzdálenost</span><b>${num(la.km, 1)}<small> km</small></b></div>` : ""}<div><span>Čas</span><b>${hU(la.moving_s)[0]}<small> ${hU(la.moving_s)[1]}</small></b></div></div><div class="la2-sub">${[la.elev ? `<span><b>${num(la.elev)}</b> m</span>` : "", la.np ? `<span><b>${num(la.np)}</b> W</span>` : "", la.avg_hr ? `<span><b>${num(la.avg_hr)}</b> bpm</span>` : "", la.load != null ? `<span>zátěž <b>${num(la.load)}</b></span>` : ""].filter(Boolean).join("")}</div></div>`)
     : card("c12", "Poslední aktivita", "", `<div class="empty">Žádná aktivita za 90 dní.</div>`);
 
   const longDate = new Date(d.date + "T12:00").toLocaleDateString("cs-CZ", { weekday: "long", day: "numeric", month: "long" });
   el.innerHTML = `<div class="head"><div><h1>${greeting(d.hour)}${d.name ? `, <span class="acc">${esc(d.name)}</span>` : ""}</h1><div class="sub"><span class="plong">${longDate[0].toUpperCase() + longDate.slice(1)}</span>${d.isToday ? `<span id="watchAt">${d.lastSync ? ` · ${ic("sync")} ${syncAgo(new Date(d.lastSync).getTime())}` : ""}</span>` : ""}</div></div></div>
   <div class="pbar">${dateNav(d.date, d.minDate, d.todayDate, "pnav", true)}${d.isToday ? weatherPill(d.weatherNow) : d.weatherDay ? weatherDayPill(d.weatherDay) : ""}${statusPill(d.status)}</div>
-  <div class="grid prehled">${dnes}${sleepCard}${tiles}${bbCard}${hrCard}${laCard}</div>`;
+  ${d.carry ? `<p class="carry">${ic("noc")} Kroužky, spánek a dlaždice jsou ze včerejška (${dayDm(d.carry)}) – dnešní data přijdou po synchronizaci hodinek ráno.</p>` : ""}
+  <div class="grid prehled">${dnes}${d.isToday && !paused ? nextWorkoutCard(d.next, d.todayDate) : ""}${sleepCard}${tiles}${bbCard}${hrCard}${laCard}</div>`;
+  if (la && !["indoor", "strength", "mobility"].includes(la.sport)) routeGlow(el.querySelector(".la-route"), la.id);
   el.querySelector("#aiDay")?.addEventListener("click", () => openAiPanel({ title: `Den ${dayDm(d.date)}`,
     extra: [`DEN ${d.date}${d.isToday ? " (dnes)" : ""}`, `Zotavení ${r.score ?? "?"} % (${r.label})${r.scoreDrags?.length ? `; snižuje: ${r.scoreDrags.join(", ")}` : ""}${r.scoreBoosts?.length ? `; zvyšuje: ${r.scoreBoosts.join(", ")}` : ""}`, r.reasons?.length ? `Důvody: ${r.reasons.join("; ")}` : "", d.sleep ? `Spánek: skóre ${d.sleep.score}, ${dur(d.sleep.durationS)}, potřeba ${d.sleep.needMin ? dur(d.sleep.needMin * 60) : "?"}` : "", `Energie: teď ${d.bb.latest ?? "?"}, max dne ${d.bb.max ?? "?"}`, `VST ${d.hrv.today ?? "?"} ms (norma ${d.hrv.norm ? `${d.hrv.norm.mean}±${d.hrv.norm.sd}` : "?"}), klidový tep ${d.rhr.today ?? "?"} (norma ${d.rhr.norm?.mean ?? "?"}), stres ${d.stress.avg ?? "?"}`, `Zátěž dne ${d.strain.today}, včera ${d.strain.yesterday}, 7 dní ${d.strain.load7 ?? d.fitPast?.load7 ?? "?"}; forma ${num(d.strain.form, 1)}`, (d.acts || []).length ? `Aktivity dne: ${d.acts.map((x) => `${x.name} ${dur(x.moving_s || 0)} zátěž ${x.load}`).join("; ")}` : "Aktivity dne: žádné"].filter(Boolean).join("\n"),
     ask: `Zhodnoť ${d.isToday ? "můj dnešní den" : `den ${dayDm(d.date)}`}: zotavení, spánek, energii a zátěž. Vysvětli souvislosti (např. jestli nižší zotavení plyne z předchozího tréninku, spánku nebo stresu) a co z toho plyne pro trénink.` }));
@@ -3469,19 +3511,19 @@ function loginPage(el) {
     e.preventDefault();
     const fd = new FormData(e.target), msg = el.querySelector("#loginMsg");
     msg.textContent = "Přihlašuji…";
-    try { await postAuth("login", { username: fd.get("username"), password: fd.get("password") }); cache.clear(); location.hash = "#/prehled"; route(); }
+    try { await postAuth("login", { username: fd.get("username"), password: fd.get("password") }); cache.clear(); location.hash = "#/prehled"; route(); if (!(await onboardAsk())) alertsAsk(); }
     catch (err) { msg.textContent = err.message; }
   });
 }
 function joinPage(el, token) {
   el.innerHTML = `<div class="authbox card"><div class="auth-ico"><img src="apple-touch-icon.png" alt=""></div><h1>Vítej v Kadenci</h1><p class="sub">Založ si účet. Tvoje data uvidíš jen ty.</p>
     <form id="joinF" class="authf"><label>Jak ti mám říkat<input name="name" placeholder="např. Honza" required></label><label>Přihlašovací jméno<input name="username" autocapitalize="none" placeholder="honza" required pattern="[a-z0-9._-]{3,30}"></label><label>Heslo (aspoň 6 znaků)<input name="password" type="password" autocomplete="new-password" minlength="6" required></label><button class="btn pri" type="submit">Založit účet</button><p class="note" id="joinMsg"></p></form>
-    <p class="note">Po založení zadáš v Nastavení svůj Garmin klíč (a případně intervals.icu) – pak se začnou stahovat tvoje data.</p></div>`;
+    <p class="note">Po založení tě provedu připojením Garminu a intervals.icu – pak se začnou stahovat tvoje data.</p></div>`;
   el.querySelector("#joinF").addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target), msg = el.querySelector("#joinMsg");
     msg.textContent = "Zakládám účet…";
-    try { await postAuth("join", { token, name: fd.get("name"), username: String(fd.get("username")).toLowerCase(), password: fd.get("password") }); cache.clear(); location.hash = "#/nastaveni"; route(); }
+    try { await postAuth("join", { token, name: fd.get("name"), username: String(fd.get("username")).toLowerCase(), password: fd.get("password") }); cache.clear(); location.hash = "#/prehled"; route(); onboardAsk(); }
     catch (err) { msg.textContent = err.message; }
   });
 }
@@ -3802,6 +3844,7 @@ async function route() {
   if (seq !== routeSeq) return;
   addAiButton(el);
   main.replaceChildren(el);
+  if (page === "trener" && tFocus) { requestAnimationFrame(() => applyTFocus(el)); fitCells(el); loadAiNotes(el); return; }
   loadAiNotes(el);
   requestAnimationFrame(() => fitCells(el));
   const back = scrollMem.get(location.hash);
@@ -3847,6 +3890,84 @@ async function rpeAsk() {
       setTimeout(rpeAsk, 400); // další neohodnocená aktivita
     } catch (e) { fail(e); b.querySelectorAll("button").forEach((y) => (y.disabled = false)); }
   }));
+}
+// ---------- průvodce připojením (po registraci: Garmin klíč, pak intervals.icu) ----------
+const obLink = (href, text) => `<a href="${href}" target="_blank" rel="noopener">${text} ${ic("odkaz")}</a>`;
+const OB_STEPS = {
+  garminHow: () => `<h2>1 · Garmin klíč</h2><p class="sub">Kadence čte tvoje data (aktivity, spánek, VST, tep) přes oficiální Garmin Personal API. Klíč si vytvoříš sám, bez žádosti a schvalování.</p>
+    <ol class="ob-steps"><li>Otevři ${obLink("https://connect.garmin.com/", "Garmin Connect")} na webu (v prohlížeči, ne v aplikaci) a přihlas se.</li>
+    <li>Otevři <b>Nastavení</b> (Settings) a dole v seznamu vyber <b>Personal API Key</b>.</li>
+    <li><b>Create Key</b>, platnost zvol <b>1 rok</b> a potvrď.</li>
+    <li>Klíč <b>hned zkopíruj</b> – Garmin ho ukáže jen jednou. (Ztracený klíč smažeš a vytvoříš nový.)</li></ol>
+    <div class="btns"><button class="btn pri" data-ob="garminKey">Mám klíč – vložit</button><button class="btn link" data-ob-later>Později</button></div>`,
+  garminKey: () => `<h2>Vlož Garmin klíč</h2><form class="authf" data-obf="garmin"><label>Garmin API klíč<input name="k" type="password" autocomplete="off" required></label>
+    <button class="btn pri" type="submit">Uložit a vyzkoušet</button><p class="note" data-obmsg role="status"></p></form>
+    <p class="note">Klíč se uloží zašifrovaný. Změníš ho kdykoli v Nastavení → Připojení. Měsíc před vypršením tě upozorním.</p>
+    <div class="btns"><button class="btn link" data-ob="garminHow">← Návod</button></div>`,
+  icuHow: () => `<h2>2 · intervals.icu (doporučeno)</h2><p class="sub">Přes intervals.icu jde plán trenéra do kalendáře a do hodinek a odtud se berou okruhy jízd, kondice a splnění tréninku. Je zdarma.</p>
+    <ol class="ob-steps"><li>Založ si účet na ${obLink("https://intervals.icu/", "intervals.icu")} (jde to i přes Google).</li>
+    <li>V ${obLink("https://intervals.icu/settings", "Settings")} u <b>Garmin Connect</b> klikni na <b>Connect</b> a zapni <b>Upload planned workouts</b> – naplánované tréninky pak dorazí do hodinek.</li>
+    <li>Tamtéž zapni <b>Use laps for intervals</b>, ať se okruhy z hodinek načtou.</li>
+    <li>Úplně dole v Settings je <b>Developer Settings</b>: tam najdeš <b>Athlete ID</b> (např. i123456) a tlačítko pro <b>API Key</b>.</li></ol>
+    <div class="btns"><button class="btn pri" data-ob="icuKey">Mám účet – vložit klíč</button><button class="btn link" data-ob-skip>Teď ne</button></div>`,
+  icuKey: () => `<h2>Vlož intervals.icu</h2><form class="authf" data-obf="icu"><label>Athlete ID<input name="id" autocapitalize="none" autocomplete="off" placeholder="i123456" required pattern="[iI]?[0-9]{1,10}"></label><label>API Key<input name="k" type="password" autocomplete="off" required></label>
+    <label class="ob-tg"><input type="checkbox" name="sync" checked> Zapisovat plán trenéra do intervals.icu (a tím do hodinek)</label>
+    <button class="btn pri" type="submit">Uložit a vyzkoušet</button><p class="note" data-obmsg role="status"></p></form>
+    <div class="btns"><button class="btn link" data-ob="icuHow">← Návod</button></div>`,
+  done: () => `<h2>Hotovo</h2><p class="sub">Data se začnou stahovat během pár minut, historie postupně na pozadí. Klíče změníš v Nastavení → Připojení.</p><div class="btns"><button class="btn pri" data-ob-close>Pokračovat</button></div>`,
+};
+/** Uloží klíč z průvodce a otestuje připojení; vrací text výsledku testu (Garmin nebo intervals.icu). */
+async function obSave(kind, fd) {
+  const put = (key, value) => api("secrets", { method: "POST", body: JSON.stringify({ key, value }) });
+  if (kind === "garmin") {
+    await put("GARMIN_API_KEY", String(fd.get("k")).trim());
+    await api("settings", { method: "POST", body: JSON.stringify({ garmin_key_created: localToday() }) });
+  } else {
+    const id = String(fd.get("id")).trim().toLowerCase();
+    await put("INTERVALS_ATHLETE_ID", id.startsWith("i") ? id : "i" + id);
+    await put("INTERVALS_API_KEY", String(fd.get("k")).trim());
+  }
+  const t = await api("secrets/test", { method: "POST" });
+  return kind === "garmin" ? t.garmin : t.intervals;
+}
+/** Průvodce se ukáže, dokud chybí Garmin klíč (a intervals.icu, dokud ho nepřeskočíš). „Později“ = znovu při dalším otevření. Vrací true, když se ukázal. */
+async function onboardAsk() {
+  if (document.querySelector(".obmodal")) return true;
+  const sec = await api("secrets").catch(() => null);
+  if (!Array.isArray(sec)) return false;
+  const has = (k) => !!sec.find((x) => x.key === k)?.source;
+  let icuSkip = false, later = false;
+  try { icuSkip = localStorage.getItem("obIcuSkip") === "1"; later = sessionStorage.getItem("obLater") === "1"; } catch {}
+  const needGarmin = !has("GARMIN_API_KEY"), needIcu = !has("INTERVALS_API_KEY") || !has("INTERVALS_ATHLETE_ID");
+  if (later || (!needGarmin && (!needIcu || icuSkip))) return false;
+  const ov = document.createElement("div");
+  ov.className = "modal obmodal";
+  ov.setAttribute("role", "dialog");
+  ov.setAttribute("aria-label", "Připojení dat");
+  const close = () => { ov.remove(); cache.clear(); alertsAsk(); };
+  const show = (step) => {
+    ov.innerHTML = `<div class="modal-in ob">${OB_STEPS[step]()}</div>`;
+    ov.querySelectorAll("[data-ob]").forEach((b) => b.addEventListener("click", () => show(b.dataset.ob)));
+    ov.querySelector("[data-ob-later]")?.addEventListener("click", () => { try { sessionStorage.setItem("obLater", "1"); } catch {} close(); });
+    ov.querySelector("[data-ob-skip]")?.addEventListener("click", () => { try { localStorage.setItem("obIcuSkip", "1"); } catch {} close(); });
+    ov.querySelector("[data-ob-close]")?.addEventListener("click", close);
+    ov.querySelector("form[data-obf]")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = e.target, kind = f.dataset.obf, msg = f.querySelector("[data-obmsg]"), btn = f.querySelector("[type=submit]");
+      btn.disabled = true; msg.textContent = "Ukládám a zkouším připojení…";
+      try {
+        const res = await obSave(kind, new FormData(f));
+        if (!/^připojeno/.test(res)) { msg.textContent = `Uloženo, ale připojení nejde (${res}). Zkontroluj klíč a vlož ho znovu.`; btn.disabled = false; return; }
+        if (kind === "icu") await api("settings", { method: "POST", body: JSON.stringify({ icu_sync: new FormData(f).get("sync") === "on" }) });
+        cache.clear();
+        show(kind === "garmin" && needIcu && !icuSkip ? "icuHow" : "done");
+      } catch (err) { msg.textContent = `Nepovedlo se: ${err.message}`; btn.disabled = false; }
+    });
+    ov.querySelector("form input")?.focus();
+  };
+  show(needGarmin ? "garminHow" : "icuHow");
+  document.body.appendChild(ov);
+  return true;
 }
 // ---------- upozornění (servis, Garmin klíč, zdraví a zátěž – src/api/alerts.ts) ----------
 /** Bublina po otevření stránky; „Rozumím“ = stejné upozornění se už neukáže. Po zavření se zeptá na RPE. */
@@ -3899,4 +4020,4 @@ async function viewBar() {
 }
 route();
 // upozornění a hodnocení náročnosti jen na vlastním účtu (ne při prohlížení cizího)
-viewBar().then((v) => { if (!v) alertsAsk(); });
+viewBar().then(async (v) => { if (!v && !(await onboardAsk())) alertsAsk(); });

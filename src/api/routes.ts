@@ -17,6 +17,7 @@ import { STATUS_LABEL, coaching, strainScore, typicalWake, type StatusKind } fro
 import { misc } from "./misc";
 import { addDays, dow, localNow, mondayOf, tzOffsetMin } from "../lib/time";
 import { baseFor, nightsBefore, sleepBankMin } from "../core/sleepCalc";
+import { carryDay } from "../core/carryDay";
 import { constraintNoteOk } from "../core/coach/common";
 import { RPE_ASK_DAYS, RPE_LABEL, rpeOk, rpeToAsk } from "../core/rpe";
 import { addConstraint, applyChanges, claimProposal, finishProposal, getProposal, openProposal, removeConstraint, saveProposal } from "../plan/proposals";
@@ -102,6 +103,9 @@ api.get("/overview", async (c) => {
   const ctx = await withHistory(c.env, ctx0, D);
   const r = await readiness(ctx);
   const tw = ctx.well.find((w) => w.date === D) ?? null;
+  // po půlnoci, než přijdou ranní data: kroužky, dlaždice a spánek ze včerejška (jen zobrazení, src/core/carryDay.ts)
+  const carry = D === T ? carryDay(ctx.well, T) : null;
+  const sw = carry ? ctx.well.find((w) => w.date === carry) ?? null : tw;
   // dlaždice: 30 dní (podrobnější graf s pásmem normy)
   // dlaždice: 90 dní – zobrazí se posledních 30, starší dny slouží pro pásmo normy den po dni
   const last14 = ctx.well.filter((w) => w.date > addDays(D, -90) && w.date <= D);
@@ -114,7 +118,7 @@ api.get("/overview", async (c) => {
     if (k === "sleep_resp") return { mean: Math.round(x.mean * 10) / 10, sd: Math.round(Math.max(x.sd, 0.6) * 10) / 10, q: 1 };
     return { mean: Math.round(x.mean * 10) / 10, sd: Math.round(x.sd * 10) / 10 };
   };
-  const sleep = sleepReport(tw as any, ctx.well.filter((w) => w.date <= D) as any);
+  const sleep = sleepReport(sw as any, ctx.well.filter((w) => w.date <= (carry ?? D)) as any);
   const lastAct = [...ctx.acts].reverse().find((a) => a.date <= D && (a.sport !== "other" || (a.moving_s ?? 0) > 600)) ?? null;
   const todayLoad = Math.round(ctx.acts.filter((a) => a.date === D).reduce((s, a) => s + (a.load ?? 0), 0));
   const yLoad = Math.round(ctx.acts.filter((a) => a.date === addDays(D, -1)).reduce((s, a) => s + (a.load ?? 0), 0));
@@ -132,12 +136,15 @@ api.get("/overview", async (c) => {
   const fit = r.fitness;
   const day = r.today.day;
   const wm = weatherMap(ctx, T, 7);
-  const stressDist = (() => { try { return tw?.stress_dist ? JSON.parse(tw.stress_dist) : null; } catch { return null; } })();
+  const stressDist = (() => { try { return sw?.stress_dist ? JSON.parse(sw.stress_dist) : null; } catch { return null; } })();
   const vsN = (v: number | null | undefined, n: { mean: number; sd: number } | null, lowGood = false) =>
     v == null || !n ? null : v < n.mean - n.sd ? (lowGood ? "Nízký" : "Pod normou") : v > n.mean + n.sd ? (lowGood ? "Zvýšený" : "Nad normou") : "Normální";
   const past = D !== T;
   // zpětný den: zotavení spočítané k tomu dni (data jen do toho dne)
-  const recD = past ? recoveryFor({ ...ctx, T: D, well: ctx.well.filter((w) => w.date <= D), acts: ctx.acts.filter((a) => a.date <= D) } as any) : r.recovery;
+  const recAt = (day: string) => recoveryFor({ ...ctx, T: day, well: ctx.well.filter((w) => w.date <= day), acts: ctx.acts.filter((a) => a.date <= day) } as any);
+  const recD = past ? recAt(D) : r.recovery;
+  // kroužek zotavení po půlnoci: včerejší skóre (semafor a plán dál čekají na dnešní data)
+  const recShow = carry ? recAt(carry) : recD;
   // skóre: Zátěž · Zotavení · Spánek
   const st = statusOn(ctx.s, D);
   const ctlY = ctx.metrics.find((m) => m.date === addDays(D, -1))?.ctl ?? fit.ctl ?? null;
@@ -149,6 +156,7 @@ api.get("/overview", async (c) => {
   const coach = coaching({
     hour: past ? 21 : ctx.now.hh,
     past,
+    carried: !!carry,
     status: st.kind as StatusKind,
     statusUntil: st.until,
     // zpětný den bez dat z hodinek: žádné „odpočatý“ z ničeho
@@ -166,6 +174,10 @@ api.get("/overview", async (c) => {
     remLow: !!sleep && sleep.stages.find((x) => x.key === "rem")?.tone === "bad",
     deepLow: !!sleep && sleep.stages.find((x) => x.key === "deep")?.tone === "bad",
   });
+  // nadcházející trénink (karta na Přehledu): dnešní, a když je dnes volno nebo odjeto, nejbližší další
+  const doneToday = r.today.done.length > 0;
+  const nx = past ? null : r.plan.days.find((x) => x.name && x.kind !== "blocked" && (x.date > T || (x.date === T && !doneToday))) ?? null;
+  const next = nx ? { date: nx.date, name: nx.name, sport: nx.sport, indoor: nx.indoor, minutes: nx.durationMin, load: nx.load, targetText: nx.targetText, workout: nx.workout, ftp: nx.sport === "ride" ? ctx.s.ftp ?? null : null } : null;
   const hourNow = ctx.hours.find((h) => h.time === `${T}T${String(ctx.now.hh).padStart(2, "0")}:00`) ?? null;
   return c.json({
     status: { ...st, label: STATUS_LABEL[st.kind as StatusKind] },
@@ -181,6 +193,8 @@ api.get("/overview", async (c) => {
     date: D,
     todayDate: T,
     isToday: !past,
+    carry,
+    next,
     minDate: await firstDay(c.env, T),
     hrv14,
     sleepBal,
@@ -191,13 +205,13 @@ api.get("/overview", async (c) => {
       rhrPast: { today: tw?.rhr ?? null, rating: vsN(tw?.rhr, nm("rhr"), true), norm: nm("rhr"), series: series("rhr") },
       fitPast: { ...pastFit, load7 },
     } : {}),
-    readiness: { state: recD.state, label: recD.stateLabel, score: recD.score, scoreDrags: recD.scoreDrags, scoreBoosts: recD.scoreBoosts, reasons: [...recD.flags.counted, ...recD.reasons], decision: r.today.decision, why: r.today.decisionWhy, missing: r.missingData },
-    bb: { max: tw?.bb_max ?? null, min: tw?.bb_min ?? null, latest: tw?.bb_latest ?? null, charged: tw?.bb_charged ?? null, drained: tw?.bb_drained ?? null, series: last14.map((w) => ({ date: w.date, max: w.bb_max, min: w.bb_min })), norm: nm("bb_max") },
-    hrv: { today: r.recovery.hrv.today, rating: r.recovery.hrv.rating, flag: r.recovery.hrv.flag, range: r.recovery.hrv.rangeText, avg7: r.recovery.hrv.avg7, series: series("hrv"), norm: nm("hrv") },
-    rhr: { today: r.recovery.rhr.today, rating: r.recovery.rhr.rating, flag: r.recovery.rhr.flag, range: r.recovery.rhr.rangeText, avg7: r.recovery.rhr.avg7, series: series("rhr"), norm: nm("rhr") },
-    stress: { avg: tw?.stress_avg ?? null, max: tw?.stress_max ?? null, dist: stressDist, series: series("stress_avg"), norm: nm("stress_avg") },
-    steps: { today: tw?.steps ?? null, goal: 5000, series: series("steps"), norm: nm("steps"), floors: tw?.floors_up ?? null },
-    resp: { today: tw?.sleep_resp ?? null, series: series("sleep_resp"), norm: nm("sleep_resp" as any) },
+    readiness: { state: recD.state, label: recD.stateLabel, score: recShow.score, scoreDrags: recShow.scoreDrags, scoreBoosts: recShow.scoreBoosts, reasons: [...recD.flags.counted, ...recD.reasons], decision: r.today.decision, why: r.today.decisionWhy, missing: r.missingData },
+    bb: { max: (tw?.bb_latest != null ? tw : sw)?.bb_max ?? null, min: (tw?.bb_latest != null ? tw : sw)?.bb_min ?? null, latest: tw?.bb_latest ?? sw?.bb_latest ?? null, charged: (tw?.bb_latest != null ? tw : sw)?.bb_charged ?? null, drained: (tw?.bb_latest != null ? tw : sw)?.bb_drained ?? null, series: last14.map((w) => ({ date: w.date, max: w.bb_max, min: w.bb_min })), norm: nm("bb_max") },
+    hrv: { today: carry ? sw?.hrv ?? null : r.recovery.hrv.today, rating: r.recovery.hrv.rating, flag: r.recovery.hrv.flag, range: r.recovery.hrv.rangeText, avg7: r.recovery.hrv.avg7, series: series("hrv"), norm: nm("hrv") },
+    rhr: { today: carry ? sw?.rhr ?? null : r.recovery.rhr.today, rating: r.recovery.rhr.rating, flag: r.recovery.rhr.flag, range: r.recovery.rhr.rangeText, avg7: r.recovery.rhr.avg7, series: series("rhr"), norm: nm("rhr") },
+    stress: { avg: sw?.stress_avg ?? null, max: sw?.stress_max ?? null, dist: stressDist, series: series("stress_avg"), norm: nm("stress_avg") },
+    steps: { today: sw?.steps ?? null, goal: 5000, series: series("steps"), norm: nm("steps"), floors: sw?.floors_up ?? null },
+    resp: { today: sw?.sleep_resp ?? null, series: series("sleep_resp"), norm: nm("sleep_resp" as any) },
     sleep,
     sleepSeries: last14.map((w) => ({ date: w.date, s: w.sleep_s, score: w.sleep_score, deep: w.deep_s, rem: w.rem_s, light: w.light_s, awake: w.awake_s })),
     strain: { today: todayLoad, yesterday: yLoad, load7: fit.load7, ctl: fit.ctl, atl: fit.atl, form: fit.form, zone: fit.form != null ? formZone(fit.form) : null, ramp: fit.ramp },
