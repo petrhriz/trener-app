@@ -2071,7 +2071,7 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 /* přepínač dne i počasí mají pevnou šířku (nemění se podle dne ani podle počasí); stav = jen ikona a název */
 .pbar .cdnav { width: auto; flex: none; align-items: center; justify-content: space-between; gap: 2px; padding: 4px; border-radius: 16px; box-shadow: var(--shadow); }
 .pbar .cdnav .dpick { flex: none; width: 5.6em; overflow: hidden; }
-.pbar .pillbig:not(#statusBtn) { flex: none; width: 150px; min-width: 0; overflow: hidden; }
+.pbar .pillbig:not(#statusBtn) { flex: none; width: 170px; min-width: 0; overflow: hidden; }
 .pbar .pillbig:not(#statusBtn) .pb-t { min-width: 0; overflow: hidden; }
 .pbar .pillbig:not(#statusBtn) .pb-t > small { display: block; overflow: hidden; text-overflow: ellipsis; }
 .cdnav .btn.sm { flex: none; width: 34px; min-width: 34px; height: 34px; padding: 0; border-radius: 11px; border: 0; background: var(--card2); font-size: 17px; }
@@ -2086,7 +2086,7 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
   .pbar .cdnav .dpick { width: 4.2em; padding: 4px 0; }
   .pbar .cdnav b { font-size: 13px; }
   .pbar .cdnav .btn.sm { width: 28px; min-width: 28px; height: 32px; }
-  .pbar .pillbig:not(#statusBtn) { width: 96px; }
+  .pbar .pillbig:not(#statusBtn) { width: 124px; }
   .pbar .pb-ico { width: 30px; height: 30px; }
   .pbar .pb-ico img.wxi { width: 27px; height: 27px; }
   .pbar .pb-t b { font-size: 14px; }
@@ -2184,11 +2184,18 @@ span.ic { display: inline-flex !important; color: var(--c) !important; overflow:
 .gc-ico .ic { font-size: 22px; }
 .gearsel .ic { font-size: 15px; }
 
-/* Plán na 4 týdny: orientační týdny jen jako soupis (bez dnů a časů) */
-.cc-sum { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.cc-it { display: inline-flex; align-items: baseline; gap: 4px; padding: 5px 10px; border-radius: 10px; background: var(--card2); font-size: 13px; }
-.cc-it.r-q { box-shadow: inset 0 -3px 0 var(--z5); background: color-mix(in srgb, var(--z5) 12%, var(--card)); }
-.cc-it.r-e { box-shadow: inset 0 -3px 0 var(--z2); background: color-mix(in srgb, var(--z2) 11%, var(--card)); }
-.cc-it.tot { background: transparent; color: var(--muted); padding-left: 2px; }
+/* Plán na 4 týdny: orientační týdny jen jako soupis (druh, sport, délka – bez dnů) */
+.cc-sum { display: flex; flex-direction: column; gap: 6px; }
+.cc-trs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.cc-tr { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 7px 10px 7px 8px; border-radius: 12px; background: var(--tint, var(--card2)); box-shadow: inset 3px 0 0 var(--rc, var(--line)); }
+.cc-tr.r-q { --rc: var(--z5); --tint: color-mix(in srgb, var(--z5) 10%, var(--card)); }
+.cc-tr.r-e { --rc: var(--z2); --tint: color-mix(in srgb, var(--z2) 9%, var(--card)); }
+.cc-tr-i { display: flex; color: var(--rc); }
+.cc-tr-i svg { width: 18px; height: 18px; }
+.cc-tr-t { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.cc-tr-t b { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cc-tr-t small { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cc-tr-d { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cc-foot { margin: 0; font-size: 12px; color: var(--muted); }
 /* odhad sacharidů u tréninku */
 .tcarb { margin: 8px 0 0; font-size: 13px; }

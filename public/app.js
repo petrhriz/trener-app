@@ -784,7 +784,7 @@ const STATUS = { active: [ic("aktivni"), "Aktivní", "ok"], sick: [ic("nemocny")
 const untilText = (st) => (st.kind === "active" ? "Do změny" : st.until ? `do ${dayDm(st.until)}` : "Do odvolání");
 function statusPill(st) {
   const [ico, label, tone] = STATUS[st.kind] || STATUS.active;
-  return `<button class="pillbig st-${tone}" id="statusBtn" aria-label="stav ${label}${st.kind === "active" ? "" : ` ${untilText(st)}`} – změnit" title="${label}${st.kind === "active" ? "" : ` · ${untilText(st)}`}"><span class="pb-ico">${ico}</span><span class="pb-t"><b>${label}</b></span></button>`;
+  return `<button class="pillbig st-${tone}" id="statusBtn" aria-label="stav ${label}${st.kind === "active" ? "" : ` ${untilText(st)}`} – změnit" title="${label}${st.kind === "active" ? "" : ` · ${untilText(st)}`}"><span class="pb-ico">${ico}</span><span class="pb-t"><b>Stav</b></span></button>`;
 }
 /** WMO kód počasí → ikona */
 /** WMO kód (Open-Meteo) → ikona; night = po setmění jasno jako měsíc */
@@ -1167,19 +1167,16 @@ function coachCalendar(d, co, sel, detail) {
   };
   const n1 = (v) => (v == null ? DASH : num(v, 1));
   const W0 = co.horizon[0].weekStart;
-  /** orientační týden: jen soupis, co se má odjet – dny a časy dostane, až bude příští týden (pak se upravuje i podle počasí) */
-  const hmTot = (m) => `${Math.floor(m / 60)}:${String(Math.round(m % 60)).padStart(2, "0")} h`;
-  const SPORT_CZ = { run: "běh", xc_ski: "běžky", walk: "chůze" };
+  /** orientační týden: jen soupis, co se má odjet (druh, sport, délka) – dny a časy dostane, až bude příští týden */
+  const SUM_ROLE = { key: ["Kvalita", "q", 0], long: ["Dlouhý Z2", "e", 1], endurance: ["Z2", "e", 2] };
   const summary = (w) => {
-    const tr = w.days.filter((x) => !x.blocked && x.role !== "rest");
+    const tr = w.days.filter((x) => !x.blocked && x.role !== "rest" && SUM_ROLE[x.role]).sort((a, b) => SUM_ROLE[a.role][2] - SUM_ROLE[b.role][2] || (b.minutes || 0) - (a.minutes || 0));
     const blk = w.days.filter((x) => x.blocked).length;
     const blkTxt = blk ? ` · ${blk} ${blk === 1 ? "den" : "dny"} nelze` : "";
-    if (!tr.length) return `<div class="cc-sum"><span class="cc-it tot">Bez tréninku${blkTxt}</span></div>`;
-    const n = (r) => tr.filter((x) => x.role === r).length;
-    const items = [[n("key"), "kvalita", "r-q"], [n("long"), "dlouhý Z2", "r-e"], [n("endurance"), "Z2", "r-e"]].filter(([c]) => c > 0);
-    const other = [...new Set(tr.map((x) => SPORT_CZ[x.sport]).filter(Boolean))];
+    if (!tr.length) return `<div class="cc-sum"><p class="cc-foot">Bez tréninku${blkTxt}</p></div>`;
     const mins = tr.reduce((t, x) => t + (x.minutes || 0), 0);
-    return `<div class="cc-sum">${items.map(([c, l, rc]) => `<span class="cc-it ${rc}"><b>${c}×</b> ${l}</span>`).join("")}<span class="cc-it tot">${tr.length} ${tr.length >= 5 ? "tréninků" : "tréninky"} · ~${hmTot(mins)}${other.length ? ` · z toho ${other.join(", ")}` : ""}${blkTxt}</span></div>`;
+    const item = (x) => { const [l, rc] = SUM_ROLE[x.role]; return `<div class="cc-tr r-${rc}"><span class="cc-tr-i">${tSportIco(x.sport)}</span><span class="cc-tr-t"><b>${l}</b><small>${({ ride: "kolo", run: "běh", xc_ski: "běžky", walk: "chůze" })[x.sport] || ""}</small></span><span class="cc-tr-d">${hm(x.minutes || 0)}</span></div>`; };
+    return `<div class="cc-sum"><div class="cc-trs">${tr.map(item).join("")}</div><p class="cc-foot">${tr.length} ${tr.length >= 5 ? "tréninků" : "tréninky"} · celkem ${hm(mins)}${mins >= 60 ? " h" : ""} · dny se určí týden předem${blkTxt}</p></div>`;
   };
   const grid = (ws, orient) => `<div class="cc-r">${[0, 1, 2, 3, 4, 5, 6].map((k) => cell(addDay(ws, k), orient)).join("")}</div>`;
   const span = (ws) => `${ws.slice(5, 7) === addDay(ws, 6).slice(5, 7) ? `${Number(ws.slice(8, 10))}.` : dm(ws)}–${dm(addDay(ws, 6))}`;
@@ -1411,7 +1408,7 @@ async function pageTrener(el) {
   /** kam jde trénink přesunout: všechny budoucí dny plánu i výhledu */
   const shiftTargets = (x) => [...new Set([...p.days.map((y) => y.date), ...hzDays.map((y) => y.date)])].filter((dt) => dt >= r.date && dt !== x.date).sort().map(dayAt).filter((y) => y && y.kind !== "blocked");
   /** odhad sacharidů na trénink (podle délky a intenzity) – jen gramy */
-  const carbsHtml = (x) => (x.carbs ? `<p class="tcarb">Sacharidy: <b>~${x.carbs.total} g</b> <span class="sub">(${x.carbs.perHour} g/h)</span></p>` : "");
+  const carbsHtml = (x) => (x.carbs ? `<p class="tcarb">Sacharidy: <b>~${x.carbs.total} g</b> <span class="sub">(${x.carbs.note ? esc(x.carbs.note) : `${x.carbs.perHour} g/h`})</span></p>` : "");
   const panelHtml = (x) => {
     const ride = !!x.name;
     const q = x.kind === "quality";

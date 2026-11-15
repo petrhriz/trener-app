@@ -311,6 +311,8 @@ describe("počasí (kap. 8) a okno na jízdu", () => {
 describe("sacharidy na trénink (kap. 9)", () => {
   it("příklady z pravidel", () => {
     expect(carbsFor(60, "z2")).toBeNull();
+    expect(carbsFor(60, "quality")).toMatchObject({ total: 20, perHour: 0 });
+    expect(carbsFor(40, "quality")).toBeNull();
     expect(carbsFor(90, "z2")).toEqual({ total: 60, perHour: 40 });
     expect(carbsFor(105, "quality")).toEqual({ total: 105, perHour: 60 });
     expect(carbsFor(150, "quality")!.perHour).toBe(90);

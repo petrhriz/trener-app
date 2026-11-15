@@ -28,6 +28,7 @@ import type { Fixed, PastDay as V2Past } from "./common";
 import { type WeekTarget, TWO_KEYS_MIN_H, blockWeeksFor, historyBase, nextBlock, usualSessions, weekHistory, weekTarget } from "./budget";
 import { carbsFor } from "../nutrition";
 import { type PastDay, type SkDay, type WeekPattern, solveWeek } from "./skeleton";
+import { weatherMoves } from "./weatherMove";
 import { ROLE_INTENSITY, type Role, capsFor, loadFor, minutesFor, nameFor, relabel, stepsText } from "./sport";
 
 export interface CoachInput {
@@ -400,8 +401,33 @@ export function runCoach(inp: CoachInput): CoachPlan {
     // rozběhnutý týden: zbylé dny přesně podle pondělního plánu (dny, druh, zátěž); mění je jen ranní stav
     // (🔴 volno, 🟡 dnes bez kvality) – jinak by každodenní nové rozdělení zbytku týdne tiše ubíralo zátěž
     const pinned = k === 0 && !!monday;
-    const mDay = (d: string) => monday?.days.find((x) => x.date === d) ?? null;
     const roleWhy = new Map<string, string>();
+    // rozběhnutý týden: jízda na den, kdy má celý den pršet (nebo foukat, mrznout), se přesune na volný den téhož
+    // týdne s dobrou předpovědí – když to pravidla dovolí (jinak trenažér). Přepočítá se s každou novou předpovědí.
+    const swap = new Map<string, string>();
+    if (pinned && inp.weatherOk) {
+      const mv = weatherMoves(dates.map((d) => {
+        const m = monday!.days.find((x) => x.date === d);
+        const f = fixed.get(d);
+        const w = inp.weather.get(d) ?? null;
+        const blockedDay = !!skDays.find((x) => x.date === d)?.blocked;
+        return {
+          date: d,
+          role: m && !m.blocked && !lostDay(d) ? m.role : "rest",
+          sport: m?.sport ?? p.primary,
+          locked: !m || !!m.blocked || blockedDay || lostDay(d) || mine(d) || !!f?.rest || f?.indoor != null,
+          bad: !!w?.bad && !w.window,
+          good: !!w && !w.bad && !!w.window,
+        };
+      }), tail);
+      for (const x of mv) {
+        swap.set(x.to, x.from).set(x.from, x.to);
+        const w = inp.weather.get(x.from);
+        roleWhy.set(x.to, `přesunuto z ${dayDm(x.from)} – ${w?.text ?? "špatné počasí"}`);
+      }
+    }
+    /** den pondělního plánu (u přesunu kvůli počasí den, odkud se trénink přesunul) */
+    const mDay = (d: string) => { const src = swap.get(d) ?? d; const m = monday?.days.find((x) => x.date === src) ?? null; return m && src !== d ? { ...m, date: d } : m; };
     if (pinned) {
       for (const d of dates) {
         const m = mDay(d);
