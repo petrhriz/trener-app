@@ -1976,7 +1976,9 @@ function streamsChart(s, opts = {}) {
     }
   });
   let xl = "";
-  for (const t of niceTicks(xmin, xmax, 6)) xl += `<text class="xl" x="${X(t)}" y="${H - 6}" text-anchor="middle">${num(t)}${useKm ? " km" : " min"}</text>`;
+  // krátký úsek (okruh do pár km): popisky s desetinou, jinak by se opakovaly „1 km, 1 km, 2 km“
+  const xDec = useKm && xmax - xmin < 6 ? 1 : 0;
+  for (const t of niceTicks(xmin, xmax, 6)) xl += `<text class="xl" x="${X(t)}" y="${H - 6}" text-anchor="middle">${num(t, xDec)}${useKm ? " km" : " min"}</text>`;
   const fmtT = (sec) => `${Math.floor(sec / 3600)}:${String(Math.floor((sec % 3600) / 60)).padStart(2, "0")}:${String(Math.round(sec % 60)).padStart(2, "0")}`;
   bindHover(id, W, (cx) => {
     const v = xmin + ((cx - P.l) / (W - P.l - P.r)) * (xmax - xmin);

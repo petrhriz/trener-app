@@ -294,8 +294,11 @@ table.t tr.iv td { background: var(--accbg); }
 .seg.sm { margin-bottom: 10px; flex-wrap: wrap; }
 .seg.sm button { padding: 4px 10px; font-size: 12.5px; }
 .fs { position: fixed; inset: 0; z-index: 1500; background: var(--bg); display: flex; flex-direction: column; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
-.fs-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
-.fs-head .sub { flex: 1; }
+/* nadpis vlevo, Zavřít vpravo; nápověda „otoč telefon“ na vlastním řádku pod nimi (dlouhý nadpis ji jinak zmáčkl do sloupce písmen) */
+.fs-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-bottom: 6px; padding-top: env(safe-area-inset-top); }
+.fs-head b { flex: 1 1 0; min-width: 0; }
+.fs-head .btn { flex: none; }
+.fs-head .sub { order: 3; flex: 1 1 100%; font-size: 12px; }
 .fs-body { flex: 1; min-height: 0; overflow: auto; }
 body.noscroll { overflow: hidden; }
 @media (orientation: landscape) { .fs-head .sub { display: none; } }
@@ -2068,10 +2071,11 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 .pbar .pb-t small { font-size: 11.5px; }
 .pbar .pb-chev { margin-left: 2px; font-size: 14px; }
 .pbar #statusBtn { margin-left: auto; }
+@media (max-width: 760px) { .pbar #statusBtn { margin-left: 0; } }
 /* přepínač dne i počasí mají pevnou šířku (nemění se podle dne ani podle počasí); stav = jen ikona a název */
 .pbar .cdnav { width: auto; flex: none; align-items: center; justify-content: space-between; gap: 2px; padding: 4px; border-radius: 16px; box-shadow: var(--shadow); }
 .pbar .cdnav .dpick { flex: none; width: 5.6em; overflow: hidden; }
-.pbar .pillbig:not(#statusBtn) { flex: none; width: 170px; min-width: 0; overflow: hidden; }
+.pbar .pillbig:not(#statusBtn) { flex: 1 1 0; width: auto; max-width: 220px; min-width: 0; overflow: hidden; }
 .pbar .pillbig:not(#statusBtn) .pb-t { min-width: 0; overflow: hidden; }
 .pbar .pillbig:not(#statusBtn) .pb-t > small { display: block; overflow: hidden; text-overflow: ellipsis; }
 .cdnav .btn.sm { flex: none; width: 34px; min-width: 34px; height: 34px; padding: 0; border-radius: 11px; border: 0; background: var(--card2); font-size: 17px; }
@@ -2086,7 +2090,7 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
   .pbar .cdnav .dpick { width: 4.2em; padding: 4px 0; }
   .pbar .cdnav b { font-size: 13px; }
   .pbar .cdnav .btn.sm { width: 28px; min-width: 28px; height: 32px; }
-  .pbar .pillbig:not(#statusBtn) { width: 124px; }
+  .pbar .pillbig:not(#statusBtn) { max-width: none; }
   .pbar .pb-ico { width: 30px; height: 30px; }
   .pbar .pb-ico img.wxi { width: 27px; height: 27px; }
   .pbar .pb-t b { font-size: 14px; }
