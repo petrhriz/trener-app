@@ -1,7 +1,7 @@
 // Rozbor aktivity (Aktivita.md / Souhrn kap. 5). Deterministicky, každé číslo z dat nebo vzorce.
 import { BIKE_SPORTS, type NLap, type Sport } from "../datasource/types";
 import { dm, hms, num, zonePct, zoneTime } from "../lib/format";
-import { powerLoad } from "./load";
+import { LOAD_HR_NOTE, powerLoad } from "./load";
 import { QUALITY_NAME, type QualityType } from "./quality";
 import type { Workout } from "./workout";
 import { type HrZones, hrZoneRange, powerZones } from "./zones";
@@ -206,7 +206,8 @@ export function analyzeActivity(a: ActRow, plan: PlannedForAct | null, ftp: numb
   if (teL && TE_NAME[teL]) basics.push(["Hlavní přínos", TE_NAME[teL]!]);
   // jednotka zátěže: TSS jen u kola s wattmetrem, jinak HRSS z tepu (i běh s výkonem z hodinek)
   const loadUnit = a.load == null ? "" : isBike && a.load_source !== "hr_indoor" && (a.np || a.load_source === "np_ftp") ? " TSS" : " HRSS";
-  basics.push(["Zátěž", `${num(a.load)}${loadUnit}${planLoad ? ` (plán ${num(planLoad)})` : ""}`]);
+  const hrBased = a.load_source === "hr_avg" || a.load_source === "hr_zones";
+  basics.push(["Zátěž", `${num(a.load)}${loadUnit}${hrBased ? " – odhad z tepu" : ""}${planLoad ? ` (plán ${num(planLoad)})` : ""}`]);
   if (compliance != null) basics.push(["Splnění plánu", `${compliance} %${plan?.compliance != null ? " (intervals.icu)" : ""}`]);
   if (a.avg_hr) basics.push(["Tep", `${num(a.avg_hr)} bpm${a.max_hr ? ` (max ${num(a.max_hr)} bpm)` : ""}`]);
   // VI a aerobní drift nejsou nahoře: VI je v Dalších údajích, drift (= decoupling) v kartě 1. vs. 2. polovina
@@ -214,7 +215,8 @@ export function analyzeActivity(a: ActRow, plan: PlannedForAct | null, ftp: numb
   const viInfo = hasPower && vi != null ? { value: Math.round(vi * 100) / 100, intensity: intensity != null ? Math.round(intensity) : null, text: vi <= 1.1 ? "rovnoměrná" : vi <= 1.25 ? "kopce / intervaly" : "nárazová" } : null;
   const driftNote = isBike ? driftText(a.drift, steady, hilly, moving, a.max_temp) : null;
   let basicsNote = "";
-  if (isBike && !hasPower) basicsNote = "Bez wattmetru: hodnotím tep a zóny tepu, zátěž je odhad z tepu.";
+  if (isBike && !hasPower) basicsNote = "Bez wattmetru: hodnotím tep a zóny tepu.";
+  if (hrBased) basicsNote += `${basicsNote ? " " : ""}${LOAD_HR_NOTE}`;
   if (a.load_source === "hr_indoor") {
     const pw = powerLoad({ ...a, tss_garmin: a.tss_garmin ?? null }, ftp);
     basicsNote += `${basicsNote ? " " : ""}Zátěž je z tepu${pw ? ` (z výkonu by byla ${num(pw.load)} TSS)` : ""}: na trenažéru chybí proudění vzduchu a pauzy ve šlapání, takže tě stejný výkon stojí víc. Počítá se vyšší z obou hodnot.`;

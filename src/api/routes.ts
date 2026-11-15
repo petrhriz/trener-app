@@ -14,6 +14,7 @@ import { sleepReport } from "../core/sleep";
 import { dayDm, dm } from "../lib/format";
 import { DEFAULTS, getSettings, setSetting, statusOn, type Settings } from "../lib/settings";
 import { STATUS_LABEL, coaching, strainScore, typicalWake, type StatusKind } from "../core/readinessScore";
+import { afterIllness } from "../core/coach/target";
 import { misc } from "./misc";
 import { addDays, dow, localNow, mondayOf, tzOffsetMin } from "../lib/time";
 import { baseFor, nightsBefore, sleepBankMin } from "../core/sleepCalc";
@@ -21,7 +22,7 @@ import { carryDay, liveOr } from "../core/carryDay";
 import { constraintNoteOk } from "../core/coach/common";
 import { RPE_ASK_DAYS, RPE_LABEL, rpeOk, rpeToAsk } from "../core/rpe";
 import { addConstraint, applyChanges, claimProposal, finishProposal, getProposal, openProposal, removeConstraint, saveProposal } from "../plan/proposals";
-import { activityReport, eftpOf, freePlan, ftpCheckOf, fitnessTable, metricOn, recoveryFor, plannedFor, planFor, readiness, weatherMap, weekly } from "../report/build";
+import { activityReport, eftpOf, freePlan, ftpCheckOf, fitnessTable, metricOn, recoveryFor, plannedFor, planFor, readiness, statusConstraints, weatherMap, weekly } from "../report/build";
 import { hasPowerMeter, loadCtx } from "../report/context";
 import { compliance, ctlPlan, efficiency, intensityVerdict, intensityWeeks, monotonyWeeks, weeklyCompliance } from "../core/analytics";
 import { recomputeLoads } from "../sync/metrics";
@@ -173,6 +174,8 @@ api.get("/overview", async (c) => {
     plan: { name: past ? null : day?.name ?? null, kind: past ? null : day?.kind ?? null, minutes: past ? null : day?.durationMin ?? null, carbs: past ? null : day?.carbs ?? null, done: ctx.acts.some((a) => a.date === D && (a.moving_s ?? 0) >= 20 * 60) },
     remLow: !!sleep && sleep.stages.find((x) => x.key === "rem")?.tone === "bad",
     deepLow: !!sleep && sleep.stages.find((x) => x.key === "deep")?.tone === "bad",
+    // dny nemoci i ze stavu Nemocný (aktuálního i ukončeného) – stejně jako plán (planForCoach)
+    afterIllness: afterIllness(new Set([...ctx.constraints, ...statusConstraints(ctx)].filter((x) => x.kind === "nemoc").map((x) => x.date)), D),
   });
   // nadcházející trénink (karta na Přehledu): dnešní, a když je dnes volno nebo odjeto, nejbližší další
   const doneToday = r.today.done.length > 0;

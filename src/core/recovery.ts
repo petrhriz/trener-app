@@ -108,6 +108,8 @@ export interface RecoveryResult {
   /** co skóre nejvíc stáhlo / zvedlo (text) */
   scoreDrags: string[];
   scoreBoosts: string[];
+  /** vstupy skóre, které ten den chyběly (počítají se jako v normě) */
+  scoreMissing: string[];
 }
 
 export const STATE_LABEL: Record<State, string> = {
@@ -145,7 +147,7 @@ export interface RecoveryInput {
   dayAfter: string | null;
   illness: boolean;
   /** Zotavení v % z recoveryScore: pod 34 % aspoň 🟡, pod 15 % 🔴 */
-  score?: { score: number | null; drags: string[]; boosts: string[] } | null;
+  score?: { score: number | null; drags: string[]; boosts: string[]; missing?: string[] } | null;
 }
 
 export function evaluateRecovery(inp: RecoveryInput): RecoveryResult {
@@ -338,5 +340,6 @@ export function evaluateRecovery(inp: RecoveryInput): RecoveryResult {
     score: sc,
     scoreDrags: inp.score?.drags ?? [],
     scoreBoosts: inp.score?.boosts ?? [],
+    scoreMissing: inp.score?.missing ?? [],
   };
 }

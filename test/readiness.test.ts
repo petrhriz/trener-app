@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { coaching, normCdf, recoveryScore, strainScore, typicalWake, type NightRow } from "../src/core/readinessScore";
+import { ILLNESS_DOCTOR, ILLNESS_RETURN, ILLNESS_STOP, coaching, normCdf, recoveryScore, strainScore, typicalWake, type NightRow } from "../src/core/readinessScore";
+import { NO_FATIGUE, fatigueFactor } from "../src/core/coach/target";
+import { hrQuality } from "../src/core/quality";
 import { nextAlert, partKm, type Part } from "../src/api/gear";
 import { addDays } from "../src/lib/time";
 
@@ -33,6 +35,14 @@ describe("skóre zotavení", () => {
     const short = recoveryScore({ ...n, sleep_s: 21600 }, h).score!;
     expect(short).toBeLessThan(full - 5);
     expect(recoveryScore({ ...n, sleep_s: 21600 }, h).drags.map((c) => c.key)).toContain("sleepDur");
+  });
+  it("chybějící tep ve spánku a délka spánku se hlásí, skóre stojí na VST", () => {
+    const n = { date: "2026-11-08", hrv: 74, rhr: 53, sleep_hr: 56, sleep_s: 28800, sleep_need_min: 480, sleep_score: 80, sleep_resp: 11.4 };
+    expect(recoveryScore(n, h).missing).toEqual([]);
+    const only = recoveryScore({ ...n, sleep_hr: null, sleep_s: null }, h);
+    expect(only.missing).toEqual(["sleepHr", "sleepDur"]);
+    expect(only.components.map((c) => c.key)).toEqual(["hrv"]);
+    expect(recoveryScore({ ...n, hrv: null }, h)).toMatchObject({ score: null, missing: [] });
   });
   it("bez základny (méně než 20 nocí) nedává", () => {
     expect(recoveryScore({ date: "2026-11-08", hrv: 74, rhr: 53, sleep_hr: 56, sleep_s: 28800, sleep_need_min: 480, sleep_score: 80, sleep_resp: 11.4 }, h.slice(-10)).score).toBeNull();
@@ -82,11 +92,46 @@ describe("zhodnocení dne", () => {
     expect(c.title).toContain("Nemoc");
     expect(c.title).toContain("12. 11.");
   });
+  it("nemoc: kdy netrénovat a kdy k lékaři (IOC 2022)", () => {
+    const c = coaching({ ...base, status: "sick", statusUntil: null, semafor: null });
+    expect(c.needs).toContain(ILLNESS_STOP);
+    expect(c.needs).toContain(ILLNESS_DOCTOR);
+  });
+  it("dny po nemoci: zkušební trénink a co ho zastaví", () => {
+    const ok = { state: "green" as const, reasons: [], missing: false };
+    expect(coaching({ ...base, afterIllness: true, semafor: ok }).needs[0]).toBe(ILLNESS_RETURN);
+    expect(coaching({ ...base, semafor: ok }).needs).not.toContain(ILLNESS_RETURN);
+    expect(coaching({ ...base, past: true, afterIllness: true, semafor: ok }).needs).toEqual([]);
+  });
   it("medián probuzení", () => {
     expect(typicalWake(["2026-11-01T07:10:00", "2026-11-02T07:40:00", "2026-11-03T06:50:00", null])).toBe("7:10");
   });
 });
 
+
+describe("skládání ubrání a chybějící data", () => {
+  it("všechny důvody únavy naráz: platí nejpřísnější (×0,7), ne součin", () => {
+    const all = fatigueFactor({ ...NO_FATIGUE, form: -35, badMornings: 3, hrvLow: true, illnessDays: 5, hardEasy: 2, adherence: { factor: 0.85, note: null }, strain: "vysoký strain" });
+    expect(all.factor).toBe(0.7);
+    expect(all.keysMax).toBe(0);
+    expect(all.notes.length).toBe(7);
+    expect(fatigueFactor({ ...NO_FATIGUE, hrvLow: true, strain: "x" }).factor).toBe(0.9);
+  });
+  it("kvalita podle tepu: bez zón nic, krátké intervaly se zpožděním tepu se jako kvalita nepoznají", () => {
+    expect(hrQuality(null)).toBeNull();
+    expect(hrQuality([])).toBeNull();
+    // 5×3 min VO2: tep v Z4+ ~12 min, v Z5 ~6 min
+    expect(hrQuality([600, 1500, 300, 360, 360])).toBe("vo2");
+    // 30/15 × 2 série: tep nestihne vystoupat – v Z4+ jen 8 min → bez wattmetru se nepozná (plánovanou kvalitu řeší plannedIntensity)
+    expect(hrQuality([600, 1500, 420, 300, 180])).toBeNull();
+    // s hodnocením RPE 7+ stačí 5 min v Z4+ (Sylta 2014: čas v zónách tepu intenzitu podhodnocuje)
+    expect(hrQuality([600, 1500, 420, 300, 180], 8)).toBe("prah");
+    expect(hrQuality([600, 1500, 420, 120, 240], 8)).toBe("vo2");
+    expect(hrQuality([600, 1500, 420, 300, 180], 6)).toBeNull();
+    // lehká jízda s vysokým RPE kvalitou není (málo času v Z4+)
+    expect(hrQuality([1200, 2400, 300, 120, 0], 9)).toBeNull();
+  });
+});
 
 describe("servis vybavení", () => {
   const gear = [{ id: 1, name: "Cube", kind: "bike" as const, default_for: "ride", from_date: null, to_date: null, start_km: 0, note: null }];

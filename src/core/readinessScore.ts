@@ -1,5 +1,6 @@
 // Skóre Zotavení / Zátěž / Spánek v % a ranní / večerní zhodnocení „co tělo potřebuje“.
-// Garmin skóre zotavení přes API nedává → počítá se z nočních hodnot proti TVÉ normě (60 dní). Čistá funkce.
+// Garmin skóre zotavení přes API nedává (a hodinky bez Training Readiness ho nemají vůbec) → počítá se z nočních
+// hodnot proti TVÉ normě (60 nocí, stejně jako ranní semafor). Čistá funkce.
 import { hmm, num } from "../lib/format";
 import { ILLNESS_EASY_DAYS, YELLOW_CUT } from "./coach/target";
 import type { Carbs } from "./nutrition";
@@ -23,7 +24,7 @@ export interface Component {
   label: string;
   value: string;
   normText: string;
-  /** odchylka od normy (kladná = lepší), oříznutá −3 … +2,5 */
+  /** odchylka od normy (kladná = lepší), oříznutá −4 … +4 */
   z: number;
   weight: number;
 }
@@ -35,19 +36,26 @@ export interface RecoveryScore {
   drags: Component[];
   boosts: Component[];
   band: "low" | "mid" | "high" | null;
+  /** doplňkové vstupy, které ten den chyběly a počítají se jako „v normě“ (skóre pak stojí víc na samotné VST) */
+  missing: CompKey[];
 }
 
-// Zotavení (vlastní model, konstanty odhadnuté empiricky a ověřené křížově):
+// Zotavení – ORIENTAČNÍ UKAZATEL, ne měření zotavení (vlastní model, docs/trener/zdroje.md):
 //   Zotavení = 100 · Φ(0,174 + 0,403·z_VST − 0,39·z_tep + 1,02·(min(1,1; spánek/potřeba) − 1))
-// z_VST = odchylka ln(VST) od průměru 30 předchozích nocí v SD (reaguje na pokles proti posledním týdnům),
+// z_VST = odchylka ln(VST) od průměru 60 předchozích nocí v SD (stejná norma jako ranní semafor, recovery.ts),
 // z_tep = odchylka průměrného tepu ve spánku (celá noc, ne Garminův klidový tep) od 60 nocí.
 // Zkoušená plynulá (exponenciální) norma ani jiné délky oken křížově nepomohly – zbytek chyby jsou vstupy,
 // které Garmin přes API nedává (teplota zápěstí, SpO2, VST z jednotlivých úderů místo průměru za noc).
 // Potřeba = tvůj obvyklý spánek + část spánkového dluhu (sleepCalc).
+// Konstanty jsou VLASTNÍ VOLBA: data a postup jejich odhadu nejsou v repozitáři a ověření na datech, která se
+// při ladění nepoužila, se nedá doložit. Ani výrobci (Garmin Training Readiness) váhy svého skóre nezveřejňují.
+// Proto skóre samo volno nedá: v semaforu (recovery.ts) stav jen zhorší a 🔴 dá jen spolu s dalšími ukazateli
+// mimo normu; rozhoduje trend VST (Plews a kol. 2012), ne jedna noc.
 // Zátěž ani klidový tep přímo nevstupují – trénink se projeví přes noční VST a tep.
 const K = { a: 0.174, hrv: 0.403, sleepHr: 0.39, dur: 1.02 };
-const HRV_BASE = 30; // nocí pro základnu VST (tep ve spánku: 60)
+const HRV_BASE = 60; // nocí pro základnu VST i tepu ve spánku – stejně jako semafor, ať stejná noc nemá dvě odchylky
 const LABEL: Record<CompKey, string> = { hrv: "VST", rhr: "klidový tep", sleepHr: "tep ve spánku", sleepDur: "délka spánku", sleepScore: "skóre spánku", resp: "dech ve spánku" };
+export const SCORE_LABEL: Readonly<Record<CompKey, string>> = LABEL;
 const clip = (z: number) => Math.max(-4, Math.min(4, z));
 const SD_FLOOR = { hrv: 0.03, sleepHr: 1 }; // VST v ln(ms)
 const MIN_BASE = 20; // nocí v základně
@@ -65,7 +73,7 @@ export function normCdf(x: number): number {
  * Složky (components) ukazují odchylky od normy; drags/boosts = co skóre nejvíc stáhlo / zvedlo.
  */
 export function recoveryScore(night: NightRow | null, history: NightRow[]): RecoveryScore {
-  const empty: RecoveryScore = { score: null, components: [], drags: [], boosts: [], band: null };
+  const empty: RecoveryScore = { score: null, components: [], drags: [], boosts: [], band: null, missing: [] };
   if (!night || night.hrv == null || night.hrv <= 0) return empty;
   const hist = history.filter((h) => h.date < night.date).slice(-60);
   const nb = (vals: (number | null)[], floor: number) => { const n = norm(vals); return n.n >= MIN_BASE ? { m: n.mean, sd: Math.max(floor, n.sd) } : null; };
@@ -91,6 +99,7 @@ export function recoveryScore(night: NightRow | null, history: NightRow[]): Reco
     drags: sorted.filter((c) => c.z <= -0.7).slice(0, 3),
     boosts: [...sorted].reverse().filter((c) => c.z >= 0.7).slice(0, 2),
     band: score < 34 ? "low" : score < 67 ? "mid" : "high",
+    missing: [...(zR == null ? (["sleepHr"] as const) : []), ...(ratio == null ? (["sleepDur"] as const) : [])],
   };
 }
 
@@ -133,6 +142,8 @@ export interface CoachingInput {
   plan: { name: string | null; kind: string | null; minutes: number | null; done: boolean; carbs?: Carbs | null };
   remLow: boolean;
   deepLow: boolean;
+  /** den v ILLNESS_EASY_DAYS dnech po nemoci (src/core/coach/target.ts afterIllness) */
+  afterIllness?: boolean;
 }
 
 export interface Coaching {
@@ -141,6 +152,17 @@ export interface Coaching {
   text: string;
   needs: string[];
 }
+
+// Nemoc a návrat: podle IOC konsenzu o akutních respiračních infekcích (Schwellnus a kol. 2022, Br J Sports Med
+// 56:1066–1088, tab. 6–8). Aplikace stav nehodnotí, jen říká, kdy netrénovat a kdy se poradit s lékařem.
+// Konsenzus je o respiračních infekcích; u jiné nemoci platí stejné zastavení, o návratu rozhoduje lékař.
+/** IOC checklist 1: příznaky v klidu, se kterými se nezačíná ani nepokračuje v tréninku (konsenzus pak doporučuje
+ *  poradit se se zdravotníkem) */
+export const ILLNESS_STOP = "Horečka, zimnice, bolest svalů, velká únava, dušnost, bolest nebo tlak na hrudi, bušení srdce nebo závrať v klidu, silný kašel → netrénuj a poraď se s lékařem.";
+/** IOC: středně těžká a těžká infekce patří pod dohled lékaře; výběr příznaků a „přes týden“ jsou vlastní volba */
+export const ILLNESS_DOCTOR = "Bolest na hrudi, dušnost, bušení srdce, nemoc přes týden nebo jiná než nachlazení → o návratu k tréninku rozhoduje lékař.";
+/** IOC tab. 7 a kontrolní seznam 3: zkušební trénink po nemoci a kontrola během, po něm a za 24 h */
+export const ILLNESS_RETURN = "Po nemoci začni na 60–70 % obvyklé intenzity a po 10–20 min zhodnoť, jak ti je. Bolest na hrudi, dušnost, bušení srdce, závrať, nepřiměřená únava nebo vyšší námaha než obvykle (během, po i do 24 h) → přestaň a poraď se s lékařem; jinak zátěž přidávej postupně.";
 
 const minToClock = (m: number) => {
   const x = ((Math.round(m) % 1440) + 1440) % 1440;
@@ -163,7 +185,8 @@ export function coaching(i: CoachingInput): Coaching {
   if (i.status !== "active") {
     const until = i.statusUntil ? ` (do ${+i.statusUntil.slice(8, 10)}. ${+i.statusUntil.slice(5, 7)}.)` : "";
     if (i.status === "sick") {
-      return { period, title: `Nemoc${until}: trénink stojí`, text: `Tělo teď potřebuje energii na uzdravení – zátěž ani plán se nehodnotí. Po návratu ${ILLNESS_EASY_DAYS} dny jen lehce (bez kvality), nic nedohánět.`, needs: ["Odpočinek, pití, teplé jídlo.", sleepLine ?? "Spánek co nejdelší.", "Při horečce ani lehký pohyb."].filter(Boolean) as string[] };
+      // zdravotní stav aplikace nehodnotí – jen pravidla IOC, kdy netrénovat a kdy k lékaři (ILLNESS_STOP, ILLNESS_DOCTOR)
+      return { period, title: `Nemoc${until}: trénink stojí`, text: `Tělo teď potřebuje energii na uzdravení – zátěž ani plán se nehodnotí. Po návratu ${ILLNESS_EASY_DAYS} dny jen lehce (bez kvality), nic nedohánět.`, needs: ["Odpočinek, pití, teplé jídlo.", sleepLine ?? "Spánek co nejdelší.", ILLNESS_STOP, ILLNESS_DOCTOR].filter(Boolean) as string[] };
     }
     if (i.status === "injured") {
       return { period, title: `Zranění${until}: plán stojí`, text: "Trénink je pozastavený, zátěž se nehodnotí. Pohyb jen takový, který zranění nebolí.", needs: ["Zraněnou část nezatěžovat přes bolest.", sleepLine ?? "Spánek pomáhá hojení.", "Bílkoviny v každém jídle."].filter(Boolean) as string[] };
@@ -199,6 +222,7 @@ export function coaching(i: CoachingInput): Coaching {
 
   // co tělo potřebuje – konkrétně podle dat a plánu
   const p = i.plan;
+  if (i.afterIllness && !i.past) needs.push(ILLNESS_RETURN);
   if (band === "low") {
     needs.push(p.name && !p.done ? `Trénink „${p.name}“ vyměň za Z1–Z2 do 45 min nebo volno.` : "Pohyb jen lehce: procházka nebo Z1 do 45 min.");
   } else if (p.name && !p.done) {

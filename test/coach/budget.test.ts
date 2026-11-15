@@ -147,6 +147,33 @@ describe("pozice v bloku z historie", () => {
     expect(w.base).toBe(400);
     expect(w.load).toBe(Math.round(400 * 0.45));
   });
+  it("únava a lehčí týden se nenásobí – platí přísnější", () => {
+    let b = EMPTY_BLOCK;
+    for (const x of [300, 300, 300]) b = pushWeek(b, x);
+    const inp = { ...base, weeks: 1, history: { ...hist([300, 300, 300, 300]), block: b } };
+    const easy = weekTargets(inp)[0]!;
+    expect(easy.recoveryWeek).toBe(true);
+    expect(easy.share).toBeLessThan(0.7);
+    // po nemoci (×0,7) v lehčím týdnu: zůstane lehčí týden, ne 0,55 × 0,7
+    const sick = weekTargets({ ...inp, fatigue: 0.7 })[0]!;
+    expect(sick.load).toBe(easy.load);
+    expect(sick.limit).toBe("lehčí týden");
+    expect(sick.notes.join(" ")).toMatch(/Únava \(o 30 % lehčí\) se nepřidává – lehčí týden ubírá víc/);
+    // přísnější únava než lehčí týden vyhraje, ale měří se od běžného týdne
+    const hard = weekTargets({ ...inp, fatigue: 0.4 })[0]!;
+    expect(hard.limit).toBe("únava");
+    expect(Math.abs(hard.load - easy.base! * 0.4)).toBeLessThanOrEqual(1);
+    // běžný týden: únava ubírá jako dřív
+    const plain = weekTargets({ ...base, weeks: 1, history: hist([300, 300, 300, 300]) })[0]!;
+    expect(plain.share).toBe(1);
+    expect(Math.abs(weekTargets({ ...base, weeks: 1, history: hist([300, 300, 300, 300]), fatigue: 0.7 })[0]!.load - plain.load * 0.7)).toBeLessThanOrEqual(1);
+  });
+  it("ladění po nemoci: zůstává ladění (45 %), únava se nepřidává", () => {
+    let b = EMPTY_BLOCK;
+    for (const x of [380, 390, 400, 280]) b = pushWeek(b, x, false);
+    const inp = { ...base, goal: "zavod" as const, raceDate: "2027-04-11", ctlNow: 45, weeks: 1, history: { ...hist([380, 390, 400, 280]), block: b } };
+    expect(weekTargets({ ...inp, fatigue: 0.7 })[0]!.load).toBe(Math.round(400 * 0.45));
+  });
 });
 
 describe("cíl od kondice na stránce (včera 41,8, dnes bez tréninku 40,8, čtvrtek)", () => {

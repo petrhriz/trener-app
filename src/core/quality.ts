@@ -27,12 +27,18 @@ export interface ActLike {
  *  Seilera), z toho aspoň 5 min v Z5 = VO2. Tep se v intervalech zpožďuje, takže čas nad prahem podle tepu je kratší
  *  než podle wattů (Sylta, Tønnessen & Seiler 2014) – proto 10 a 5 min místo 15 a 8 min u wattů (vlastní volba). */
 export const HR_Q_MIN = 10, HR_VO2_MIN = 5;
-export function hrQuality(hr_z: number[] | null | undefined): "vo2" | "prah" | null {
+/** Krátké intervaly (30/15, 1 min): tep nestihne vystoupat a čas v Z4+ je krátký. Čas v zónách tepu podhodnocuje
+ *  intenzivní trénink asi 3× proti hodnocení podle cíle tréninku (Sylta, Tønnessen & Seiler 2014, IJSPP 9(1):100–107),
+ *  proto s hodnocením náročnosti RPE 7+ („velmi těžké“ v Borg CR10, session-RPE Foster 2001) stačí 5 min v Z4+.
+ *  Hranice 7 a 5 min jsou vlastní volba. */
+export const HR_Q_RPE = 7, HR_Q_RPE_MIN = 5;
+export function hrQuality(hr_z: number[] | null | undefined, rpe?: number | null): "vo2" | "prah" | null {
   if (!hr_z || !hr_z.length) return null;
   const z4plus = hr_z.slice(3).reduce((t, x) => t + (x ?? 0), 0);
   const z5plus = hr_z.slice(4).reduce((t, x) => t + (x ?? 0), 0);
-  if (z4plus < HR_Q_MIN * 60) return null;
-  return z5plus >= HR_VO2_MIN * 60 ? "vo2" : "prah";
+  if (z4plus >= HR_Q_MIN * 60) return z5plus >= HR_VO2_MIN * 60 ? "vo2" : "prah";
+  if (rpe != null && rpe >= HR_Q_RPE && z4plus >= HR_Q_RPE_MIN * 60) return z5plus * 2 >= z4plus ? "vo2" : "prah";
+  return null;
 }
 
 export interface QualityInfo {

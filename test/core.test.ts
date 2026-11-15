@@ -444,3 +444,19 @@ describe("normalizace Garmin dat", () => {
     expect(upsertSql("t", ["a", "b"], [[1, "x"]], ["a"], "merge")[0]).toContain("COALESCE(excluded.b, t.b)");
   });
 });
+
+import { analyzeActivity } from "../src/core/activity";
+import { LOAD_HR_NOTE } from "../src/core/load";
+describe("zátěž z tepu má na stránce nižší jistotu", () => {
+  const run = { id: "r1", start_local: "2026-11-10 07:00:00", date: "2026-11-10", sport: "run" as const, name: "Běh", distance_m: 10000, moving_s: 3000, elev_gain: 40, avg_hr: 150, max_hr: 170, avg_power: null, np: null, avg_cad: null, min_temp: null, max_temp: null, lap_count: null, hr_z: [600, 1800, 600, 0, 0], pwr_z: null, load: 62, load_source: "hr_avg", drift: null, laps: null, quality_type: null, is_quality: 0 };
+  it("běh s HRSS: řádek Zátěž i poznámka to řeknou", () => {
+    const r = analyzeActivity(run, null, null, null);
+    expect(r.basics.find((b) => b[0] === "Zátěž")![1]).toContain("odhad z tepu");
+    expect(r.basicsNote).toContain(LOAD_HR_NOTE);
+  });
+  it("kolo s TSS z výkonu: bez poznámky", () => {
+    const r = analyzeActivity({ ...run, sport: "ride", np: 200, avg_power: 190, load: 70, load_source: "garmin_tss", tss_garmin: 70 }, null, 250, null);
+    expect(r.basics.find((b) => b[0] === "Zátěž")![1]).not.toContain("odhad z tepu");
+    expect(r.basicsNote).not.toContain(LOAD_HR_NOTE);
+  });
+});

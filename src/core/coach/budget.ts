@@ -143,6 +143,8 @@ export interface WeekTarget {
   ctlEnd: number;
   /** co cíl omezilo (null = nic) */
   limit: "historie" | "únava" | "lehčí týden" | "ladění" | "po závodě" | null;
+  /** podíl běžného týdne po lehčím týdnu / ladění / týdnu po závodě (1 = běžný týden); únava ubírá, jen když je přísnější */
+  share: number;
   notes: string[];
 }
 
@@ -266,6 +268,8 @@ export function weekTarget(inp: BudgetInput, k: number, ctl: number, blk: BlockS
     load = Math.max(0, cap - done);
     limit = "historie";
   }
+  // běžný týden (po stropu historie) – z něj se měří únava i lehčí týden, aby se navzájem nenásobily
+  const normal = load;
   if (phase === "taper" && inp.raceDate) {
     // z posledního běžného (zátěžového) týdne před laděním – ne z průměru, do kterého už ladění spadlo
     const raceWeek = daysBetween(weekStart, inp.raceDate) < 7;
@@ -283,8 +287,15 @@ export function weekTarget(inp: BudgetInput, k: number, ctl: number, blk: BlockS
     const easy = Math.max(0, r0(base * RECOVERY_SHARE) - done);
     if (easy < load) { load = easy; limit = "lehčí týden"; }
   }
+  // Únava a lehčí týden / ladění / týden po závodě se nenásobí: platí přísnější z nich (stejně jako důvody únavy
+  // mezi sebou ve fatigueFactor). Jinak by lehčí týden po nemoci spadl na 0,55 × 0,7 ≈ 39 % – lehčí týden je podle
+  // zdrojů o 40–50 % méně a ladění o 41–60 % méně (Bosquet 2007), další ubrání navíc žádný zdroj nedává.
+  // Podíl i únava se měří od základu lehčího týdne / ladění (`base`), v běžném týdnu od běžného týdne.
+  const share = base != null && base > 0 ? Math.min(1, (done + load) / base) : 1;
   const f = k === 0 ? inp.fatigue : k === 1 ? (1 + inp.fatigue) / 2 : 1;
-  if (f < 1) { load = load * f; limit = "únava"; }
+  if (base == null) { if (f < 1) { load = normal * f; limit = "únava"; } }
+  else if (f < share) { load = Math.max(0, base * f - done); limit = "únava"; }
+  else if (f < 1) notes.push(`Únava (o ${r0((1 - f) * 100)} % lehčí) se nepřidává – ${limit === "ladění" ? "ladění" : limit === "po závodě" ? "týden po závodě" : "lehčí týden"} ubírá víc.`);
   load = r0(load);
   const ctlEnd = ctlAfter(ctl, load, days);
   const goalTxt = ramp < 0 ? `zimní pokles kondice na ${n1(ctlGoal)}` : ramp === 0 ? `udržení kondice ${n1(ref)}` : `růst kondice na ${n1(ctlGoal)}`;
@@ -295,7 +306,7 @@ export function weekTarget(inp: BudgetInput, k: number, ctl: number, blk: BlockS
   if (limit === "lehčí týden") notes.push(`Lehčí týden po ${blk.streak} zátěžových: ${load} zátěže (55 % jejich průměru ${r0(base!)}, o 40–50 % méně podle Friela) → kondice ${n1(ctlEnd)}.`);
   if (limit === "po závodě") notes.push(`Týden po závodě: lehce a bez kvality, ${load} zátěže (55 % posledního běžného týdne ${r0(base!)}) → kondice ${n1(ctlEnd)}.`);
   if (limit === "únava") notes.push(`Únava: týden o ${r0((1 - f) * 100)} % lehčí → kondice ${n1(ctlEnd)}.`);
-  return { weekStart, from, days, phase, phaseLabel: PHASE_LABEL3[phase], ramp, cycleIdx, recoveryWeek, base: base == null ? null : r0(base), winter: isWinter(weekStart), shortDays: isWinter(weekStart) && (phase === "offseason" || phase === "maintain"), floor: phase === "offseason" && inp.history.seasonPeak ? r1(inp.history.seasonPeak * (1 - WINTER_DROP)) : null, ctlStart: r1(ref), ctlGoal: r1(ctlGoal), need, load, done: r0(done), ctlEnd: r1(ctlEnd), limit, notes };
+  return { weekStart, from, days, phase, phaseLabel: PHASE_LABEL3[phase], ramp, cycleIdx, recoveryWeek, base: base == null ? null : r0(base), winter: isWinter(weekStart), shortDays: isWinter(weekStart) && (phase === "offseason" || phase === "maintain"), floor: phase === "offseason" && inp.history.seasonPeak ? r1(inp.history.seasonPeak * (1 - WINTER_DROP)) : null, ctlStart: r1(ref), ctlGoal: r1(ctlGoal), need, load, done: r0(done), ctlEnd: r1(ctlEnd), limit, share: Math.round(share * 1000) / 1000, notes };
 }
 
 /** Pozice v bloku po týdnu `t` se zátěží `total`: lehčí týden, ladění a přechod po závodě blok končí (a strop

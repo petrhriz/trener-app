@@ -10,7 +10,7 @@ import { FORM_ZONE_RANGE, formZone, rampLabel, weeklyLoadTarget } from "../core/
 import type { Change, PlanDay, PlanResult } from "../core/plan";
 import { bestIn, eftp } from "../core/power";
 import { type RecoveryResult, evaluateRecovery, hrvWeekLow } from "../core/recovery";
-import { recoveryScore } from "../core/readinessScore";
+import { SCORE_LABEL, recoveryScore } from "../core/readinessScore";
 import { type DayWeather, dayWeather } from "../core/weather";
 import type { Workout } from "../core/workout";
 import { all, first, getState, logged, run, setState } from "../lib/db";
@@ -55,7 +55,7 @@ export function recoveryFor(ctx: Ctx): RecoveryResult {
   const rs = recoveryScore(nights.find((n) => n.date === ctx.T) ?? null, nights);
   const txt = (c: { label: string; value: string }) => `${c.label} ${c.value}`;
   const r = evaluateRecovery({
-    score: { score: rs.score, drags: rs.drags.map(txt), boosts: rs.boosts.map(txt) },
+    score: { score: rs.score, drags: rs.drags.map(txt), boosts: rs.boosts.map(txt), missing: rs.missing.map((k) => SCORE_LABEL[k]) },
     date: ctx.T,
     rows: ctx.well.map((w) => ({ date: w.date, hrv: w.hrv, rhr: w.rhr, sleep_s: w.sleep_s, sleep_score: w.sleep_score, sleep_q: w.sleep_q })),
     dayAfter: dayAfterReason(ctx),
@@ -257,7 +257,7 @@ export async function planForCoach(ctx: Ctx, rec: RecoveryResult, opt: { dryRun?
   }
   const constraints = [...ctx.constraints, ...statusConstraints(ctx)];
   const acts: EngineAct[] = ctx.acts.map((a) => ({ id: a.id, date: a.date, sport: a.sport, load: a.load, moving_s: a.moving_s, // kvalita podle tepu i u aktivit uložených dřív (běh a kolo bez wattmetru se dřív za kvalitu nepočítaly)
-    quality: (!!a.is_quality || ((a.sport === "run" || (isBike(a.sport) && !a.np)) && !!hrQuality(a.hr_z))) && a.sport !== "skate" && a.sport !== "padel", hr_z: a.hr_z, pwr_z: a.pwr_z, laps: a.laps ?? null, compliance: (a as any).icu_compliance ?? null, rpe: (a as any).rpe ?? null }));
+    quality: (!!a.is_quality || ((a.sport === "run" || (isBike(a.sport) && !a.np)) && !!hrQuality(a.hr_z, (a as any).rpe ?? null))) && a.sport !== "skate" && a.sport !== "padel", hr_z: a.hr_z, pwr_z: a.pwr_z, laps: a.laps ?? null, compliance: (a as any).icu_compliance ?? null, rpe: (a as any).rpe ?? null }));
   const power = ctx.acts.filter((a) => isBike(a.sport)).map((a) => ({ id: a.id, date: a.date, mmp: a.mmp, max20: a.max20, pwr_z: a.pwr_z }));
   const state: { progress: Record<string, ProgressRow> } = { progress: {} };
   for (const r of await all<{ key: string; level: number; last_date: string | null }>(ctx.env.DB, "SELECT key, level, last_date FROM coach_progress")) state.progress[r.key] = { level: r.level, last: r.last_date };

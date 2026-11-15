@@ -170,7 +170,7 @@ export interface CoachInfo {
   mondayPlan: MondayPlan | null;
   /** návrat po pauze (strop intenzity) – text pro stránku; null = bez omezení */
   reentry: string | null;
-  horizon: { weekStart: string; detail: boolean; load: number; done: number; need: number; target: number; notes: string[]; limit: WeekTarget["limit"]; ctlStart: number; ctlEnd: number; ctlGoal: number; phaseLabel: string; recoveryWeek: boolean; days: { date: string; role: Role; sport: PlanSport; minutes: number; load: number; name: string | null; blocked: boolean; workout: Workout | null; steps: string[]; targetText: string | null; why: string[]; indoor?: boolean }[] }[];
+  horizon: { weekStart: string; detail: boolean; load: number; done: number; need: number; target: number; notes: string[]; limit: WeekTarget["limit"]; share?: number; ctlStart: number; ctlEnd: number; ctlGoal: number; phaseLabel: string; recoveryWeek: boolean; days: { date: string; role: Role; sport: PlanSport; minutes: number; load: number; name: string | null; blocked: boolean; workout: Workout | null; steps: string[]; targetText: string | null; why: string[]; indoor?: boolean }[] }[];
 }
 
 export type CoachPlan = PlanResult & { coach: CoachInfo };
@@ -274,7 +274,10 @@ export function runCoach(inp: CoachInput): CoachPlan {
   }
   const lostDay = (d: string) => lostBase(d) || streakRest.has(d);
   // únava nad rámec té, se kterou se pondělní plán počítal – jen zbylé dny, ne dvakrát
-  const fRel = mondayPlan ? Math.min(1, fat.factor / Math.max(0.01, mondayPlan.fatigue)) : 1;
+  // v lehčím týdnu / ladění únava ubírá jen to, o co je přísnější než ono (budget.ts weekTarget, `share`);
+  // starší uložený pondělní plán `share` nemá → běžný týden
+  const share0 = mondayPlan?.week?.share ?? 1;
+  const fRel = mondayPlan ? Math.min(1, Math.min(share0, fat.factor) / Math.max(0.01, Math.min(share0, mondayPlan.fatigue))) : 1;
   const weekZero = (tg: WeekTarget, m: CoachInfo["horizon"][number]): WeekTarget => {
     const planDone = m.days.filter((x) => x.date < from).reduce((t, x) => t + x.load, 0);
     const rest = m.days.filter((x) => x.date >= from);
@@ -1030,7 +1033,7 @@ function toPlan(inp: CoachInput, weeks: Week3[], o: { reentry: string | null; ou
     mondayPlan: null,
     reentry: o.reentry,
     outlook: o.outlook,
-    horizon: weeks.map((w) => ({ weekStart: w.weekStart, detail: w.detail, load: w.planned, done: w.target.done, need: w.target.need, target: w.target.load, notes: w.target.notes, limit: w.target.limit, ctlStart: w.target.ctlStart, ctlEnd: w.ctlEnd, ctlGoal: w.target.ctlGoal, phaseLabel: w.target.phaseLabel, recoveryWeek: w.target.recoveryWeek, days: w.days.map((x) => ({ date: x.date, role: x.role, sport: x.sport, minutes: x.minutes, load: x.load, name: x.name, blocked: !!x.blocked, workout: x.role !== "rest" && !x.blocked ? x.workout : null, steps: x.role !== "rest" && !x.blocked ? x.steps : [], targetText: x.role !== "rest" && !x.blocked ? x.targetText : null, why: x.why, indoor: x.indoor })) })),
+    horizon: weeks.map((w) => ({ weekStart: w.weekStart, detail: w.detail, load: w.planned, done: w.target.done, need: w.target.need, target: w.target.load, notes: w.target.notes, limit: w.target.limit, share: w.target.share, ctlStart: w.target.ctlStart, ctlEnd: w.ctlEnd, ctlGoal: w.target.ctlGoal, phaseLabel: w.target.phaseLabel, recoveryWeek: w.target.recoveryWeek, days: w.days.map((x) => ({ date: x.date, role: x.role, sport: x.sport, minutes: x.minutes, load: x.load, name: x.name, blocked: !!x.blocked, workout: x.role !== "rest" && !x.blocked ? x.workout : null, steps: x.role !== "rest" && !x.blocked ? x.steps : [], targetText: x.role !== "rest" && !x.blocked ? x.targetText : null, why: x.why, indoor: x.indoor })) })),
   };
   coach.mondayPlan = o.mondayPlan && !o.mondayPlan.week ? { ...o.mondayPlan, week: coach.horizon[0]! } : o.mondayPlan;
   return { from: dates[0]!, to: dates[dates.length - 1]!, days, changes, chart, loadPast7, loadNext7, qualityWeeks, warnings, weeklyTarget: { lo: Math.round(total0 * 0.9), hi: Math.round(total0 * 1.1), mid: total0 }, missed, done, coach };

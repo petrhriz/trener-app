@@ -48,6 +48,10 @@ export function powerLoad(a: Pick<NActivity, "sport" | "moving_s" | "np" | "tss_
   return null;
 }
 
+/** Zátěž z tepu (HRSS) má stejné měřítko jako TSS z výkonu, ale je méně přesná: tep reaguje pozdě, takže intervaly
+ *  podhodnocuje a lehké jízdy nadhodnocuje (TrainingPeaks: hrTSS); proti intervals.icu se liší v průměru o 13. */
+export const LOAD_HR_NOTE = "Zátěž je odhad z tepu (HRSS): u intervalů bývá nižší a u lehkých tréninků vyšší, než by byla z výkonu. Do kondice se sčítá s TSS z výkonu, ale je méně přesná.";
+
 /** hrTSS z průměrného tepu a LTHR (kalibrace: MAE 13 proti intervals.icu HRSS), záloha zóny tepu. */
 function hrLoad(a: Pick<NActivity, "moving_s" | "hr_z" | "avg_hr">, hz: HrZones | null): { load: number; source: LoadSource } | null {
   const secs = a.moving_s ?? 0;
