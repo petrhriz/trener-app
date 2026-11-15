@@ -17,7 +17,7 @@ import { STATUS_LABEL, coaching, strainScore, typicalWake, type StatusKind } fro
 import { misc } from "./misc";
 import { addDays, dow, localNow, mondayOf, tzOffsetMin } from "../lib/time";
 import { baseFor, nightsBefore, sleepBankMin } from "../core/sleepCalc";
-import { carryDay } from "../core/carryDay";
+import { carryDay, liveOr } from "../core/carryDay";
 import { constraintNoteOk } from "../core/coach/common";
 import { RPE_ASK_DAYS, RPE_LABEL, rpeOk, rpeToAsk } from "../core/rpe";
 import { addConstraint, applyChanges, claimProposal, finishProposal, getProposal, openProposal, removeConstraint, saveProposal } from "../plan/proposals";
@@ -136,7 +136,7 @@ api.get("/overview", async (c) => {
   const fit = r.fitness;
   const day = r.today.day;
   const wm = weatherMap(ctx, T, 7);
-  const stressDist = (() => { try { return sw?.stress_dist ? JSON.parse(sw.stress_dist) : null; } catch { return null; } })();
+  const stressDist = (() => { try { const v = liveOr(tw, sw, "stress_dist"); return v ? JSON.parse(v) : null; } catch { return null; } })();
   const vsN = (v: number | null | undefined, n: { mean: number; sd: number } | null, lowGood = false) =>
     v == null || !n ? null : v < n.mean - n.sd ? (lowGood ? "Nízký" : "Pod normou") : v > n.mean + n.sd ? (lowGood ? "Zvýšený" : "Nad normou") : "Normální";
   const past = D !== T;
@@ -206,11 +206,11 @@ api.get("/overview", async (c) => {
       fitPast: { ...pastFit, load7 },
     } : {}),
     readiness: { state: recD.state, label: recD.stateLabel, score: recShow.score, scoreDrags: recShow.scoreDrags, scoreBoosts: recShow.scoreBoosts, reasons: [...recD.flags.counted, ...recD.reasons], decision: r.today.decision, why: r.today.decisionWhy, missing: r.missingData },
-    bb: { max: (tw?.bb_latest != null ? tw : sw)?.bb_max ?? null, min: (tw?.bb_latest != null ? tw : sw)?.bb_min ?? null, latest: tw?.bb_latest ?? sw?.bb_latest ?? null, charged: (tw?.bb_latest != null ? tw : sw)?.bb_charged ?? null, drained: (tw?.bb_latest != null ? tw : sw)?.bb_drained ?? null, series: last14.map((w) => ({ date: w.date, max: w.bb_max, min: w.bb_min })), norm: nm("bb_max") },
+    bb: { max: (tw?.bb_latest != null ? tw : sw)?.bb_max ?? null, min: (tw?.bb_latest != null ? tw : sw)?.bb_min ?? null, latest: liveOr(tw, sw, "bb_latest"), charged: (tw?.bb_latest != null ? tw : sw)?.bb_charged ?? null, drained: (tw?.bb_latest != null ? tw : sw)?.bb_drained ?? null, series: last14.map((w) => ({ date: w.date, max: w.bb_max, min: w.bb_min })), norm: nm("bb_max") },
     hrv: { today: carry ? sw?.hrv ?? null : r.recovery.hrv.today, rating: r.recovery.hrv.rating, flag: r.recovery.hrv.flag, range: r.recovery.hrv.rangeText, avg7: r.recovery.hrv.avg7, series: series("hrv"), norm: nm("hrv") },
     rhr: { today: carry ? sw?.rhr ?? null : r.recovery.rhr.today, rating: r.recovery.rhr.rating, flag: r.recovery.rhr.flag, range: r.recovery.rhr.rangeText, avg7: r.recovery.rhr.avg7, series: series("rhr"), norm: nm("rhr") },
-    stress: { avg: sw?.stress_avg ?? null, max: sw?.stress_max ?? null, dist: stressDist, series: series("stress_avg"), norm: nm("stress_avg") },
-    steps: { today: sw?.steps ?? null, goal: 5000, series: series("steps"), norm: nm("steps"), floors: sw?.floors_up ?? null },
+    stress: { avg: liveOr(tw, sw, "stress_avg"), max: liveOr(tw, sw, "stress_max"), dist: stressDist, series: series("stress_avg"), norm: nm("stress_avg") },
+    steps: { today: liveOr(tw, sw, "steps"), goal: 5000, series: series("steps"), norm: nm("steps"), floors: liveOr(tw, sw, "floors_up") },
     resp: { today: sw?.sleep_resp ?? null, series: series("sleep_resp"), norm: nm("sleep_resp" as any) },
     sleep,
     sleepSeries: last14.map((w) => ({ date: w.date, s: w.sleep_s, score: w.sleep_score, deep: w.deep_s, rem: w.rem_s, light: w.light_s, awake: w.awake_s })),

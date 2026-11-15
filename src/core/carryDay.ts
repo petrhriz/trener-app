@@ -13,6 +13,11 @@ export interface CarryRow {
 const hasMorning = (w: CarryRow | undefined) => !!w && (w.sleep_s != null || w.hrv != null);
 const hasAny = (w: CarryRow | undefined) => hasMorning(w) || (!!w && w.rhr != null);
 
+/** Živá hodnota dne (kroky, stres, energie…): dnešní, jakmile je; jinak z přeneseného dne. */
+export function liveOr<T extends object, K extends keyof T>(today: T | null | undefined, carried: T | null | undefined, k: K): T[K] | null {
+  return today?.[k] ?? carried?.[k] ?? null;
+}
+
 /** Datum dne, jehož data se ukážou místo dneška, nebo null (dnešek má ranní data / včerejšek nic nemá). */
 export function carryDay(well: readonly CarryRow[], T: string): string | null {
   if (hasMorning(well.find((w) => w.date === T))) return null;

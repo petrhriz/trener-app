@@ -180,7 +180,7 @@ export function coaching(i: CoachingInput): Coaching {
   } else if (!sem || sem.missing) {
     title = "Ranní data zatím nemám";
     text = i.carried
-      ? "Kroužky a dlaždice zatím ukazují včerejší den. Dnešní zotavení spočítám po synchronizaci hodinek (VST, klidový tep a spánek z noci)."
+      ? "Zotavení, spánek a VST zatím ukazují včerejšek. Dnešní zotavení spočítám po synchronizaci hodinek (VST, klidový tep a spánek z noci)."
       : "Počkej na synchronizaci hodinek (VST, klidový tep a spánek z noci).";
   } else if (band === "low") {
     title = "Nezotavený – dnes volno";

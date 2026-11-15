@@ -1055,7 +1055,10 @@ function routeGlowSvg(route) {
 }
 async function routeGlow(box, id) {
   if (!box) return;
-  try { const s = await api(`activity/${id}/streams`); const svg = routeGlowSvg(s.route); if (svg) { box.innerHTML = svg; box.classList.add("on"); } } catch {}
+  // aktivita bez trasy (průběh chybí) se nezkouší znovu při každém otevření Přehledu
+  try { if (localStorage.getItem("noRoute") === id) return; } catch {}
+  const none = () => { try { localStorage.setItem("noRoute", id); } catch {} };
+  try { const s = await api(`activity/${id}/streams`); const svg = routeGlowSvg(s.route); if (svg) { box.innerHTML = svg; box.classList.add("on"); } else none(); } catch { none(); }
 }
 async function pagePrehled(el) {
   const d = await api("overview" + (viewDate ? `?date=${viewDate}` : ""));
@@ -1124,7 +1127,7 @@ async function pagePrehled(el) {
   const longDate = new Date(d.date + "T12:00").toLocaleDateString("cs-CZ", { weekday: "long", day: "numeric", month: "long" });
   el.innerHTML = `<div class="head"><div><h1>${greeting(d.hour)}${d.name ? `, <span class="acc">${esc(d.name)}</span>` : ""}</h1><div class="sub"><span class="plong">${longDate[0].toUpperCase() + longDate.slice(1)}</span>${d.isToday ? `<span id="watchAt">${d.lastSync ? ` · ${ic("sync")} ${syncAgo(new Date(d.lastSync).getTime())}` : ""}</span>` : ""}</div></div></div>
   <div class="pbar">${dateNav(d.date, d.minDate, d.todayDate, "pnav", true)}${d.isToday ? weatherPill(d.weatherNow) : d.weatherDay ? weatherDayPill(d.weatherDay) : ""}${statusPill(d.status)}</div>
-  ${d.carry ? `<p class="carry">${ic("noc")} Kroužky, spánek a dlaždice jsou ze včerejška (${dayDm(d.carry)}) – dnešní data přijdou po synchronizaci hodinek ráno.</p>` : ""}
+  ${d.carry ? `<p class="carry">${ic("noc")} Zotavení, spánek a VST jsou zatím z noci na ${dayDm(d.carry)} – dnešní přijdou po synchronizaci hodinek.</p>` : ""}
   <div class="grid prehled">${dnes}${d.isToday && !paused ? nextWorkoutCard(d.next, d.todayDate) : ""}${sleepCard}${tiles}${bbCard}${hrCard}${laCard}</div>`;
   if (la && !["indoor", "strength", "mobility"].includes(la.sport)) routeGlow(el.querySelector(".la-route"), la.id);
   el.querySelector("#aiDay")?.addEventListener("click", () => openAiPanel({ title: `Den ${dayDm(d.date)}`,
@@ -3148,7 +3151,7 @@ const nSave = (txt = "Uložit") => `<div class="nsave"><button class="btn pri" t
 async function pageNastaveni(el) {
   const [s, st0, sec] = await Promise.all([api("settings"), api("status").catch(() => null), api("secrets").catch(() => [])]);
   const st = st0 || { state: {}, counts: {}, logs: [], source: "", llm: false, model: "" };
-  const SEC_LABEL = { GARMIN_API_KEY: ["Garmin API klíč", "Garmin Connect → Nastavení → Personal API"], INTERVALS_API_KEY: ["intervals.icu API klíč", "intervals.icu → Settings → Developer Settings"], INTERVALS_ATHLETE_ID: ["intervals.icu ID sportovce", "např. i123456 (Settings, vpravo nahoře)"], MAPY_API_KEY: ["Mapy.com API klíč (mapové podklady)", "zdarma na developer.mapy.com → Můj účet → API klíč; omez ho na doménu, kde aplikace běží"], GEMINI_API_KEY: ["Google AI Studio klíč (AI Gemma)", "zdarma na aistudio.google.com → Get API key"], NVIDIA_API_KEY: ["NVIDIA nebo OpenRouter API klíč (AI Nemotron)", "build.nvidia.com → Get API Key (nvapi-…), nebo openrouter.ai → Keys (sk-or-…)"] };
+  const SEC_LABEL = { GARMIN_API_KEY: ["Garmin API klíč", "Garmin Connect → Nastavení → Personal API"], INTERVALS_API_KEY: ["intervals.icu API klíč", "intervals.icu → Settings → Developer Settings"], INTERVALS_ATHLETE_ID: ["intervals.icu ID sportovce", "např. i123456 (Settings → dole Developer Settings)"], MAPY_API_KEY: ["Mapy.com API klíč (mapové podklady)", "zdarma na developer.mapy.com → Můj účet → API klíč; omez ho na doménu, kde aplikace běží"], GEMINI_API_KEY: ["Google AI Studio klíč (AI Gemma)", "zdarma na aistudio.google.com → Get API key"], NVIDIA_API_KEY: ["NVIDIA nebo OpenRouter API klíč (AI Nemotron)", "build.nvidia.com → Get API Key (nvapi-…), nebo openrouter.ai → Keys (sk-or-…)"] };
   const v = (k) => esc(s[k] ?? "");
   const theme = document.documentElement.getAttribute("data-theme") || "auto";
   const tab = (k) => `data-nt="${k}"`;
@@ -3905,10 +3908,10 @@ const OB_STEPS = {
     <p class="note">Klíč se uloží zašifrovaný. Změníš ho kdykoli v Nastavení → Připojení. Měsíc před vypršením tě upozorním.</p>
     <div class="btns"><button class="btn link" data-ob="garminHow">← Návod</button></div>`,
   icuHow: () => `<h2>2 · intervals.icu (doporučeno)</h2><p class="sub">Přes intervals.icu jde plán trenéra do kalendáře a do hodinek a odtud se berou okruhy jízd, kondice a splnění tréninku. Je zdarma.</p>
-    <ol class="ob-steps"><li>Založ si účet na ${obLink("https://intervals.icu/", "intervals.icu")} (jde to i přes Google).</li>
-    <li>V ${obLink("https://intervals.icu/settings", "Settings")} u <b>Garmin Connect</b> klikni na <b>Connect</b> a zapni <b>Upload planned workouts</b> – naplánované tréninky pak dorazí do hodinek.</li>
+    <ol class="ob-steps"><li>Založ si účet na ${obLink("https://intervals.icu/", "intervals.icu")}.</li>
+    <li>V <b>Settings</b> připoj <b>Garmin Connect</b> a zapni nahrávání plánovaných tréninků do Garminu – tréninky od trenéra pak dorazí do hodinek.</li>
     <li>Tamtéž zapni <b>Use laps for intervals</b>, ať se okruhy z hodinek načtou.</li>
-    <li>Úplně dole v Settings je <b>Developer Settings</b>: tam najdeš <b>Athlete ID</b> (např. i123456) a tlačítko pro <b>API Key</b>.</li></ol>
+    <li>Úplně dole v Settings je <b>Developer Settings</b>: tam najdeš <b>Athlete ID</b> (např. i123456) a <b>API Key</b>.</li></ol>
     <div class="btns"><button class="btn pri" data-ob="icuKey">Mám účet – vložit klíč</button><button class="btn link" data-ob-skip>Teď ne</button></div>`,
   icuKey: () => `<h2>Vlož intervals.icu</h2><form class="authf" data-obf="icu"><label>Athlete ID<input name="id" autocapitalize="none" autocomplete="off" placeholder="i123456" required pattern="[iI]?[0-9]{1,10}"></label><label>API Key<input name="k" type="password" autocomplete="off" required></label>
     <label class="ob-tg"><input type="checkbox" name="sync" checked> Zapisovat plán trenéra do intervals.icu (a tím do hodinek)</label>
@@ -3928,7 +3931,10 @@ async function obSave(kind, fd) {
     await put("INTERVALS_API_KEY", String(fd.get("k")).trim());
   }
   const t = await api("secrets/test", { method: "POST" });
-  return kind === "garmin" ? t.garmin : t.intervals;
+  const res = kind === "garmin" ? t.garmin : t.intervals;
+  // nefunkční klíč nenechat uložený (prázdná hodnota = smazat), jinak by se průvodce už neukázal
+  if (!/^připojeno/.test(res)) for (const k of kind === "garmin" ? ["GARMIN_API_KEY"] : ["INTERVALS_API_KEY", "INTERVALS_ATHLETE_ID"]) await put(k, "").catch(() => {});
+  return res;
 }
 /** Průvodce se ukáže, dokud chybí Garmin klíč (a intervals.icu, dokud ho nepřeskočíš). „Později“ = znovu při dalším otevření. Vrací true, když se ukázal. */
 async function onboardAsk() {
@@ -3957,7 +3963,7 @@ async function onboardAsk() {
       btn.disabled = true; msg.textContent = "Ukládám a zkouším připojení…";
       try {
         const res = await obSave(kind, new FormData(f));
-        if (!/^připojeno/.test(res)) { msg.textContent = `Uloženo, ale připojení nejde (${res}). Zkontroluj klíč a vlož ho znovu.`; btn.disabled = false; return; }
+        if (!/^připojeno/.test(res)) { msg.textContent = `Připojení nejde (${res}). Zkontroluj klíč a vlož ho znovu.`; btn.disabled = false; return; }
         if (kind === "icu") await api("settings", { method: "POST", body: JSON.stringify({ icu_sync: new FormData(f).get("sync") === "on" }) });
         cache.clear();
         show(kind === "garmin" && needIcu && !icuSkip ? "icuHow" : "done");

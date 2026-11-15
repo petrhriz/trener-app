@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { carryDay } from "../src/core/carryDay";
+import { carryDay, liveOr } from "../src/core/carryDay";
 import { coaching } from "../src/core/readinessScore";
 
 describe("Přehled po půlnoci (ranní data ještě nejsou)", () => {
@@ -19,6 +19,15 @@ describe("Přehled po půlnoci (ranní data ještě nejsou)", () => {
   it("starší den než včerejšek se nepřenáší, prázdný včerejšek taky ne", () => {
     expect(carryDay([{ date: "2026-11-13", hrv: 70, sleep_s: 27000, rhr: 52 }], T)).toBeNull();
     expect(carryDay([{ date: "2026-11-14", hrv: null, sleep_s: null, rhr: null }], T)).toBeNull();
+  });
+
+  it("živé hodnoty (kroky, stres) jsou dnešní, jakmile jsou; včerejší jen místo chybějících", () => {
+    const today = { date: T, steps: 120 as number | null, stress_avg: null as number | null };
+    const yest = { date: "2026-11-14", steps: 9000 as number | null, stress_avg: 25 as number | null };
+    expect(liveOr(today, yest, "steps")).toBe(120);
+    expect(liveOr(today, yest, "stress_avg")).toBe(25);
+    expect(liveOr(null, yest, "steps")).toBe(9000);
+    expect(liveOr(today, null, "stress_avg")).toBeNull();
   });
 
   it("zhodnocení dne řekne, že kroužky a dlaždice jsou ze včerejška", () => {
