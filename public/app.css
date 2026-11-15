@@ -2073,7 +2073,7 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 .pbar #statusBtn { margin-left: auto; }
 @media (max-width: 760px) { .pbar #statusBtn { margin-left: 0; } }
 /* přepínač dne i počasí mají pevnou šířku (nemění se podle dne ani podle počasí); stav = jen ikona a název */
-.pbar .cdnav { width: auto; flex: none; align-items: center; justify-content: space-between; gap: 2px; padding: 4px; border-radius: 16px; box-shadow: var(--shadow); }
+.pbar .cdnav { width: auto; flex: 1 1 0; min-width: max-content; max-width: 220px; align-items: center; justify-content: space-between; gap: 2px; padding: 4px; border-radius: 16px; box-shadow: var(--shadow); }
 .pbar .cdnav .dpick { flex: none; width: 5.6em; overflow: hidden; }
 .pbar .pillbig:not(#statusBtn) { flex: 1 1 0; width: auto; max-width: 220px; min-width: 0; overflow: hidden; }
 .pbar .pillbig:not(#statusBtn) .pb-t { min-width: 0; overflow: hidden; }
@@ -2085,12 +2085,14 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
   .pbar { gap: 4px; margin: -4px 0 12px; }
   .pbar .pillbig { padding: 4px 9px 4px 4px; gap: 7px; flex: none; }
   .pbar .pb-chev { display: none; }
-  .pbar #statusBtn { padding-right: 8px; gap: 6px; }
-  .pbar #statusBtn .pb-t b { font-size: 13px; }
+  .pbar #statusBtn { padding-right: 12px; gap: 7px; }
+  .pbar #statusBtn .pb-ico { width: 32px; height: 32px; }
+  .pbar #statusBtn .pb-t b { font-size: 14.5px; }
   .pbar .cdnav .dpick { width: 4.2em; padding: 4px 0; }
   .pbar .cdnav b { font-size: 13px; }
   .pbar .cdnav .btn.sm { width: 28px; min-width: 28px; height: 32px; }
-  .pbar .pillbig:not(#statusBtn) { max-width: none; }
+  /* přepínač dne a počasí stejně široké (dělí se o místo), stav pevně */
+  .pbar .pillbig:not(#statusBtn), .pbar .cdnav { max-width: none; }
   .pbar .pb-ico { width: 30px; height: 30px; }
   .pbar .pb-ico img.wxi { width: 27px; height: 27px; }
   .pbar .pb-t b { font-size: 14px; }
