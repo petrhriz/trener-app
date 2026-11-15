@@ -5,6 +5,7 @@ import { formZone } from "./fitness";
 import type { OwnRide } from "./ownRide";
 import type { QualityType } from "./quality";
 import type { DayWeather } from "./weather";
+import type { Carbs } from "./nutrition";
 import type { Workout } from "./workout";
 
 export type Kind = "z2" | "quality" | "long" | "recovery" | "rest";
@@ -77,8 +78,8 @@ export interface PlanDay {
   workout: Workout | null;
   steps: string[];
   targetText: string | null;
-  /** odhad jídla a pití na trénink podle délky, intenzity, teploty a hmotnosti (src/core/extras.ts) */
-  fuel: string[];
+  /** odhad sacharidů na trénink (src/core/nutrition.ts); null = do hodiny stačí voda */
+  carbs: Carbs | null;
   load: number;
   loadNote: string;
   form: number | null;

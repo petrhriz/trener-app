@@ -169,7 +169,8 @@ function scoreOf(roles: Map<string, Role>, days: SkDay[], tail: Map<string, Past
     const r = roles.get(day.date)!;
     const w = dow(day.date);
     if (r === "rest") continue;
-    // dva dny za sebou jsou v pořádku (blok), třetí den za sebou je mírně horší
+    // rozložení: volno mezi tréninky je o něco lepší, dva dny za sebou ale nevadí; třetí den za sebou je horší
+    if (trainedOn(addDays(day.date, -1))) s -= 0.5;
     if (trainedOn(addDays(day.date, -1)) && trainedOn(addDays(day.date, -2))) s -= 0.75;
     if (r === "key") {
       if (!trainedOn(addDays(day.date, -1))) s += 1.5;

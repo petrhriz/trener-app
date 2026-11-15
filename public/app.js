@@ -784,7 +784,7 @@ const STATUS = { active: [ic("aktivni"), "Aktivní", "ok"], sick: [ic("nemocny")
 const untilText = (st) => (st.kind === "active" ? "Do změny" : st.until ? `do ${dayDm(st.until)}` : "Do odvolání");
 function statusPill(st) {
   const [ico, label, tone] = STATUS[st.kind] || STATUS.active;
-  return `<button class="pillbig st-${tone}" id="statusBtn" aria-label="stav ${label} – změnit"><span class="pb-ico">${ico}</span><span class="pb-t"><b>${label}</b>${st.kind === "active" ? "" : `<small>${untilText(st)}</small>`}</span><span class="pb-chev" aria-hidden="true">⌄</span></button>`;
+  return `<button class="pillbig st-${tone}" id="statusBtn" aria-label="stav ${label}${st.kind === "active" ? "" : ` ${untilText(st)}`} – změnit" title="${label}${st.kind === "active" ? "" : ` · ${untilText(st)}`}"><span class="pb-ico">${ico}</span><span class="pb-t"><b>${label}</b></span></button>`;
 }
 /** WMO kód počasí → ikona */
 /** WMO kód (Open-Meteo) → ikona; night = po setmění jasno jako měsíc */
@@ -813,7 +813,7 @@ function weatherPill(w) {
 }
 /** počasí minulého dne: ikona, max / min, srážky */
 function weatherDayPill(w) {
-  return `<div class="pillbig"><span class="pb-ico">${wIcon(w.code, (w.precip || 0) >= 1 ? 60 : 0)}</span><span class="pb-t"><b>${num(w.tmax)}°<small> / ${num(w.tmin)}°</small></b><small>${(w.precip || 0) >= 0.2 ? `srážky ${num(w.precip, 1)} mm` : "sucho"}</small></span></div>`;
+  return `<div class="pillbig"><span class="pb-ico">${wIcon(w.code, (w.precip || 0) >= 1 ? 60 : 0)}</span><span class="pb-t"><b>${num(w.tmax)}°<small> / ${num(w.tmin)}°</small></b><small>${(w.precip || 0) >= 0.2 ? `${num(w.precip, 1)} mm` : "sucho"}</small></span></div>`;
 }
 function openStatusModal(cur, onDone) {
   const ov = document.createElement("div");
@@ -1167,6 +1167,20 @@ function coachCalendar(d, co, sel, detail) {
   };
   const n1 = (v) => (v == null ? DASH : num(v, 1));
   const W0 = co.horizon[0].weekStart;
+  /** orientační týden: jen soupis, co se má odjet – dny a časy dostane, až bude příští týden (pak se upravuje i podle počasí) */
+  const hmTot = (m) => `${Math.floor(m / 60)}:${String(Math.round(m % 60)).padStart(2, "0")} h`;
+  const SPORT_CZ = { run: "běh", xc_ski: "běžky", walk: "chůze" };
+  const summary = (w) => {
+    const tr = w.days.filter((x) => !x.blocked && x.role !== "rest");
+    const blk = w.days.filter((x) => x.blocked).length;
+    const blkTxt = blk ? ` · ${blk} ${blk === 1 ? "den" : "dny"} nelze` : "";
+    if (!tr.length) return `<div class="cc-sum"><span class="cc-it tot">Bez tréninku${blkTxt}</span></div>`;
+    const n = (r) => tr.filter((x) => x.role === r).length;
+    const items = [[n("key"), "kvalita", "r-q"], [n("long"), "dlouhý Z2", "r-e"], [n("endurance"), "Z2", "r-e"]].filter(([c]) => c > 0);
+    const other = [...new Set(tr.map((x) => SPORT_CZ[x.sport]).filter(Boolean))];
+    const mins = tr.reduce((t, x) => t + (x.minutes || 0), 0);
+    return `<div class="cc-sum">${items.map(([c, l, rc]) => `<span class="cc-it ${rc}"><b>${c}×</b> ${l}</span>`).join("")}<span class="cc-it tot">${tr.length} ${tr.length >= 5 ? "tréninků" : "tréninky"} · ~${hmTot(mins)}${other.length ? ` · z toho ${other.join(", ")}` : ""}${blkTxt}</span></div>`;
+  };
   const grid = (ws, orient) => `<div class="cc-r">${[0, 1, 2, 3, 4, 5, 6].map((k) => cell(addDay(ws, k), orient)).join("")}</div>`;
   const span = (ws) => `${ws.slice(5, 7) === addDay(ws, 6).slice(5, 7) ? `${Number(ws.slice(8, 10))}.` : dm(ws)}–${dm(addDay(ws, 6))}`;
   const inWeek = (ws) => sel && sel >= ws && sel <= addDay(ws, 6);
@@ -1183,11 +1197,11 @@ function coachCalendar(d, co, sel, detail) {
     const bar = `<span class="cc-bar" title="zátěž ${total} / cíl ${goal}">${total > 0 ? `<i class="${ok ? "" : "warn"}" style="width:${pct(total)}%"></i>` : ""}${i === 0 && w.done ? `<i class="dn" style="width:${pct(w.done)}%"></i>` : ""}<u style="left:${pct(goal)}%"></u></span>`;
     const orient = !w.detail && i > 0;
     const ctlUp = w.ctlEnd != null && w.ctlStart != null ? (w.ctlEnd - w.ctlStart >= 0.05 ? "up" : w.ctlEnd - w.ctlStart <= -0.05 ? "dn" : "") : "";
-    return `<div class="cc-w ${i === 0 ? "cur" : orient ? "orient" : "next"}"><div class="cc-s"><span class="cc-wl">${span(w.weekStart)} <em>${tag}</em>${w.recoveryWeek ? ' <em class="lt">lehčí</em>' : ""}</span><span class="cc-num"><b>${total}</b><small> / ${goal}</small></span>${bar}<span class="cc-ctl ${ctlUp}" title="kondice (CTL) na začátku → na konci týdne">${n1(w.ctlStart)} → <b>${n1(w.ctlEnd)}</b></span></div>${grid(w.weekStart, orient)}${inWeek(w.weekStart) ? detail : ""}</div>`;
+    return `<div class="cc-w ${i === 0 ? "cur" : orient ? "orient" : "next"}"><div class="cc-s"><span class="cc-wl">${span(w.weekStart)} <em>${tag}</em>${w.recoveryWeek ? ' <em class="lt">lehčí</em>' : ""}</span><span class="cc-num"><b>${total}</b><small> / ${goal}</small></span>${bar}<span class="cc-ctl ${ctlUp}" title="kondice (CTL) na začátku → na konci týdne">${n1(w.ctlStart)} → <b>${n1(w.ctlEnd)}</b></span></div>${orient ? summary(w) : grid(w.weekStart, orient)}${inWeek(w.weekStart) ? detail : ""}</div>`;
   }).join("");
   const head = `<div class="cc-h">${DAYS.map((x, k) => `<span class="${k + 1 === dow(T) ? "now" : ""}">${x}</span>`).join("")}</div>`;
   const legend = `<div class="cc-leg"><span><i class="r-q"></i>kvalita</span><span><i class="r-e"></i>Z2 a dlouhý</span><span><i class="dn"></i>odjeto</span><span class="sub">Pruh = zátěž týdne proti cíli (čárka), vpravo kondice začátek → konec týdne.</span></div>`;
-  return card("c12 t-cal", (ic("kalendar") + " Plán na 4 týdny"), W0 ? `${dm(W0)}–${dm(addDay(W0, 27))}` : "", `<div class="ccal">${past}${head}${weeks}</div>${legend}<p class="note">Klikni na kterýkoli budoucí den – otevře se jeho úprava. Tento a příští týden mají konkrétní tréninky, další dva jsou orientační (druh, délka, zátěž); kroky se doplní 2 týdny předem.</p>`, 'data-tt="tyden"');
+  return card("c12 t-cal", (ic("kalendar") + " Plán na 4 týdny"), W0 ? `${dm(W0)}–${dm(addDay(W0, 27))}` : "", `<div class="ccal">${past}${head}${weeks}</div>${legend}<p class="note">Klikni na budoucí den – otevře se jeho úprava. Tento a příští týden mají konkrétní dny a tréninky (každý den se přepočítají podle kondice, únavy a předpovědi počasí). Další dva týdny jsou jen soupis, co se má odjet – dny dostanou, až budou příští týden.</p>`, 'data-tt="tyden"');
 }
 
 function weekBar(w, label) {
@@ -1396,8 +1410,8 @@ async function pageTrener(el) {
   };
   /** kam jde trénink přesunout: všechny budoucí dny plánu i výhledu */
   const shiftTargets = (x) => [...new Set([...p.days.map((y) => y.date), ...hzDays.map((y) => y.date)])].filter((dt) => dt >= r.date && dt !== x.date).sort().map(dayAt).filter((y) => y && y.kind !== "blocked");
-  /** odhad jídla a pití (podle délky, intenzity, teploty a hmotnosti) – rozbalí se jako kroky tréninku */
-  const fuelHtml = (x) => (x.fuel && x.fuel.length ? `<details class="stepsd"><summary>Jídlo a pití (odhad)</summary><ul class="steps">${x.fuel.map((f) => `<li>${esc(f)}</li>`).join("")}</ul></details>` : "");
+  /** odhad sacharidů na trénink (podle délky a intenzity) – jen gramy */
+  const carbsHtml = (x) => (x.carbs ? `<p class="tcarb">Sacharidy: <b>~${x.carbs.total} g</b> <span class="sub">(${x.carbs.perHour} g/h)</span></p>` : "");
   const panelHtml = (x) => {
     const ride = !!x.name;
     const q = x.kind === "quality";
@@ -1411,7 +1425,7 @@ async function pageTrener(el) {
       ${ride && x.workout ? `<div class="btns"><a class="btn sm" href="/api/plan/fit?date=${x.date}" download="${x.date}-workout.fit">${ic("stahnout")} FIT soubor</a><span class="note">bez intervals.icu: nahraj kabelem do složky Garmin/NewFiles</span></div>` : ""}
       ${stepEditor(x, mine)}
       ${x.steps && x.steps.length ? `<details class="stepsd"><summary>Kroky tréninku (${x.steps.length})</summary><ol class="steps">${x.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol></details>` : ""}
-      ${fuelHtml(x)}
+      ${carbsHtml(x)}
       ${x.note ? `<p class="note">${esc(x.note)}</p>` : ""}`;
   };
   const dayRow = (x) => {
@@ -1427,7 +1441,7 @@ async function pageTrener(el) {
       <span class="td-main">${ride ? `<span class="td-ico">${tSportIco(x.sport)}</span>` : ""}<span class="td-t"><b>${esc(x.name || (x.kind === "blocked" ? x.tag : "Volno"))}</b>${tags}${x.targetText && ride ? `<small>${esc(x.targetText)}</small>` : ""}</span></span>
       <span class="td-n num">${ride ? `${dur((x.durationMin || 0) * 60)}<small>zátěž ${num(x.load)}</small>${x.targetText ? `<small class="td-tg">${esc(String(x.targetText).replace(/\s*\(.*$/, ""))}</small>` : ""}` : ""}</span>
       <span class="td-w">${wtxt}</span>
-      ${x.kind === "blocked" ? "<span></span>" : `<button class="td-btn ${ride ? "" : "add"}" data-open="${x.date}" aria-expanded="${open}" title="${ride ? "Upravit" : "Přidat trénink"}">${open ? "Zavřít" : ride ? "Upravit" : "Přidat"}</button>`}</div>${!open && ride ? `<div class="tpeek">${x.workout ? workoutSvg(x.workout, d.ftp) : ""}${x.steps && x.steps.length ? `<ol class="steps">${x.steps.map((st) => `<li>${esc(st)}</li>`).join("")}</ol>` : `<p class="sub">${esc(x.targetText || "Kroky tréninku nemám.")}</p>`}${fuelHtml(x)}${x.why && x.why.length ? `<p class="note">${esc(x.why.join(" · "))}</p>` : ""}</div>` : ""}${panel}</div>`;
+      ${x.kind === "blocked" ? "<span></span>" : `<button class="td-btn ${ride ? "" : "add"}" data-open="${x.date}" aria-expanded="${open}" title="${ride ? "Upravit" : "Přidat trénink"}">${open ? "Zavřít" : ride ? "Upravit" : "Přidat"}</button>`}</div>${!open && ride ? `<div class="tpeek">${x.workout ? workoutSvg(x.workout, d.ftp) : ""}${x.steps && x.steps.length ? `<ol class="steps">${x.steps.map((st) => `<li>${esc(st)}</li>`).join("")}</ol>` : `<p class="sub">${esc(x.targetText || "Kroky tréninku nemám.")}</p>`}${carbsHtml(x)}${x.why && x.why.length ? `<p class="note">${esc(x.why.join(" · "))}</p>` : ""}</div>` : ""}${panel}</div>`;
   };
   // detail dne z kalendáře (pod jeho týdnem)
   const ccX = ccOpen ? dayAt(ccOpen) : null;
@@ -1439,7 +1453,7 @@ async function pageTrener(el) {
     return `${x.targetText ? `<p class="cc-tg">${esc(x.targetText)}</p>` : ""}
       ${x.workout ? workoutSvg(x.workout, d.ftp) : ""}
       ${x.steps && x.steps.length ? `<ol class="steps">${x.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>` : x.workout ? "" : `<p class="sub">Rozpis tréninku zatím nemám.</p>`}
-      ${fuelHtml(x)}
+      ${carbsHtml(x)}
       ${why ? `<p class="note">${esc(why)}</p>` : ""}
       ${x.orient ? `<p class="note">Orientační náhled – konkrétní kvalitu, délky a watty trenér upřesní 2 týdny předem podle kondice, únavy a počasí.</p>` : ""}
       <div class="btns"><button type="button" class="btn sm pri" data-ccedit>${ic("upravit")} Upravit</button>${x.workout ? `<a class="btn sm" href="/api/plan/fit?date=${x.date}" download="${x.date}-workout.fit">${ic("stahnout")} FIT soubor</a>` : ""}</div>`;

@@ -14,9 +14,10 @@ kondice (`coach/target.ts`), únava, pravidla kontroly týdne (`coach/validate.t
    Když omezení cíl nepustí, trenér to napíše čísly („potřeba 286, dáš 221 → kondice 40,8 → 39,9“).
 4. **Kostra** (tento a příští týden + orientačně další dva): kolik tréninků, kolik kvalit, dlouhý; řešič vybere dny
    podle pravidel (max 3 dny za sebou, kvalita ne po kvalitě ani po dlouhém, dlouhý o víkendu, volby uživatele platí).
-   Dva tréninky za sebou jsou v pořádku (blok), mírně se penalizuje až třetí den v řadě. Aby týdny nebyly všechny
-   stejné, řešič mírně penalizuje kvalitu ve stejný den jako minulý týden a úplně stejné tréninkové dny jako minulý
-   týden (u prvního týdne podle skutečně odjetého minulého týdne).
+   Volno mezi tréninky je o něco lepší, dva dny za sebou ale nevadí (třetí v řadě je horší). Aby týdny nebyly všechny
+   stejné, řešič mírně penalizuje kvalitu ve stejný den jako minulé 2 týdny a úplně stejné tréninkové dny jako minulé
+   týdny (u prvních týdnů podle skutečně odjetých). Týden 3 a 4 je na stránce jen soupis (kolik kvalit, dlouhých a Z2,
+   celkový čas) – dny dostane, až je příští, a pak se každý den přepočítá i podle předpovědi počasí.
 5. **Délky** ze zátěže dne a sazby sportu (zátěž za hodinu Z2 z historie uživatele). Změna sportu drží zátěž.
    Kvalita má asi stejný čas jako Z2 den týdne (nejvýš strop kvality), Z2 den nikdy delší než strop dlouhého dne,
    běžecký Z2 do 1,2× typického běhu (aspoň hodina, ve stropu běhu). Tréninků nejvýš tolik, kolik se jich do zátěže

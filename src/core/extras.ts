@@ -3,7 +3,6 @@
 import { BIKE_SPORTS, type Sport } from "../datasource/types";
 import { dayDm, num } from "../lib/format";
 import { addDays } from "../lib/time";
-import { carbsFor } from "./nutrition";
 
 // ---------- Recovery check: akutní vs. chronická zátěž ----------
 
@@ -21,54 +20,6 @@ export function acwr(loads: Map<string, number>, lastDay: string): { acute: numb
   const ratio = chronic > 5 ? Math.round((acute / chronic) * 100) / 100 : null;
   const level = ratio == null ? "ok" : ratio > 1.5 ? "high" : ratio > 1.3 ? "warn" : ratio < 0.6 ? "low" : "ok";
   return { acute: Math.round(acute * 10) / 10, chronic: Math.round(chronic * 10) / 10, ratio, level };
-}
-
-// ---------- Fuel & pace: tekutiny a sodík (odhad) ----------
-
-export interface FuelPlan {
-  durationMin: number;
-  carbsPerHour: number;
-  carbsTotal: number;
-  carbsPack: string;
-  fluidPerHour: number; // l/h (odhad)
-  fluidTotal: number;
-  sodiumPerHour: number; // mg/h (odhad)
-  estimates: string[];
-  lines: string[];
-}
-
-/**
- * Pot 0,4–1,4 l/h podle teploty, intenzity a hmotnosti; sodík 400–1100 mg na litr potu (střed 700).
- * Pije se ~70 % ztrát (nepřepíjet – hyponatrémie). Vše označeno jako odhad, dokud neuděláš test pocení.
- */
-export function fuelPlan(durationMin: number, tempC: number | null, weightKg: number | null, sharp: "quality" | "z2" | "easy" = "z2"): FuelPlan {
-  const c = carbsFor(durationMin, sharp, tempC != null && tempC < 5);
-  const t = tempC ?? 15;
-  const w = weightKg ?? 75;
-  let sweat = 0.6 + Math.max(0, t - 15) * 0.03 + (w - 70) * 0.008 + (sharp === "quality" ? 0.15 : 0);
-  sweat = Math.max(0.4, Math.min(1.4, sweat));
-  const fluid = Math.round(sweat * 0.7 * 20) / 20;
-  const sodium = Math.round((sweat * 700) / 50) * 50;
-  const h = durationMin / 60;
-  const lines = [
-    `Sacharidy: ${c.text}`,
-    `Tekutiny: ${num(fluid, 2)} l/h (${num(fluid * h, 1)} l celkem, odhad)`,
-    durationMin >= 120 || t >= 25 ? `Sodík: ${sodium} mg/h (odhad)` : "Sodík: u tréninku do 2 h a v chladu není potřeba",
-  ];
-  return {
-    durationMin,
-    carbsPerHour: c.perHour,
-    carbsTotal: c.total,
-    carbsPack: c.pack,
-    fluidPerHour: fluid,
-    fluidTotal: Math.round(fluid * h * 10) / 10,
-    sodiumPerHour: sodium,
-    estimates: [
-      `pocení ${num(sweat, 2)} l/h (odhad z teploty ${num(t)} °C a hmotnosti ${num(w)} kg)`,
-      "sodík v potu 700 mg/l (odhad, rozpětí 400–1100)",
-    ],
-    lines,
-  };
 }
 
 // ---------- Sleep: pravidelnost ----------

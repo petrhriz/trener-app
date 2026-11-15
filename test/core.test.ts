@@ -6,12 +6,12 @@ import { computeMetrics, formZone, project, weeklyLoadTarget } from "../src/core
 import { activityLoad, hrTssFromAvg, tssFromPower } from "../src/core/load";
 import { type WRow, evaluateRecovery, norm, sleepRating } from "../src/core/recovery";
 import { classify, qualityFromName } from "../src/core/quality";
-import { carbsFor, packFor } from "../src/core/nutrition";
+import { carbsFor } from "../src/core/nutrition";
 import { type Hour, dayWeather, isGreen } from "../src/core/weather";
 import { intervalWorkout, renderIcu, validate, z2Workout } from "../src/core/workout";
 import { TARGET_PCT, pctRange } from "../src/core/zones";
 import { evaluatePast } from "../src/core/qualityDesign";
-import { acwr, easyNotEasy, fuelPlan, lthrSanity, sleepRegularity } from "../src/core/extras";
+import { acwr, easyNotEasy, lthrSanity, sleepRegularity } from "../src/core/extras";
 import { computeDrift, expectedLapNames } from "../src/core/activity";
 import { numbersOk } from "../src/llm/llm";
 import { encodeWorkoutFit, fitCrc } from "../src/plan/fit";
@@ -308,22 +308,13 @@ describe("počasí (kap. 8) a okno na jízdu", () => {
 });
 
 // ---------- výživa ----------
-describe("výživa na jízdu (kap. 9)", () => {
+describe("sacharidy na trénink (kap. 9)", () => {
   it("příklady z pravidel", () => {
-    expect(carbsFor(60, "z2").text).toBe("jen voda");
-    expect(carbsFor(90, "z2").text).toBe("60 g (40 g/h): bidon");
-    expect(carbsFor(105, "quality").text).toBe("105 g (60 g/h): bidon + gel");
-    expect(carbsFor(150, "quality").perHour).toBe(90);
-    expect(carbsFor(150, "z2", true).perHour).toBe(60);
-  });
-  it("balení", () => {
-    expect(packFor(120)).toBe("2 bidony");
-    expect(packFor(165)).toBe("2 bidony + gel");
-  });
-  it("tekutiny a sodík jako odhad", () => {
-    const f = fuelPlan(240, 15, 75, "quality");
-    expect(f.fluidPerHour).toBeGreaterThan(0.3);
-    expect(f.estimates.join(" ")).toContain("odhad");
+    expect(carbsFor(60, "z2")).toBeNull();
+    expect(carbsFor(90, "z2")).toEqual({ total: 60, perHour: 40 });
+    expect(carbsFor(105, "quality")).toEqual({ total: 105, perHour: 60 });
+    expect(carbsFor(150, "quality")!.perHour).toBe(90);
+    expect(carbsFor(150, "z2", true)!.perHour).toBe(60);
   });
 });
 

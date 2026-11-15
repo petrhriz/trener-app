@@ -69,17 +69,19 @@ describe("uložený pondělní plán", () => {
     const thu = runCoach({ ...simInput(sc, acts, THU), mondayPlan: tired, fatigue: { ...NO_FATIGUE, badMornings: 3 } }).coach;
     expect(thu.horizon[0]!.target).toBe(planRest);
   });
-  it("zablokování soboty ve čtvrtek: sobota volno, ostatní dny beze změny, žádné „nestihlo se“", () => {
+  it("zablokování víkendového tréninku ve čtvrtek: den volno, ostatní dny beze změny, žádné „nestihlo se“", () => {
     const { mp, acts, planRest } = setup();
-    const satLoad = mp.week.days.find((d) => d.date === SAT)!.load;
+    // víkendový den s tréninkem z pondělního plánu (sobota nebo neděle – podle toho, kam ho trenér dal)
+    const blk = mp.week.days.find((d) => d.date >= SAT && d.load > 0)!;
+    const satLoad = blk.load;
     expect(satLoad).toBeGreaterThan(0);
-    const thu = runCoach({ ...simInput(sc, acts, THU, { constraints: [{ date: SAT, kind: "nepojedu", note: null }] }), mondayPlan: mp }).coach;
+    const thu = runCoach({ ...simInput(sc, acts, THU, { constraints: [{ date: blk.date, kind: "nepojedu", note: null }] }), mondayPlan: mp }).coach;
     const h = thu.horizon[0]!;
-    expect(h.days.find((d) => d.date === SAT)!.role).toBe("rest");
+    expect(h.days.find((d) => d.date === blk.date)!.role).toBe("rest");
     expect(h.notes.join(" ")).not.toMatch(/nestihlo/);
     expect(h.notes.join(" ")).toMatch(/odpadá \(−\d+ zátěže\), nedohání se/);
     expect(h.target).toBe(planRest - satLoad);
-    for (const d of h.days.filter((x) => x.date !== SAT)) expect(d.minutes).toBe(mp.week.days.find((x) => x.date === d.date)!.minutes);
+    for (const d of h.days.filter((x) => x.date !== blk.date)) expect(d.minutes).toBe(mp.week.days.find((x) => x.date === d.date)!.minutes);
   });
   it("uložený plán jiného týdne nebo cíle se nepoužije", () => {
     const { mp, acts } = setup();

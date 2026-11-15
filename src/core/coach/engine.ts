@@ -26,6 +26,7 @@ import { type Fatigue, fatigueFactor, formFloor } from "./target";
 import { type WeekValidation, validateWeek } from "./validate";
 import type { Fixed, PastDay as V2Past } from "./common";
 import { type WeekTarget, TWO_KEYS_MIN_H, blockWeeksFor, historyBase, nextBlock, usualSessions, weekHistory, weekTarget } from "./budget";
+import { carbsFor } from "../nutrition";
 import { type PastDay, type SkDay, type WeekPattern, solveWeek } from "./skeleton";
 import { ROLE_INTENSITY, type Role, capsFor, loadFor, minutesFor, nameFor, relabel, stepsText } from "./sport";
 
@@ -847,7 +848,7 @@ function toPlan(inp: CoachInput, weeks: Week3[], o: { reentry: string | null; ou
       workout: ride ? x.workout : null,
       steps: ride ? x.steps : [],
       targetText: ride ? x.targetText : null,
-      fuel: [],
+      carbs: ride && x.sport !== "walk" ? carbsFor(x.minutes, x.role === "key" ? "quality" : "z2", !!w && w.tmax < 5 && !x.indoor) : null,
       load: ride ? x.load : 0,
       loadNote: ride ? "zátěž dne podle cíle týdne" : "",
       form: pj?.form ?? null,

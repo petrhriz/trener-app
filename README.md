@@ -2,7 +2,7 @@
 
 Běží zdarma na Cloudflare Workers. Data bere z **Garmin Personal API** (lapy jízd a VO2max z intervals.icu),
 počasí z **Open-Meteo**, všechno ukazuje **webový dashboard** (funguje i jako aplikace na ploše telefonu).
-Rozhodnutí (zotavení, forma, plán, workouty, odhad jídla a pití na trénink) dělá kód podle pravidel v [`docs/trener/`](docs/trener/).
+Rozhodnutí (zotavení, forma, plán, workouty, odhad sacharidů na trénink) dělá kód podle pravidel v [`docs/trener/`](docs/trener/).
 AI model (Gemma z Google AI Studia, Nemotron od NVIDIE, záloha Workers AI) jen odpovídá v chatu a píše krátká
 shrnutí nad předpočítanými čísly – bez něj vše funguje.
 
@@ -14,7 +14,7 @@ shrnutí nad předpočítanými čísly – bez něj vše funguje.
 | Stránka | Co ukáže |
 |---|---|
 | Přehled | ranní semafor (VST, klidový tep, spánek), zotavení, energie, dnešní trénink, počasí a okno na jízdu |
-| Trenér | plán týdne podle cíle a kondice, úpravy dnů (přesun, délka, sport, volno), vlastní jízda, FIT soubor, odhad jídla a pití, AI trenér |
+| Trenér | plán týdne podle cíle a kondice, úpravy dnů (přesun, délka, sport, volno), vlastní jízda, FIT soubor, odhad sacharidů, AI trenér |
 | Aktivity | rozbor jízdy: splnění cíle, zóny, okruhy, drift, mapa |
 | Zotavení, Kondice, Tělo | spánek, VST, tep, stres, CTL / ATL / forma, VO2max, váha |
 | Vybavení | km na kolech, lyžích a botách, servis dílů |

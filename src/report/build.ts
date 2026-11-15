@@ -5,7 +5,7 @@ import { hrQuality, qualityFromName } from "../core/quality";
 import { hardEasyDays } from "../core/rpe";
 import { ftpCheck } from "../core/ftpCheck";
 import { workoutFromIcu } from "../core/workout";
-import { acwr, fuelPlan, lthrSanity, sleepRegularity, weeklyReview, type WeeklyReview } from "../core/extras";
+import { acwr, lthrSanity, sleepRegularity, weeklyReview, type WeeklyReview } from "../core/extras";
 import { FORM_ZONE_RANGE, formZone, rampLabel, weeklyLoadTarget } from "../core/fitness";
 import type { Change, PlanDay, PlanResult } from "../core/plan";
 import { bestIn, eftp } from "../core/power";
@@ -330,13 +330,6 @@ export async function planForCoach(ctx: Ctx, rec: RecoveryResult, opt: { dryRun?
     };
     await saveVersion(ctx, plan, drivers).catch(logged(ctx.env.DB, "historie plánu se neuložila", undefined));
   }
-  // odhad jídla a pití do rozpisu tréninku (rozbalí se pod kroky)
-  const weight = [...ctx.well].reverse().find((w) => w.weight_kg != null)?.weight_kg ?? null;
-  plan.days = plan.days.map((d) => {
-    if (!d.name || !d.durationMin) return d;
-    const temp = d.indoor ? 20 : d.weather ? Math.round((d.weather.tmax + d.weather.tmin) / 2) : null;
-    return { ...d, fuel: fuelPlan(d.durationMin, temp, weight, d.kind === "quality" ? "quality" : "z2").lines };
-  });
   (plan.coach as any).lastKeys = keys1.filter((r) => r.state !== "pending").slice(-4).reverse();
   return plan;
 }

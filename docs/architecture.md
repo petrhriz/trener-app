@@ -62,7 +62,7 @@ každých 5 min, další uživatelé v mezičase. Úlohy:
 | `src/index.ts` | Hono app: /api, /auth, /admin, cron |
 | `src/scheduler.ts` | plánovač: synchronizace, stavy jednotek, týdenní souhrn |
 | `src/sync/*` | dávkový sync Garmin + intervals.icu + Open-Meteo, přepočet metrik, spánek, energie |
-| `src/core/*` | zotavení, kondice, zátěž, kvalita, plán, workout, počasí, jídlo a pití na trénink, rozbor aktivity, doplňky |
+| `src/core/*` | zotavení, kondice, zátěž, kvalita, plán, workout, počasí, sacharidy na trénink, rozbor aktivity, doplňky |
 | `src/core/coach/*` | trenér (cíl týdne, kostra, délky, knihovna tréninků) – popis v `docs/trener/` |
 | `src/report/*` | načtení kontextu z D1 a skládání reportů |
 | `src/plan/*` | návrhy změn, zápis + ověření, FIT |
