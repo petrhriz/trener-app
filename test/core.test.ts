@@ -77,6 +77,30 @@ describe("kondice / únava / forma (6.4)", () => {
     expect(a[1]!.ramp).toBe(-4.1);
     expect(a[2]!.ctl).toBeCloseTo(44.9 - 44.9 * 0.0235, 2);
   });
+  it("kotvy intervals.icu + rozdíl zátěže (trenažér podle tepu) = kondice ze zátěže aplikace", () => {
+    // intervals.icu počítá kondici ze své zátěže; aplikace má u trenažérů o `delta` víc (hr_indoor)
+    const from = "2026-01-01", to = "2026-03-31";
+    const icu = new Map<string, number>(), app = new Map<string, number>(), deltas = new Map<string, number>();
+    let i = 0;
+    for (let d = from; d <= to; d = addDays(d, 1), i++) {
+      const l = i % 3 === 2 ? 0 : 40 + ((i * 17) % 60);
+      icu.set(d, l);
+      const extra = i % 7 === 3 ? 18 : 0; // trenažér jednou týdně
+      app.set(d, l + extra);
+      if (extra) deltas.set(d, extra);
+    }
+    const icuSeries = computeMetrics(icu, from, to);
+    const anchors = new Map(icuSeries.map((m) => [m.date, { ctl: m.ctl, atl: m.atl, ramp: m.ramp }]));
+    const want = computeMetrics(app, from, to);
+    const got = computeMetrics(app, from, to, { ctl: 0, atl: 0 }, anchors, deltas);
+    for (let k = 0; k < want.length; k++) {
+      expect(got[k]!.ctl).toBeCloseTo(want[k]!.ctl, 1);
+      expect(got[k]!.atl).toBeCloseTo(want[k]!.atl, 1);
+      if (want[k]!.ramp != null && got[k]!.ramp != null) expect(got[k]!.ramp!).toBeCloseTo(want[k]!.ramp!, 1);
+    }
+    // bez rozdílů platí kotvy beze změny
+    expect(computeMetrics(app, from, to, { ctl: 0, atl: 0 }, anchors).at(-1)!.ctl).toBe(icuSeries.at(-1)!.ctl);
+  });
   it("ramp rate = CTL(D) − CTL(D−7)", () => {
     const s = computeMetrics(new Map(), "2026-01-01", "2026-01-10", { ctl: 50, atl: 50 });
     expect(s[6]!.ramp).toBeNull();
@@ -185,10 +209,32 @@ describe("zotavení – osobní normy (kap. 4)", () => {
     expect(r2.flags.yellow).toBe(1);
     expect(r2.state).toBe("green");
   });
-  it("spánek pod 5:00 h → 🔴", () => {
+  it("spánek pod 5:00 h jednu noc → jen 🟡, druhou noc po sobě → 🔴", () => {
     const r = evaluateRecovery({ date: "2026-11-07", rows: rows(60, { hrv: 75, rhr: 52, sleep_s: 4.5 * 3600, sleep_score: 70 }), dayAfter: null, illness: false });
     expect(r.sleep.flag).toBe("red");
-    expect(r.state).toBe("red");
+    expect(r.state).toBe("yellow");
+    expect(r.reasons.join(" ")).toContain("jednu noc");
+    const rs = rows(60, { hrv: 75, rhr: 52, sleep_s: 4.5 * 3600, sleep_score: 70 });
+    rs[rs.length - 2]!.sleep_s = 4.8 * 3600;
+    const r2 = evaluateRecovery({ date: "2026-11-07", rows: rs, dayAfter: null, illness: false });
+    expect(r2.state).toBe("red");
+    expect(r2.reasons.join(" ")).toContain("druhou noc");
+  });
+  it("VST výrazně pod normou: jedna noc 🟡, dvě noci nebo s dalším signálem 🔴", () => {
+    // norma ~75 ms (ln SD ~0,058) → 63 ms je pod −2 SD
+    const one = evaluateRecovery({ date: "2026-11-07", rows: rows(60, { hrv: 63, rhr: 52, sleep_s: 7.5 * 3600, sleep_score: 82 }), dayAfter: null, illness: false });
+    expect(one.hrv.flag).toBe("red");
+    expect(one.state).toBe("yellow");
+    const rs = rows(60, { hrv: 63, rhr: 52, sleep_s: 7.5 * 3600, sleep_score: 82 });
+    rs[rs.length - 2]!.hrv = 62;
+    expect(evaluateRecovery({ date: "2026-11-07", rows: rs, dayAfter: null, illness: false }).state).toBe("red");
+    // červená VST + zvýšený klidový tep téže noci → 🔴
+    expect(evaluateRecovery({ date: "2026-11-07", rows: rows(60, { hrv: 63, rhr: 56, sleep_s: 7.5 * 3600, sleep_score: 82 }), dayAfter: null, illness: false }).state).toBe("red");
+  });
+  it("norma VST v ln: rozsah je geometrický, hodnocení podle z v ln", () => {
+    const r = evaluateRecovery({ date: "2026-11-07", rows: rows(60, { hrv: 75, rhr: 52, sleep_s: 7.5 * 3600, sleep_score: 82 }), dayAfter: null, illness: false });
+    expect(r.hrv.rangeText).toMatch(/^7[01]–7[89]$/);
+    expect(r.hrv.rating).toBe("Vyvážené");
   });
   it("klidový tep zvýšený 3 dny po sobě → 🔴", () => {
     const rs = rows(60, { hrv: 75, rhr: 56, sleep_s: 7.5 * 3600, sleep_score: 82 });

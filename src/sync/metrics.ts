@@ -6,16 +6,18 @@ import type { Settings } from "../lib/settings";
 import { loadZoneHistory, zonesFor } from "../lib/zoneHistory";
 
 export async function recomputeMetrics(db: D1Database, today: string): Promise<number> {
-  const loads = await all<{ date: string; load: number }>(db, "SELECT date, SUM(COALESCE(load, 0)) AS load FROM activities GROUP BY date ORDER BY date");
+  // delta = trenažér, kde aplikace počítá vyšší zátěž z tepu (hr_indoor), než intervals.icu započítalo do své kondice
+  const loads = await all<{ date: string; load: number; delta: number }>(db, "SELECT date, SUM(COALESCE(load, 0)) AS load, SUM(CASE WHEN load_source = 'hr_indoor' AND icu_load IS NOT NULL THEN load - icu_load ELSE 0 END) AS delta FROM activities GROUP BY date ORDER BY date");
   if (!loads.length) return 0;
   const map = new Map(loads.map((r) => [r.date, r.load]));
+  const deltas = new Map(loads.filter((r) => Math.abs(r.delta ?? 0) > 0.05).map((r) => [r.date, r.delta]));
   const icu = await all<{ date: string; icu_ctl: number; icu_atl: number; icu_ramp: number | null }>(
     db,
     "SELECT date, icu_ctl, icu_atl, icu_ramp FROM wellness WHERE icu_ctl IS NOT NULL AND icu_atl IS NOT NULL",
   );
   const anchors = new Map<string, Anchor>(icu.map((r) => [r.date, { ctl: r.icu_ctl, atl: r.icu_atl, ramp: r.icu_ramp }]));
   // kde intervals.icu hodnotu má, platí ta; jinak (např. před první synchronizací dne) pokračuje výpočet
-  const series = computeMetrics(map, loads[0]!.date, today, { ctl: 0, atl: 0 }, anchors);
+  const series = computeMetrics(map, loads[0]!.date, today, { ctl: 0, atl: 0 }, anchors, deltas);
   const existing = new Map(
     (await all<{ date: string; load: number; ctl: number; atl: number; form: number; ramp: number | null }>(db, "SELECT * FROM daily_metrics")).map((r) => [r.date, r]),
   );

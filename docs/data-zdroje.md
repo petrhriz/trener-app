@@ -14,7 +14,7 @@
 | Dopad aktivity na Body Battery (např. −10) | Garmin | |
 | VO2max kolo a běh | Garmin – čtu ho z FIT souboru aktivity | starší dny z intervals.icu |
 | Zátěž aktivity (TSS s wattmetrem, HRSS z tepu) | intervals.icu | když chybí, viz výpočet níž |
-| Kondice (CTL), únava (ATL), ramp rate | intervals.icu | dny, které intervals.icu nemá, dopočítám |
+| Kondice (CTL), únava (ATL), ramp rate | intervals.icu | dny, které intervals.icu nemá, dopočítám; trenažér, kde vyhrála zátěž z tepu, se přičte jako rozdíl (`src/core/fitness.ts`) |
 | Okruhy (lapy), splnění workoutu (%), eFTP, strain | intervals.icu | |
 | Aerobní drift (decoupling) | intervals.icu | vlastní výpočet jen když ho intervals.icu nemá (od 27. kola) |
 | FTP | intervals.icu (nebo ručně v Nastavení) | |

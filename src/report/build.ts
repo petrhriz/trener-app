@@ -9,7 +9,7 @@ import { acwr, lthrSanity, sleepRegularity, weeklyReview, type WeeklyReview } fr
 import { FORM_ZONE_RANGE, formZone, rampLabel, weeklyLoadTarget } from "../core/fitness";
 import type { Change, PlanDay, PlanResult } from "../core/plan";
 import { bestIn, eftp } from "../core/power";
-import { type RecoveryResult, evaluateRecovery } from "../core/recovery";
+import { type RecoveryResult, evaluateRecovery, hrvWeekLow } from "../core/recovery";
 import { recoveryScore } from "../core/readinessScore";
 import { type DayWeather, dayWeather } from "../core/weather";
 import type { Workout } from "../core/workout";
@@ -26,7 +26,6 @@ import { fosterOf } from "../core/foster";
 import type { EngineAct, ProgressRow } from "../core/coach/common";
 import { type CoachPlan, type MondayPlan, runCoach } from "../core/coach/engine";
 import { profileFromHistory, validateProfile } from "../core/coach/profile";
-import { norm } from "../core/recovery";
 import { setSetting } from "../lib/settings";
 import { zonesFor } from "../lib/zoneHistory";
 
@@ -149,7 +148,9 @@ export function fitnessTable(ctx: Ctx): FitnessTable {
     { label: "VO2max (Garmin)", v1: num(v1), v2: num(v2), diff: v1 != null && v2 != null ? signed(v2 - v1) : "–", sub: `${trend} · rozpětí 30 d ${v30.length ? `${Math.min(...v30)}–${Math.max(...v30)}` : "–"} · průměr 14 d ${num(A, 1)} (předtím ${num(P, 1)})${ef ? ` · eFTP ${ef.w} W` : ""}${ftp ? `, FTP ${ftp} W` : ""}`, iv: false },
   ];
   const notes: string[] = [];
-  notes.push(`Kondice, únava a forma z intervals.icu (forma = kondice − únava dne)${done ? ", včetně dnešní aktivity" : ""}.`);
+  // trenažér, kde vyhrála zátěž z tepu: kondice je z intervals.icu, ale s touto vyšší zátěží (src/core/fitness.ts deltas)
+  const indoorHr = ctx.acts.some((a) => (a as { load_source?: string }).load_source === "hr_indoor" && a.icu_load != null && a.date > addDays(T, -42));
+  notes.push(`Kondice, únava a forma z intervals.icu (forma = kondice − únava dne)${done ? ", včetně dnešní aktivity" : ""}${indoorHr ? "; jízdy na trenažéru se počítají s vyšší zátěží z tepu, stejně jako v plánu, takže se kondice může od intervals.icu mírně lišit" : ""}.`);
   if (A != null && P != null && A - P <= -2) notes.push("VO2max průměr klesl o 2 a víc.");
   if (ef && ftp) notes.push(`FTP ${ftp} W je z testu (nastavené v intervals.icu). eFTP ${ef.w} W je odhad intervals.icu z jízd bez testu${Math.abs(ef.w - ftp) / ftp > 0.03 ? ` – liší se o ${Math.round(Math.abs(ef.w - ftp))} W, ${zone === "Čerstvý" ? "zvaž nový test" : "test až při formě Čerstvý"}` : ", sedí s FTP"}.`);
   return { col1, col2, rows, note: notes.join(" "), ctl: r2?.ctl ?? null, atl: r2?.atl ?? null, form: form2, ramp, load7, loadPrev7, maintenance, acwr: ac };
@@ -200,10 +201,8 @@ export function fatigueOf(ctx: Ctx, rec: RecoveryResult, cons: { date: string; k
   const y = metricOn(ctx, addDays(T, -1));
   let bad = rec.state !== "green" ? 1 : 0;
   for (let i = 1; i <= 4; i++) { const st = recoveryStateOn(ctx, addDays(T, -i)); if (st && st !== "green") bad++; }
-  const hist = norm(ctx.well.filter((w) => w.date >= addDays(T, -60) && w.date < addDays(T, -7)).map((w) => w.hrv));
-  const last7 = norm(ctx.well.filter((w) => w.date >= addDays(T, -6) && w.date <= T).map((w) => w.hrv));
-  // stejná hranice jako normální rozsah na stránce (průměr − 1 SD) – „trochu pod průměrem“ ještě není únava
-  const hrvLow = hist.n >= 21 && last7.n >= 4 && last7.mean < hist.mean - hist.sd;
+  // 7denní průměr ln VST proti 7denním průměrům předchozích 60 dní (src/core/recovery.ts hrvWeekLow)
+  const hrvLow = hrvWeekLow(ctx.well.filter((w) => w.date >= addDays(T, -60) && w.date <= T), T);
   const illnessDays = new Set(cons.filter((c) => c.kind === "nemoc" && c.date > addDays(T, -10) && c.date <= T).map((c) => c.date)).size;
   const hardEasy = hardEasyDays(ctx.acts.map((a) => ({ date: a.date, rpe: (a as any).rpe ?? null, quality: !!a.is_quality, moving_s: a.moving_s })), T);
   return { form: y ? y.ctl - y.atl : null, badMornings: bad, hrvLow, illnessDays, hardEasy };

@@ -32,6 +32,9 @@ export function step(prev: { ctl: number; atl: number }, load: number) {
 /**
  * Celá řada od `from` do `to`. Dny bez aktivity mají zátěž 0.
  * `anchors` = hodnoty z intervals.icu (konec dne) – kde jsou, platí ony; jinde se pokračuje výpočtem.
+ * `deltas` = o kolik je zátěž dne v aplikaci jiná než ta, ze které intervals.icu kotvu spočítalo (trenažér, kde
+ * vyhrál tep). Model je lineární, takže kotva + stejný klouzavý průměr rozdílů = kondice ze zátěže aplikace –
+ * kondice i plán (cíl týdne, odjeto) pak počítají se stejnou zátěží.
  */
 export function computeMetrics(
   loads: Map<string, number>,
@@ -39,16 +42,22 @@ export function computeMetrics(
   to: string,
   seed: { ctl: number; atl: number } = { ctl: 0, atl: 0 },
   anchors: Map<string, Anchor> = new Map(),
+  deltas: Map<string, number> = new Map(),
 ): DayMetric[] {
   const out: DayMetric[] = [];
   let prev = seed;
+  let dlt = { ctl: 0, atl: 0 };
   const ctlHist: number[] = [];
+  const dHist: number[] = [];
   for (const d of dateRange(from, to)) {
     const load = loads.get(d) ?? 0;
     const an = anchors.get(d);
-    const cur = an ? { ctl: an.ctl, atl: an.atl } : step(prev, load);
+    dlt = step(dlt, deltas.get(d) ?? 0);
+    const cur = an ? { ctl: an.ctl + dlt.ctl, atl: an.atl + dlt.atl } : step(prev, load);
     ctlHist.push(cur.ctl);
-    const ramp = an?.ramp != null ? an.ramp : ctlHist.length > 7 ? cur.ctl - ctlHist[ctlHist.length - 8]! : null;
+    dHist.push(dlt.ctl);
+    const dRamp = dHist.length > 7 ? dlt.ctl - dHist[dHist.length - 8]! : dlt.ctl;
+    const ramp = an?.ramp != null ? an.ramp + dRamp : ctlHist.length > 7 ? cur.ctl - ctlHist[ctlHist.length - 8]! : null;
     out.push({ date: d, load: r1(load), ctl: r2(cur.ctl), atl: r2(cur.atl), form: r2(cur.ctl - cur.atl), ramp: ramp == null ? null : r2(ramp) });
     prev = cur;
   }

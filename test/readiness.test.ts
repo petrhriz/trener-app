@@ -118,6 +118,17 @@ describe("semafor + zotavení v %", async () => {
     expect(r.reasons.join(" ")).toContain("25 %");
     expect(r.score).toBe(25);
   });
-  it("pod 15 % → červená", () => expect(evaluateRecovery({ ...base, score: { score: 10, drags: [], boosts: [] } }).state).toBe("red"));
+  it("pod 15 % a jen jeden ukazatel mimo normu (téže noci) → žlutá, ne červená", () => {
+    const r = evaluateRecovery({ ...base, score: { score: 10, drags: [], boosts: [] } });
+    expect(r.flags.yellow + r.flags.red).toBe(1);
+    expect(r.state).toBe("yellow");
+  });
+  it("pod 15 % bez dalšího signálu → jen žlutá", () => {
+    const calm = rows.map((x, i) => (i === rows.length - 1 ? { ...x, hrv: 71 } : x));
+    const r = evaluateRecovery({ ...base, rows: calm, score: { score: 10, drags: [], boosts: [] } });
+    expect(r.flags.yellow + r.flags.red).toBe(0);
+    expect(r.state).toBe("yellow");
+    expect(r.reasons.join(" ")).toContain("jedna noc");
+  });
   it("vysoké skóre nemoc nepřebije", () => expect(evaluateRecovery({ ...base, illness: true, score: { score: 95, drags: [], boosts: [] } }).state).toBe("red"));
 });
