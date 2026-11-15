@@ -209,6 +209,15 @@ describe("fáze před závodem (Friel: Rozvoj 6–8 týdnů)", () => {
     expect(ph(9)).toBe("build");
     expect(ph(10)).toBe("base");
   });
+  it("ladění přesně 2 týdny a 8 týdnů Rozvoje pro závod v kterýkoli den týdne (i v pondělí)", () => {
+    const mon = "2027-06-21";
+    for (let i = 0; i < 7; i++) {
+      const race = addDays(mon, i);
+      // týdny od 11 týdnů před závodním týdnem po týden po něm
+      const phases = Array.from({ length: 13 }, (_, k) => phaseFor("zavod", addDays(mon, 7 * (k - 11)), race));
+      expect(phases).toEqual(["base", "base", ...Array(8).fill("build"), "taper", "taper", "post"]);
+    }
+  });
 });
 
 import { BLOCK_WEEKS_40, blockWeeksFor } from "../../src/core/coach/budget";

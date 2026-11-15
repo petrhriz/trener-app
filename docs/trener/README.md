@@ -31,7 +31,7 @@ kondice (`coach/target.ts`), únava, pravidla kontroly týdne (`coach/validate.t
 9. **Trenažér / venku**: u jízdy si zvolíš místo (jinak trenažér při špatném počasí a u kvality v zimě). Na trenažéru
    se šlape pořád, takže hodina dá víc zátěže – trenér počítá zátěž za hodinu zvlášť venku a na trenažéru (tvůj poměr
    z jízd za 60 dní, bez dat 1,3) a pro stejnou zátěž dá kratší Z2 a dlouhou jízdu (kvalitu určuje stavba intervalů).
-10. **Přizpůsobení**: ráno 🟡 → dnešek o stupeň lehčí a o čtvrtinu kratší (dlouhý → Z2 nejvýš strop Z2), 🔴 → volno; minulý týden hodně vynechaný →
+10. **Přizpůsobení**: ráno 🟡 → dnešek o stupeň lehčí a o čtvrtinu kratší (dlouhý → Z2 nejvýš strop Z2), 🔴 → volno; 2 dny po nemoci bez kvality; minulý týden hodně vynechaný →
    tento týden ×0,85; vysoký strain (Foster) ×0,9; po pauze 7+ dní strop intenzity (Z1–Z2, pak tempo a sweet spot).
    Každá změna budoucích dnů se uloží jako verze s důvodem (Trenér → Plnění a změny plánu).
 11. **AI**: testy v `test/ai.test.ts` – čísla jen z dat (druhý pokus, příznak „nekontrolováno“), soukromí, žádné

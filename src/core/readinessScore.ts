@@ -1,6 +1,8 @@
 // Skóre Zotavení / Zátěž / Spánek v % a ranní / večerní zhodnocení „co tělo potřebuje“.
 // Garmin skóre zotavení přes API nedává → počítá se z nočních hodnot proti TVÉ normě (60 dní). Čistá funkce.
 import { hmm, num } from "../lib/format";
+import { ILLNESS_EASY_DAYS, YELLOW_CUT } from "./coach/target";
+import type { Carbs } from "./nutrition";
 import { norm } from "./recovery";
 
 export interface NightRow {
@@ -127,7 +129,8 @@ export interface CoachingInput {
   stressAvg: number | null;
   stressNorm: number | null;
   steps: number | null;
-  plan: { name: string | null; kind: string | null; minutes: number | null; done: boolean };
+  /** dnešní den plánu (už upravený podle rána); carbs = odhad sacharidů z plánu (src/core/nutrition.ts) */
+  plan: { name: string | null; kind: string | null; minutes: number | null; done: boolean; carbs?: Carbs | null };
   remLow: boolean;
   deepLow: boolean;
 }
@@ -160,7 +163,7 @@ export function coaching(i: CoachingInput): Coaching {
   if (i.status !== "active") {
     const until = i.statusUntil ? ` (do ${+i.statusUntil.slice(8, 10)}. ${+i.statusUntil.slice(5, 7)}.)` : "";
     if (i.status === "sick") {
-      return { period, title: `Nemoc${until}: trénink stojí`, text: "Tělo teď potřebuje energii na uzdravení – zátěž ani plán se nehodnotí. Po návratu 2 dny jen lehce, nic nedohánět.", needs: ["Odpočinek, pití, teplé jídlo.", sleepLine ?? "Spánek co nejdelší.", "Při horečce ani lehký pohyb."].filter(Boolean) as string[] };
+      return { period, title: `Nemoc${until}: trénink stojí`, text: `Tělo teď potřebuje energii na uzdravení – zátěž ani plán se nehodnotí. Po návratu ${ILLNESS_EASY_DAYS} dny jen lehce (bez kvality), nic nedohánět.`, needs: ["Odpočinek, pití, teplé jídlo.", sleepLine ?? "Spánek co nejdelší.", "Při horečce ani lehký pohyb."].filter(Boolean) as string[] };
     }
     if (i.status === "injured") {
       return { period, title: `Zranění${until}: plán stojí`, text: "Trénink je pozastavený, zátěž se nehodnotí. Pohyb jen takový, který zranění nebolí.", needs: ["Zraněnou část nezatěžovat přes bolest.", sleepLine ?? "Spánek pomáhá hojení.", "Bílkoviny v každém jídle."].filter(Boolean) as string[] };
@@ -187,7 +190,8 @@ export function coaching(i: CoachingInput): Coaching {
     text = `${reasons ? cap(reasons) + ". " : ""}Volno, nebo jen Z1 do 45 min / procházka. Hlavně spánek.`;
   } else if (band === "mid") {
     title = "Částečně zotavený";
-    text = `${reasons ? cap(reasons) + ". " : ""}Lehčí den: kvalitu změň na Z2, Z2 zkrať o třetinu.`;
+    // stejné pravidlo jako plán (src/core/coach/engine.ts STEP_DOWN, YELLOW_CUT)
+    text = `${reasons ? cap(reasons) + ". " : ""}Lehčí den: kvalita o stupeň lehčí (tempo → Z2), trénink o ${Math.round((1 - YELLOW_CUT) * 100)} % kratší, dlouhý jen jako Z2.`;
   } else {
     title = "Zotavený";
     text = "VST, klidový tep ani spánek nepřekročily hranice semaforu. Den na plánovaný trénink.";
@@ -198,8 +202,11 @@ export function coaching(i: CoachingInput): Coaching {
   if (band === "low") {
     needs.push(p.name && !p.done ? `Trénink „${p.name}“ vyměň za Z1–Z2 do 45 min nebo volno.` : "Pohyb jen lehce: procházka nebo Z1 do 45 min.");
   } else if (p.name && !p.done) {
-    needs.push(band === "mid" && p.kind === "quality" ? `Místo intervalů („${p.name}“) dej Z2 – zotavení na kvalitu nestačí.` : `Dnes v plánu: ${p.name}${p.minutes ? ` (${hmm(p.minutes * 60)} h)` : ""}.`);
-    if ((p.minutes ?? 0) > 75) needs.push("Na jízdu sacharidy 30–60 g/h a pití po doušcích.");
+    // plán dne upravuje podle rána trenér (tvoje volby dne ne) – text ho jen pojmenuje, nic jiného neradí
+    needs.push(`Dnes v plánu: ${p.name}${p.minutes ? ` (${hmm(p.minutes * 60)} h)` : ""}.`);
+    // sacharidy stejné jako v plánu dne (src/core/nutrition.ts)
+    const cb = p.carbs;
+    if (cb && cb.total > 0) needs.push(cb.perHour > 0 ? `Na trénink asi ${cb.total} g sacharidů (${cb.perHour} g/h).` : `Na trénink ${cb.note ?? "malé množství sacharidů"} (asi ${cb.total} g).`);
   } else if (p.done) {
     needs.push("Trénink hotový: do 1 h jídlo se sacharidy a bílkovinami, pití.");
   }

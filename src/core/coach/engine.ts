@@ -22,7 +22,7 @@ import { type Distribution, distribution } from "./progress";
 export const INDOOR_LONG_MAX = 120;
 import { runReadiness } from "./run";
 import type { Reentry } from "./reentry";
-import { type Fatigue, fatigueFactor, formFloor } from "./target";
+import { type Fatigue, ILLNESS_EASY_DAYS, YELLOW_CUT, afterIllness, fatigueFactor, formFloor } from "./target";
 import { type WeekValidation, validateWeek } from "./validate";
 import type { Fixed, PastDay as V2Past } from "./common";
 import { type WeekTarget, TWO_KEYS_MIN_H, blockWeeksFor, historyBase, nextBlock, usualSessions, weekHistory, weekTarget } from "./budget";
@@ -66,7 +66,7 @@ export interface CoachInput {
 /** Ráno částečně zotavený: kvalita o stupeň lehčí (VO2 a kratší ostré → práh, práh a over-under → sweet spot, sweet spot → tempo,
  *  tempo → Z2) a o čtvrtinu kratší. Stupně a ×0,75 jsou vlastní volba (docs/trener/zdroje.md). */
 export const STEP_DOWN: Record<Cat, Cat | null> = { nm: "thr", ana: "thr", vo2s: "thr", vo2: "thr", ou: "ss", thr: "ss", ss: "tempo", tempo: null };
-export const YELLOW_CUT = 0.75;
+export { YELLOW_CUT };
 
 /** Pondělní plán týdne: z něj se rozběhnutý týden dopočítává. Uloží se jednou, ať únava a nová omezení mění jen
  *  dnešek a budoucí dny – ne odjeté dny a ne dvakrát. */
@@ -240,6 +240,8 @@ export function runCoach(inp: CoachInput): CoachPlan {
   const binp = { goal: inp.goal, raceDate: inp.raceDate, from, ctlNow: startState.ctl, doneLoad, history, fatigue: fat.factor, weeks: 4, blockWeeks: blockWeeksFor(p.birthYear, T) };
   let blk = history.block;
   const fixed = fixedFromConstraints(inp.constraints);
+  // dny nemoci (i z ukončeného stavu Nemocný) – ILLNESS_EASY_DAYS dní po nich bez kvality
+  const sick = new Set(inp.constraints.filter((c) => c.kind === "nemoc").map((c) => c.date));
   const needs = catNeeds(inp.power, T);
   // kategorie kvalit v horizontu → střídání (odjeté kvality zatím kategorii nemají – etapa 5)
   const usedWids: NonNullable<CoachInput["recentWids"]> = [];
@@ -369,7 +371,7 @@ export function runCoach(inp: CoachInput): CoachPlan {
         ownLong: !!f?.own && f.own.min >= 120,
         // 🟡 ráno, nebo tvůj sport dne bez intervalů (běžky, chůze…) – kvalita patří jinam
         // po závodě v témže týdnu už kvalita ne (den po závodě nikdy, i když závod v aktivitách není)
-        noKey: ceilingOf(d) === "base" || (!!f?.sport && !qualityOk(f.sport)) || (!!inp.raceDate && d > inp.raceDate && d <= addDays(inp.raceDate, 7)),
+        noKey: ceilingOf(d) === "base" || afterIllness(sick, d) || (!!f?.sport && !qualityOk(f.sport)) || (!!inp.raceDate && d > inp.raceDate && d <= addDays(inp.raceDate, 7)),
         badWeather: !!w?.bad,
       };
     });
@@ -440,6 +442,7 @@ export function runCoach(inp: CoachInput): CoachPlan {
           else if (r === "rest" && mine(d)) r = f.own && f.own.min >= 120 ? "long" : "endurance";
         }
         if (r === "key" && ceilingOf(d) === "base" && fixed.get(d)?.type !== "quality") { r = "endurance"; roleWhy.set(d, "místo kvality Z2 – návrat po pauze, první týden jen Z1–Z2"); }
+        if (r === "key" && afterIllness(sick, d) && fixed.get(d)?.type !== "quality") { r = "endurance"; roleWhy.set(d, `místo kvality Z2 – ${ILLNESS_EASY_DAYS} dny po nemoci jen lehce`); }
         // do týdne po závodě kvalita ne (závod se mohl během týdne přidat nebo posunout)
         if (r === "key" && !!inp.raceDate && d > inp.raceDate && d <= addDays(inp.raceDate, 7) && fixed.get(d)?.type !== "quality") { r = "endurance"; roleWhy.set(d, "místo kvality Z2 – týden po závodě"); }
         // včera opravdu těžký den (kvalita podle zón, dlouhý, závod), který v plánu nebyl → dnes kvalita ne

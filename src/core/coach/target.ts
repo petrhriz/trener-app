@@ -1,6 +1,6 @@
 // Trenér – fáze z cíle a ročního období, zima a únava (společné pro cíl týdne v budget.ts a engine.ts).
 import { num } from "../../lib/format";
-import { daysBetween, month } from "../../lib/time";
+import { addDays, daysBetween, month } from "../../lib/time";
 import type { Goal } from "../fitness";
 
 export type Phase = "offseason" | "maintain" | "base" | "build" | "taper" | "post";
@@ -16,11 +16,13 @@ export function phaseFor(goal: Goal, weekStart: string, raceDate: string | null)
   if (goal === "pokles") return "offseason";
   if (goal === "udrzeni") return "maintain";
   if (goal === "zavod" && raceDate) {
+    // d = dní od pondělí týdne do závodu: 0–6 závodní týden, 7–13 týden před ním → ladění vždy přesně 2 týdny
+    // (Bosquet 2007), i když je závod v pondělí
     const d = daysBetween(weekStart, raceDate);
-    if (d >= 0 && d <= 14) return "taper";
+    if (d >= 0 && d < 2 * 7) return "taper";
     // týden po závodním týdnu: přechod – lehce, bez kvality (Friel: zotavení po závodě 1 týden u kratších závodů)
     if (d >= -7 && d < 0) return "post";
-    if (d > 14 + 7 * BUILD_WEEKS) return "base";
+    if (d >= 2 * 7 + 7 * BUILD_WEEKS) return "base";
     if (d >= 0) return "build";
   }
   return isWinter(weekStart) ? "base" : "build";
@@ -48,6 +50,14 @@ export interface Fatigue {
   strain?: string | null;
 }
 export const NO_FATIGUE: Fatigue = { form: null, badMornings: 0, hrvLow: false, illnessDays: 0 };
+
+/** Ráno částečně zotavený: dnešní trénink o čtvrtinu kratší (vlastní volba, docs/trener/zdroje.md). Sdílí plán i text dne. */
+export const YELLOW_CUT = 0.75;
+/** Po nemoci tolik dní jen lehce – bez kvality (vlastní volba; text dne i plán berou totéž číslo). */
+export const ILLNESS_EASY_DAYS = 2;
+/** Den je jeden z ILLNESS_EASY_DAYS dnů hned po nemoci (sám den nemoci ne – ten je zablokovaný). */
+export const afterIllness = (sick: ReadonlySet<string>, date: string): boolean =>
+  !sick.has(date) && Array.from({ length: ILLNESS_EASY_DAYS }, (_, i) => sick.has(addDays(date, -(i + 1)))).some(Boolean);
 
 /** Únava jen ubírá: násobek zátěže a strop klíčových dnů. */
 export function fatigueFactor(f: Fatigue): { factor: number; keysMax: number; notes: string[] } {

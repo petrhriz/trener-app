@@ -6,7 +6,8 @@ import type { DataSource, NActivity, NWellness } from "../datasource/types";
 import { BIKE_SPORTS } from "../datasource/types";
 import { computeDrift } from "../core/activity";
 import { activityLoad } from "../core/load";
-import { classify, qualityFromName, type QualityType } from "../core/quality";
+import { classify, qualityFromName, type PlannedQ, type QualityType } from "../core/quality";
+import type { Workout } from "../core/workout";
 import { all, execAll, first, getState, lit, logEvent, logged, setState, setStateSql, upsertSql } from "../lib/db";
 import { HttpError } from "../lib/http";
 import { getSettings, setSettingSql, type Settings } from "../lib/settings";
@@ -65,11 +66,13 @@ export function dataSource(env: Env): DataSource {
 }
 
 /** Aktivity → SQL (zátěž a kvalita spočítané hned při zápisu). */
-export function activitySql(acts: NActivity[], s: Settings, plannedQ: Map<string, QualityType | null>): string[] {
+export function activitySql(acts: NActivity[], s: Settings, plannedQ: Map<string, PlannedQ | null>): string[] {
   const now = new Date().toISOString();
   const rows = acts.map((a) => {
     const ld = activityLoad(a, { ftp: s.ftp, hr: s.hr_zones });
-    const q = classify({ ...a, load: ld.load }, BIKE_SPORTS.includes(a.sport) ? plannedQ.get(a.date) ?? null : null);
+    const pq = BIKE_SPORTS.includes(a.sport) ? plannedQ.get(a.date) ?? null : null;
+    // rozpis plánu je ve W z FTP v Nastavení
+    const q = classify({ ...a, load: ld.load }, pq ? { ...pq, ftp: s.ftp } : null);
     return [
       a.id, a.start_local, a.date, a.type_key, a.sport, a.name, a.distance_m, a.duration_s, a.moving_s, a.elev_gain,
       a.avg_hr, a.max_hr, a.avg_power, a.max_power, a.np, a.max20, a.tss_garmin, a.if_garmin, a.garmin_load, a.aerobic_te,
@@ -89,16 +92,22 @@ export function wellnessSql(ws: NWellness[]): string[] {
   return upsertSql("wellness", WELL_COLS, rows, ["date"], "merge");
 }
 
-async function plannedQualityMap(db: D1Database, dates: string[]): Promise<Map<string, QualityType | null>> {
-  const m = new Map<string, QualityType | null>();
+async function plannedQualityMap(db: D1Database, dates: string[]): Promise<Map<string, PlannedQ | null>> {
+  const m = new Map<string, PlannedQ | null>();
   if (!dates.length) return m;
-  const rows = await all<{ date: string; quality_type: string | null; name: string }>(
+  const rows = await all<{ date: string; quality_type: string | null; name: string; steps_json: string | null }>(
     db,
     // jen platný plán dne: přeplánovaná (skipped / moved) kvalita nesmí z odjeté Z2 udělat kvalitu
-    `SELECT date, quality_type, name FROM planned_workouts WHERE kind = 'quality' AND status IN ('planned', 'done') AND date IN (${dates.map(() => "?").join(",")})`,
+    `SELECT date, quality_type, name, steps_json FROM planned_workouts WHERE kind = 'quality' AND status IN ('planned', 'done') AND date IN (${dates.map(() => "?").join(",")})`,
     ...dates,
   );
-  for (const r of rows) m.set(r.date, (r.quality_type as QualityType) ?? qualityFromName(r.name));
+  for (const r of rows) {
+    const type = (r.quality_type as QualityType) ?? qualityFromName(r.name);
+    if (!type) { m.set(r.date, null); continue; }
+    let workout: Workout | null = null;
+    try { workout = r.steps_json ? (JSON.parse(r.steps_json) as Workout) : null; } catch { workout = null; }
+    m.set(r.date, { type, workout: Array.isArray(workout?.blocks) ? workout : null });
+  }
   return m;
 }
 

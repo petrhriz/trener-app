@@ -170,7 +170,7 @@ api.get("/overview", async (c) => {
     stressAvg: tw?.stress_avg ?? null,
     stressNorm: nm("stress_avg")?.mean ?? null,
     steps: tw?.steps ?? null,
-    plan: { name: past ? null : day?.name ?? null, kind: past ? null : day?.kind ?? null, minutes: past ? null : day?.durationMin ?? null, done: ctx.acts.some((a) => a.date === D && (a.moving_s ?? 0) >= 20 * 60) },
+    plan: { name: past ? null : day?.name ?? null, kind: past ? null : day?.kind ?? null, minutes: past ? null : day?.durationMin ?? null, carbs: past ? null : day?.carbs ?? null, done: ctx.acts.some((a) => a.date === D && (a.moving_s ?? 0) >= 20 * 60) },
     remLow: !!sleep && sleep.stages.find((x) => x.key === "rem")?.tone === "bad",
     deepLow: !!sleep && sleep.stages.find((x) => x.key === "deep")?.tone === "bad",
   });

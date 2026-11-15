@@ -360,15 +360,27 @@ export function freePlan(ctx: Ctx): PlanResult {
  * Stav Nemocný / Zraněný / Dovolená → virtuální omezení na dny stavu (plán se zastaví, nic se nedohání).
  * Nemoc = „nemoc“ (po návratu 2 dny lehce), zranění = „nemuzu“, dovolená = „dovolena“. Bez konce = 14 dní dopředu.
  */
-export function statusConstraints(ctx: Ctx): { date: string; kind: "nemoc" | "nemuzu" | "dovolena"; note: string | null }[] {
+export function statusConstraints(ctx: Pick<Ctx, "T" | "s">): { date: string; kind: "nemoc" | "nemuzu" | "dovolena"; note: string | null }[] {
+  const out = new Map<string, { date: string; kind: "nemoc" | "nemuzu" | "dovolena"; note: string | null }>();
+  // dny nemoci za posledních ILLNESS_LOOKBACK dní i z ukončených období (status_log) – únava po nemoci a dny bez
+  // kvality hned po ní (src/core/coach/target.ts) potřebují celou nemoc, ne jen poslední 3 dny
+  const sickFrom = addDays(ctx.T, -ILLNESS_LOOKBACK);
+  for (const sp of ctx.s.status_log ?? []) {
+    if (sp.kind !== "sick" || sp.until < sickFrom) continue;
+    for (const date of dateRange(sp.from > sickFrom ? sp.from : sickFrom, sp.until)) out.set(date, { date, kind: "nemoc", note: "stav" });
+  }
   const st = ctx.s.status;
-  if (!st || st.kind === "active") return [];
-  const kind = st.kind === "sick" ? "nemoc" : st.kind === "injured" ? "nemuzu" : "dovolena";
-  const from = st.from && st.from > addDays(ctx.T, -3) ? st.from : addDays(ctx.T, -3);
-  const to = st.until ?? addDays(ctx.T, 14);
-  if (to < from) return [];
-  return dateRange(from, to).map((date) => ({ date, kind, note: "stav" }));
+  if (st && st.kind !== "active") {
+    const kind = st.kind === "sick" ? "nemoc" : st.kind === "injured" ? "nemuzu" : "dovolena";
+    const back = addDays(ctx.T, kind === "nemoc" ? -ILLNESS_LOOKBACK : -3);
+    const from = st.from && st.from > back ? st.from : back;
+    const to = st.until ?? addDays(ctx.T, 14);
+    if (to >= from) for (const date of dateRange(from, to)) out.set(date, { date, kind, note: "stav" });
+  }
+  return [...out.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
+/** Jak daleko zpět se dny nemoci počítají – stejné okno jako „dny nemoci za 10 dní“ v únavě (fatigueOf). */
+const ILLNESS_LOOKBACK = 10;
 
 // ---------- 🚦 připravenost ----------
 

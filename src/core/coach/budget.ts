@@ -212,7 +212,8 @@ export function weekHistory(o: { starts: string[]; loads: number[]; off: number[
     light.push(off || isLightWeek(x, b));
     b = pushWeek(b, x, false, off);
   });
-  const race = (s: string) => { if (!o.raceDate) return false; const d = daysBetween(s, o.raceDate); return d >= -7 && d <= 14; };
+  // týdny ladění (2) a přechodu (1) kolem závodu – stejné hranice jako phaseFor
+  const race = (s: string) => { if (!o.raceDate) return false; const d = daysBetween(s, o.raceDate); return d >= -7 && d < 14; };
   const skip = light.map((l, i) => l && (race(o.starts[i]!) || (!light[i - 1] && !light[i + 1])));
   return { light, skip, block: b };
 }
