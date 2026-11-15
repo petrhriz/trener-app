@@ -2221,21 +2221,25 @@ span.ic { display: inline-flex !important; color: var(--c) !important; overflow:
 .carry { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 8px 12px; border-radius: 12px; background: var(--card2); color: var(--muted); font-size: 13px; }
 .carry svg { width: 16px; height: 16px; flex: none; }
 
-/* Poslední aktivita: trasa jako svítící čára v podkladu karty */
-.lacard { position: relative; overflow: hidden; }
-.lacard > :not(.la-route) { position: relative; z-index: 1; }
-.la-route { position: absolute; z-index: 0; top: 44px; right: 10px; bottom: 10px; width: 62%; opacity: 0; transition: opacity .6s; pointer-events: none;
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 35%); mask-image: linear-gradient(to right, transparent, #000 35%); }
-.la-route.on { opacity: 1; }
+/* Poslední aktivita: trasa jako svítící čára ve vlastním pruhu (nic nepřekrývá) */
+.la-route { display: none; height: 112px; margin-top: 12px; pointer-events: none; }
+.la-route.on { display: block; animation: la-in .5s ease-out; }
+@keyframes la-in { from { opacity: 0; } }
 .la-route svg { width: 100%; height: 100%; display: block; overflow: visible; }
 .la-route path { fill: none; stroke: var(--acc); stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.la-route .rg-line { stroke-width: 2; opacity: .35; }
-.la-route .rg-glow { stroke-width: 9; opacity: .12; filter: blur(3px); }
-.lacard .lastact { background: color-mix(in srgb, var(--card2) 82%, transparent); }
-:root[data-theme="dark"] .la-route .rg-line { opacity: .5; }
-:root[data-theme="dark"] .la-route .rg-glow { opacity: .22; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .la-route .rg-line { opacity: .5; } :root:not([data-theme="light"]) .la-route .rg-glow { opacity: .22; } }
-.lacard .lastact:hover { background: var(--accbg); }
+.la-route .rg-line { stroke-width: 2.25; opacity: .9; }
+.la-route .rg-glow { stroke-width: 10; opacity: .18; filter: blur(4px); }
+:root[data-theme="dark"] .la-route .rg-glow { opacity: .32; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .la-route .rg-glow { opacity: .32; } }
+@media (prefers-reduced-motion: reduce) { .la-route.on { animation: none; } }
+/* PC: vlevo aktivita a pod ní trasa, vpravo čísla */
+@media (min-width: 761px) {
+  .lacard { grid-template-areas: "h h" "a s" "r s"; }
+  .lacard > .ch { grid-area: h; }
+  .lacard > .lastact { grid-area: a; }
+  .lacard > .la-route { grid-area: r; margin-top: 0; }
+  .lacard > .la2 { grid-area: s; }
+}
 
 /* průvodce připojením po registraci */
 .obmodal { align-items: center; }
