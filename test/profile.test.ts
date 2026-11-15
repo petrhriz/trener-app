@@ -6,7 +6,7 @@ import { DEFAULTS } from "../src/lib/settings";
 const T = "2026-11-12";
 const ctx: any = {
   T,
-  s: { ...DEFAULTS, ftp: 260, hr_zones: { floors: [55, 135, 165, 184, 202], max: 204, lthr: 196, rest: 50, source: "Garmin" }, coach_profile: { primary: "ride", birthYear: 1980, sports: {}, snow: false } },
+  s: { ...DEFAULTS, ftp: 260, hr_zones: { floors: [55, 135, 165, 184, 202], max: 204, lthr: 196, rest: 50, source: "Garmin" }, coach_profile: { primary: "ride", birthYear: 1980, sports: {} } },
   well: [{ date: "2026-11-10", weight_kg: 78.5, rhr: 48, vo2max: 52 }, { date: T, weight_kg: null, rhr: 50, vo2max: null }],
   acts: [{ id: "a", date: "2026-11-05", sport: "ride", mmp: { "5": 900, "60": 450, "300": 330, "1200": 280 }, max20: 280, pwr_z: null, vo2_fit: 54.4 }],
   metrics: [{ date: T, ctl: 40.8, atl: 45.2, form: -4.4 }],

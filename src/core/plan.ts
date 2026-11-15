@@ -2,7 +2,6 @@
 import { num } from "../lib/format";
 import type { PlanSport } from "../datasource/types";
 import { formZone } from "./fitness";
-import type { Carbs } from "./nutrition";
 import type { OwnRide } from "./ownRide";
 import type { QualityType } from "./quality";
 import type { DayWeather } from "./weather";
@@ -78,7 +77,8 @@ export interface PlanDay {
   workout: Workout | null;
   steps: string[];
   targetText: string | null;
-  carbs: Carbs | null;
+  /** odhad jídla a pití na trénink podle délky, intenzity, teploty a hmotnosti (src/core/extras.ts) */
+  fuel: string[];
   load: number;
   loadNote: string;
   form: number | null;

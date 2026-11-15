@@ -191,7 +191,7 @@ export function analyzeActivity(a: ActRow, plan: PlannedForAct | null, ftp: numb
   const planLoad = plan?.target_load ?? null;
   const compliance = plan?.compliance ?? (planLoad && a.load ? Math.min(150, Math.round((a.load / planLoad) * 100)) : null);
 
-  const envLabel = indoor ? "trenažér" : a.sport === "mtb" ? "MTB" : isBike ? (hasPower ? "silnice s wattmetrem" : "silnice bez wattmetru") : "";
+  const envLabel = indoor ? "trenažér" : a.sport === "mtb" ? "horské kolo" : isBike ? (hasPower ? "silnice s wattmetrem" : "silnice bez wattmetru") : "";
   const unitType = plan?.name ?? (isQuality && qType && qType in QUALITY_NAME ? QUALITY_NAME[qType as QualityType] : isBike ? "bez plánu" : "");
 
   // ---- 📏 Základ ----

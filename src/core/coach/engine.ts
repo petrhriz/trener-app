@@ -5,7 +5,6 @@ import { BIKE_SPORTS, type PlanSport, type Sport } from "../../datasource/types"
 import { dayDm, num } from "../../lib/format";
 import { addDays, dow, mondayOf } from "../../lib/time";
 import { type Goal, formZone, project } from "../fitness";
-import { carbsFor } from "../nutrition";
 import { type OwnRide, ownRideName } from "../ownRide";
 import type { CalItem, Change, Constraint, Kind, Payload, PlanDay, PlanResult } from "../plan";
 import type { ActPower } from "../power";
@@ -27,7 +26,7 @@ import { type Fatigue, fatigueFactor, formFloor } from "./target";
 import { type WeekValidation, validateWeek } from "./validate";
 import type { Fixed, PastDay as V2Past } from "./common";
 import { type WeekTarget, TWO_KEYS_MIN_H, blockWeeksFor, historyBase, nextBlock, usualSessions, weekHistory, weekTarget } from "./budget";
-import { type PastDay, type SkDay, solveWeek } from "./skeleton";
+import { type PastDay, type SkDay, type WeekPattern, solveWeek } from "./skeleton";
 import { ROLE_INTENSITY, type Role, capsFor, loadFor, minutesFor, nameFor, relabel, stepsText } from "./sport";
 
 export interface CoachInput {
@@ -295,6 +294,11 @@ export function runCoach(inp: CoachInput): CoachPlan {
 
   const weeks: Week3[] = [];
   let prevDays: Day3[] = [];
+  // skutečně odjeté minulé týdny (nejnovější první) – vzor pro pestrost dalších týdnů
+  const patterns: WeekPattern[] = [1, 2].map((k) => {
+    const ws = addDays(W0, -7 * k);
+    return { trained: [1, 2, 3, 4, 5, 6, 7].filter((i) => trainedOn(addDays(ws, i - 1))), keys: [...new Set(inp.acts.filter((a) => a.quality && a.date >= ws && a.date < addDays(ws, 7)).map((a) => dow(a.date)))] };
+  });
   let state = { ctl: startState.ctl, atl: startState.atl };
   let stateDate = addDays(from, -1);
   const doneKeys0 = inp.acts.filter((a) => a.date >= W0 && a.date < from && a.quality).length;
@@ -383,11 +387,13 @@ export function runCoach(inp: CoachInput): CoachPlan {
     for (let i = 1; i <= 56; i++) { const d = addDays(T, -i); if (trainedOn(d)) habit[dow(d)] = (habit[dow(d)] ?? 0) + 1 / 8; }
     // špatné počasí o víkendu: dlouhý nejdřív na druhý víkendový den; když nejde, zůstane o víkendu a pojede se na
     // trenažéru (se stropem délky); teprve když se o víkendu nevejde vůbec, řešič vybere sám
-    let sk = solveWeek({ days: skDays, tail, sessions, keys, long, habit });
+    // předchozí 2 týdny (plán, před prvním týdnem skutečnost) – aby se dny a kvality netočily každý týden stejně
+    const prev = patterns.slice(0, 2);
+    let sk = solveWeek({ days: skDays, tail, sessions, keys, long, habit, prev });
     if (long && skDays.some((d) => d.badWeather && dow(d.date) >= 6)) {
       const wk = (d: SkDay) => dow(d.date) < 6;
-      const a = solveWeek({ days: skDays.map((d) => ({ ...d, noLong: d.badWeather || wk(d) })), tail, sessions, keys, long, habit });
-      const b = a.long ? a : solveWeek({ days: skDays.map((d) => ({ ...d, noLong: wk(d) })), tail, sessions, keys, long, habit });
+      const a = solveWeek({ days: skDays.map((d) => ({ ...d, noLong: d.badWeather || wk(d) })), tail, sessions, keys, long, habit, prev });
+      const b = a.long ? a : solveWeek({ days: skDays.map((d) => ({ ...d, noLong: wk(d) })), tail, sessions, keys, long, habit, prev });
       if (b.long) sk = b;
     }
     // rozběhnutý týden: zbylé dny přesně podle pondělního plánu (dny, druh, zátěž); mění je jen ranní stav
@@ -441,7 +447,7 @@ export function runCoach(inp: CoachInput): CoachPlan {
         const d = dates.find((x) => free(x) && dow(x) <= 5) ?? dates.find(free);
         if (d) autoSport.set(d, other);
       }
-      if (p.snow && p.sports.xc_ski?.enabled && !inWeek("xc_ski")) {
+      if (p.sports.xc_ski?.enabled && !inWeek("xc_ski")) {
         const d = [...dates].reverse().find(free);
         if (d) autoSport.set(d, "xc_ski");
       }
@@ -740,6 +746,7 @@ export function runCoach(inp: CoachInput): CoachPlan {
     blk = nextBlock(blk, tg, tg.done + planned);
     stateDate = dates[dates.length - 1]!;
     prevDays = days;
+    patterns.unshift({ trained: days.filter((x) => x.role !== "rest").map((x) => dow(x.date)), keys: days.filter((x) => x.role === "key").map((x) => dow(x.date)) });
   }
 
   // v pondělí před prvním tréninkem je pondělním plánem tento plán (week doplní toPlan)
@@ -840,7 +847,7 @@ function toPlan(inp: CoachInput, weeks: Week3[], o: { reentry: string | null; ou
       workout: ride ? x.workout : null,
       steps: ride ? x.steps : [],
       targetText: ride ? x.targetText : null,
-      carbs: ride && x.minutes > 60 ? carbsFor(x.minutes, x.role === "key" ? "quality" : x.role === "easy" ? "easy" : "z2", !!w && w.tmax < 5 && !x.indoor) : null,
+      fuel: [],
       load: ride ? x.load : 0,
       loadNote: ride ? "zátěž dne podle cíle týdne" : "",
       form: pj?.form ?? null,

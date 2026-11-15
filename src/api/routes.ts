@@ -2,9 +2,8 @@
 import { Hono } from "hono";
 import type { Env } from "../env";
 import { BIKE_SPORTS } from "../datasource/types";
-import { fuelPlan, SWEAT_TEST_HINT, sleepRegularity } from "../core/extras";
+import { sleepRegularity } from "../core/extras";
 import { GOAL_LABEL, type Goal, formZone, project } from "../core/fitness";
-import { carbsFor } from "../core/nutrition";
 import { bestIn } from "../core/power";
 import { norm } from "../core/recovery";
 import { TARGET_PCT, pctRange, powerZones } from "../core/zones";
@@ -336,7 +335,6 @@ api.get("/coach", async (c) => {
   const T = ctx.T;
   const mon = mondayOf(T);
   const weekActs = ctx.acts.filter((a) => a.date >= mon && a.date <= addDays(mon, 6));
-  const strength = await first<{ n: number }>(c.env.DB, "SELECT COUNT(*) AS n FROM training_log WHERE kind = 'sila' AND date >= ?", mon);
   const moveDays = ctx.well.filter((w) => w.date >= mon && w.date <= T && (w.steps ?? 0) >= 5000).length;
   const longRide = weekActs.some((a) => isBike(a.sport) && (a.moving_s ?? 0) >= 90 * 60 && dow(a.date) >= 6);
   const longPlanned = r.plan.days.some((d) => d.date <= addDays(mon, 6) && dow(d.date) >= 6 && (d.durationMin ?? 0) >= 90);
@@ -397,7 +395,6 @@ api.get("/coach", async (c) => {
     ftp: ctx.s.ftp,
     floor: [
       { label: "Z2 o víkendu aspoň 1:30", done: longRide, planned: longPlanned },
-      ...(ctx.s.floor_strength ? [{ label: "Síla 1× týdně", done: (strength?.n ?? 0) >= 1, planned: false, count: strength?.n ?? 0 }] : []),
       { label: "Pohyb 5 ze 7 dní (≥ 5 000 kroků)", done: moveDays >= 5, planned: false, count: moveDays },
     ],
     full: { rides: ctx.s.rides_per_week, quality: r.plan.qualityWeeks[0], target: r.plan.weeklyTarget, done: Math.round(weekActs.reduce((s, a) => s + (a.load ?? 0), 0)) },
@@ -491,7 +488,8 @@ api.get("/activity/:id/streams", async (c) => {
   // ?from=&to= (s od startu): výřez úseku v plném rozlišení (okruh / interval), jinak celá aktivita po ~600 bodech
   const fromQ = Number(c.req.query("from")), toQ = Number(c.req.query("to"));
   const part = c.req.query("from") != null && isFinite(fromQ) && isFinite(toQ) && toQ > fromQ;
-  const key = `streams:v5:${id}${part ? `:${Math.round(fromQ)}-${Math.round(toQ)}` : ""}`;
+  // v6: průběhy uložené z intervals.icu před připojením Garminu (bez trasy a zón) se načtou znovu
+  const key = `streams:v6:${id}${part ? `:${Math.round(fromQ)}-${Math.round(toQ)}` : ""}`;
   const cached = await c.env.KV.get(key, "json");
   if (cached) return c.json(cached);
   const row = await first<{ icu_id: string | null; date: string }>(c.env.DB, "SELECT icu_id, date FROM activities WHERE id = ?", id);
@@ -505,9 +503,11 @@ api.get("/activity/:id/streams", async (c) => {
     get = (t) => g[t] ?? null;
   } else if (row.icu_id) {
     const icu = new IntervalsClient(c.env);
-    const raw = await icu.req<{ type: string; data: (number | null)[] }[]>("GET", `/activity/${row.icu_id}/streams?types=time,watts,heartrate,altitude,velocity_smooth,distance,cadence,temp,respiration`);
+    const raw = await icu.req<{ type: string; data: (number | null)[]; data2?: (number | null)[] }[]>("GET", `/activity/${row.icu_id}/streams?types=time,watts,heartrate,altitude,velocity_smooth,distance,cadence,temp,respiration,latlng`);
     const alias: Record<string, string> = { resp: "respiration" };
-    get = (t) => raw.find((s) => s.type === (alias[t] ?? t))?.data ?? null;
+    // trasa: intervals.icu posílá šířku v data a délku v data2 jednoho proudu „latlng“
+    const ll = raw.find((s) => s.type === "latlng");
+    get = (t) => (t === "lat" ? ll?.data ?? null : t === "lon" ? ll?.data2 ?? null : raw.find((s) => s.type === (alias[t] ?? t))?.data ?? null);
     src = "intervals.icu";
   } else return c.json({ error: "Průběh nemám (ani v Garminu, ani v intervals.icu)." }, 404);
   let time = get("time") ?? [];
@@ -558,7 +558,10 @@ api.get("/activity/:id/streams", async (c) => {
     hrFloors: s.hr_zones?.floors?.slice(1) ?? null,
     pwrTops: (s.power_zones_pct ?? [55, 75, 90, 105, 120, 150]).map((p) => Math.round((ftp * p) / 100)),
   };
-  await c.env.KV.put(key, JSON.stringify(out), { expirationTtl: 30 * 86400 });
+  // z Garminu se zónami na 30 dní; náhradní průběh z intervals.icu nebo bez zón tepu jen na den – mezitím se může
+  // připojit Garmin nebo doplnit zóny a aktivita pak dostane trasu i barvy zón
+  const complete = src === "Garmin" && !!out.hrFloors;
+  await c.env.KV.put(key, JSON.stringify(out), { expirationTtl: (complete ? 30 : 1) * 86400 });
   return c.json(out);
 });
 
@@ -1045,22 +1048,6 @@ api.get("/steps", async (c) => {
   return c.json(rows);
 });
 
-api.get("/strength", async (c) => {
-  const rows = await all<any>(c.env.DB, "SELECT date, kind, note FROM training_log WHERE date >= date('now', '-90 days') ORDER BY date DESC");
-  const acts = await all<any>(c.env.DB, "SELECT date, sport, name, moving_s FROM activities WHERE sport IN ('strength','mobility') AND date >= date('now', '-90 days') ORDER BY date DESC");
-  return c.json({ log: rows, garmin: acts });
-});
-
-/** Zápis síly / mobility (dnešek), poznámka volitelná. */
-api.post("/strength", async (c) => {
-  const { kind, note } = (await c.req.json().catch(() => ({}))) as { kind?: string; note?: string };
-  if (kind !== "sila" && kind !== "mobilita") return c.json({ error: "bad input" }, 400);
-  const T = localNow(new Date(), c.env.TZ_NAME).date;
-  const n = typeof note === "string" && note.trim() ? note.trim().slice(0, 200) : null;
-  await c.env.DB.prepare("INSERT INTO training_log (date, kind, note, created_at) VALUES (?, ?, ?, ?)").bind(T, kind, n, new Date().toISOString()).run();
-  return c.json({ ok: true });
-});
-
 /** Workout dne jako FIT soubor (bez intervals.icu: nahraje se kabelem do Garmin/NewFiles). */
 api.get("/plan/fit", async (c) => {
   const date = c.req.query("date") ?? "";
@@ -1079,31 +1066,6 @@ api.get("/plan/fit", async (c) => {
   if (!w) return c.json({ error: "Na tento den žádný workout není." }, 404);
   const { encodeWorkoutFit } = await import("../plan/fit");
   return new Response(encodeWorkoutFit(name, w), { headers: { "Content-Type": "application/octet-stream", "Content-Disposition": `attachment; filename="${date}-workout.fit"`, "Cache-Control": "no-store" } });
-});
-
-api.get("/fuel", async (c) => {
-  const ctx = await loadCtx(c.env);
-  const p = await planFor(ctx);
-  const lastW = [...ctx.well].reverse().find((w) => w.weight_kg != null)?.weight_kg ?? 75;
-  const rides = p.days.filter((d) => d.name).map((d) => {
-    const temp = d.weather ? Math.round((d.weather.tmax + d.weather.tmin) / 2) : null;
-    const fp = fuelPlan(d.durationMin ?? 60, d.indoor ? 20 : temp, lastW, d.kind === "quality" ? "quality" : "z2");
-    return { date: d.date, label: dayDm(d.date), name: d.name, min: d.durationMin, carbs: d.carbs, fuel: fp };
-  });
-  const goalRide = fuelPlan(240, 15, lastW, "quality");
-  return c.json({
-    rides,
-    table: [
-      { dur: "do 60 min", carbs: "jen voda" },
-      { dur: "1–2 h", carbs: "30–60 g/h" },
-      { dur: "2–3 h", carbs: "60–90 g/h" },
-    ],
-    examples: [60, 90, 120, 150, 180].map((m) => ({ min: m, z2: carbsFor(m, "z2").text, quality: carbsFor(m, "quality").text })),
-    goalRide: { name: ctx.s.goal_name, plan: goalRide },
-    weight: lastW,
-    hint: SWEAT_TEST_HINT,
-    note: "Nic nového nezkoušej poprvé na cílové jízdě – výživu otestuj na tréninku.",
-  });
 });
 
 api.get("/week", async (c) => {

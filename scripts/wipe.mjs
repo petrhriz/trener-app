@@ -9,7 +9,7 @@ if (!process.argv.includes("--yes")) {
   process.exit(1);
 }
 const { vars } = readDevVars();
-const tables = ["activities", "wellness", "daily_metrics", "planned_workouts", "constraints", "proposals", "weather_hourly", "sent_messages", "training_log", "events_log", "weekly_reviews", "settings", "sync_state"];
+const tables = ["activities", "wellness", "daily_metrics", "planned_workouts", "constraints", "proposals", "weather_hourly", "sent_messages", "events_log", "weekly_reviews", "settings", "sync_state"];
 const sql = tables.map((t) => `DELETE FROM ${t};`).join(" ");
 execSync(`npx wrangler d1 execute trener-db --remote --command "${sql}"`, { cwd: ROOT, stdio: "inherit" });
 try {

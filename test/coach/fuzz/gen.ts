@@ -96,7 +96,6 @@ export function randomAthlete(seed: number, o: Partial<Pick<Athlete, "goal" | "p
       xc_ski: { enabled: r.chance(0.2), quality: r.chance(0.2) },
       walk: { enabled: r.chance(0.1), quality: false },
     },
-    snow: r.chance(0.15),
     birthYear: r.chance(0.3) ? null : r.int(1950, 2008),
     level,
   };

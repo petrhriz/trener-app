@@ -9,15 +9,15 @@ import { addDays, dow, mondayOf } from "../../src/lib/time";
 const T = "2026-11-12"; // čtvrtek
 const HZ = { floors: [55, 135, 165, 184, 202], max: 204, lthr: 196, rest: 55 };
 
-/** 10 týdnů historie: út Z2 75 min, čt kvalita 60 min, so dlouhá 150 min (ne dnes). */
-function input(o: Partial<CoachInput> = {}, perWeek = 1): CoachInput {
+/** 10 týdnů historie: út Z2 75 min, čt kvalita 60 min (qDow = 2: naopak), so dlouhá 150 min (ne dnes). */
+function input(o: Partial<CoachInput> = {}, perWeek = 1, qDow = 4): CoachInput {
   const acts: CoachInput["acts"] = [];
   for (let i = 1; i <= 70; i++) {
     const d = addDays(T, -i);
     const w = dow(d);
     const mk = (min: number, load: number, quality = false) => acts.push({ id: d, date: d, sport: "ride", load: load * perWeek, moving_s: min * 60, quality, hr_z: null, pwr_z: null, laps: null, compliance: null });
-    if (w === 2) mk(75, 55);
-    if (w === 4) mk(60, 65, true);
+    if (w === (qDow === 2 ? 4 : 2)) mk(75, 55);
+    if (w === qDow) mk(60, 65, true);
     if (w === 6) mk(150, 105);
   }
   const loads = new Map<string, number>();
@@ -88,8 +88,9 @@ describe("Trenér v3 – plán", () => {
     const red = runCoach(input({ recovery: "red" }));
     const t = red.days.find((d) => d.isToday);
     expect(!t || t.kind === "blocked" || t.kind === "rest").toBe(true);
-    const g = runCoach(input()).days.find((d) => d.isToday)!;
-    const y = runCoach(input({ recovery: "yellow" })).days.find((d) => d.isToday)!;
+    // kvalita v historii v úterý (Z2 ve čtvrtek) → dnes (čtvrtek) vyjde kvalita – kvalita se netočí každý týden ve stejný den
+    const g = runCoach(input({}, 1, 2)).days.find((d) => d.isToday)!;
+    const y = runCoach(input({ recovery: "yellow" }, 1, 2)).days.find((d) => d.isToday)!;
     expect(g.kind).toBe("quality");
     // kvalita o stupeň dolů (jiný druh kvality, nebo Z2), délka ~×0,75
     expect(y.kind === "z2" || y.qualityType !== g.qualityType || y.name !== g.name).toBe(true);

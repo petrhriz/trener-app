@@ -28,8 +28,6 @@ export interface Settings {
   status: { kind: "active" | "sick" | "injured" | "vacation"; from: string | null; until: string | null };
   /** ukončená období stavu Nemocný / Zraněný / Dovolená (trenér je nepočítá do průměru posledních týdnů) */
   status_log: { kind: string; from: string; until: string }[];
-  /** síla v minimu týdne */
-  floor_strength: boolean;
   /** místo pro počasí na Přehledu */
   place_name: string;
   /** osobní hranice počasí: teplota vzduchu °C – pod „cold“ zima, nad „hot“ vedro, okno co nejblíž „ideal“ */
@@ -67,7 +65,6 @@ export const DEFAULTS: Settings = {
   rides_per_week: 3,
   status: { kind: "active", from: null, until: null },
   status_log: [],
-  floor_strength: false,
   place_name: "Praha",
   ride_temps: { cold: 3, hot: 30, ideal: 18 },
   place_lat: null,

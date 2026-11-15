@@ -1924,7 +1924,7 @@ table, .tip, .chip, .astats, .tabbar, .seg, .btn { overflow-wrap: normal; }
 
 /* kalendář trenéra na 4 týdny: dlaždice podbarvené podle druhu (kvalita / vytrvalost / lehce) s proužkem dole,
    ikona sportu a délka; odjeté zeleně s fajfkou; pruh zátěže týdne zaoblený jako na kartě Týden */
-.ccal { display: flex; flex-direction: column; gap: 14px; --cc-q: var(--z5); --cc-e: var(--z2); --cc-z: var(--z1); --cc-ok: var(--ok); }
+.ccal { display: flex; flex-direction: column; gap: 14px; --cc-q: var(--z5); --cc-e: var(--z2); --cc-ok: var(--ok); }
 .cc-h, .cc-r { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
 .cc-h span { font-size: 11px; color: var(--muted); text-align: center; font-weight: 650; letter-spacing: .03em; text-transform: uppercase; }
 .cc-h span.now { color: var(--acc); }
@@ -1966,7 +1966,6 @@ table, .tip, .chip, .astats, .tabbar, .seg, .btn { overflow-wrap: normal; }
 .cc-d.plan:active, .cc-d.done:active { transform: scale(.96); }
 .cc-d.r-q { --rc: var(--cc-q); --tint: color-mix(in srgb, var(--cc-q) 13%, var(--card)); }
 .cc-d.r-e { --rc: var(--cc-e); --tint: color-mix(in srgb, var(--cc-e) 11%, var(--card)); }
-.cc-d.r-z { --rc: var(--cc-z); --tint: var(--card2); }
 .cc-d.or.plan { --tint: transparent; border: 1.5px dashed color-mix(in srgb, var(--rc) 50%, var(--line)); }
 .cc-d.or.plan i { opacity: .8; }
 /* odjeto: zeleně, fajfka v rohu; kvalita má oranžový proužek */
@@ -2000,7 +1999,6 @@ table, .tip, .chip, .astats, .tabbar, .seg, .btn { overflow-wrap: normal; }
 .cc-leg i { width: 14px; height: 10px; border-radius: 4px; background: var(--card2); box-shadow: inset 0 -3px 0 var(--line); }
 .cc-leg i.r-q { background: color-mix(in srgb, var(--z5) 16%, var(--card)); box-shadow: inset 0 -3px 0 var(--z5); }
 .cc-leg i.r-e { background: color-mix(in srgb, var(--z2) 14%, var(--card)); box-shadow: inset 0 -3px 0 var(--z2); }
-.cc-leg i.r-z { box-shadow: inset 0 -3px 0 var(--z1); }
 .cc-leg i.dn { background: var(--okbg); box-shadow: inset 0 -3px 0 var(--ok); }
 .cc-leg .sub { flex-basis: 100%; font-size: 11.5px; }
 @media (max-width: 600px) {
@@ -2070,8 +2068,13 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 .pbar .pb-t small { font-size: 11.5px; }
 .pbar .pb-chev { margin-left: 2px; font-size: 14px; }
 .pbar #statusBtn { margin-left: auto; }
-.pbar .cdnav { width: auto; flex: 1 1 0; min-width: 0; max-width: 260px; align-items: center; justify-content: space-between; gap: 2px; padding: 4px; border-radius: 16px; box-shadow: var(--shadow); }
-.cdnav .btn.sm { min-width: 34px; height: 34px; padding: 0; border-radius: 11px; border: 0; background: var(--card2); font-size: 17px; }
+/* přepínač dne má pevnou šířku (nemění se podle počasí ani podle „Dnes“ / „Ne 1.11.“); pružné je počasí */
+.pbar .cdnav { width: auto; flex: none; align-items: center; justify-content: space-between; gap: 2px; padding: 4px; border-radius: 16px; box-shadow: var(--shadow); }
+.pbar .cdnav .dpick { flex: none; width: 5.6em; overflow: hidden; }
+.pbar .pillbig:not(#statusBtn) { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+.pbar .pillbig:not(#statusBtn) .pb-t { min-width: 0; overflow: hidden; }
+.pbar .pillbig:not(#statusBtn) .pb-t > small { display: block; overflow: hidden; text-overflow: ellipsis; }
+.cdnav .btn.sm { flex: none; width: 34px; min-width: 34px; height: 34px; padding: 0; border-radius: 11px; border: 0; background: var(--card2); font-size: 17px; }
 .cdnav b { min-width: 0; font-size: 15px; }
 .cdnav .dpick { flex: 1; text-align: center; padding: 4px 4px; }
 @media (max-width: 760px) {
@@ -2079,9 +2082,11 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
   .pbar .pillbig { padding: 4px 9px 4px 4px; gap: 7px; flex: none; }
   .pbar .pb-chev { display: none; }
   .pbar #statusBtn .pb-t b { font-size: 13.5px; }
-  .pbar .cdnav { max-width: none; }
+  .pbar .cdnav .dpick { width: 4.6em; padding: 4px 0; }
+  .pbar .cdnav b { font-size: 13.5px; }
+  .pbar .cdnav .btn.sm { width: 30px; min-width: 30px; }
 }
-@media (max-width: 370px) { .pbar #statusBtn .pb-t { display: none; } .pbar #statusBtn { padding-right: 4px; } }
+@media (max-width: 420px) { .pbar #statusBtn .pb-t { display: none; } .pbar #statusBtn { padding-right: 4px; } }
 
 /* ===== Více (mobil): mřížka dlaždic 4 × 2 ===== */
 .sheet-in { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; gap: 4px 2px !important; padding: 12px 8px !important; }

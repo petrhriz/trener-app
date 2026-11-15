@@ -7,10 +7,9 @@ import { scenario, simHistory, simInput } from "../../scripts/coach-sim-lib";
 
 const sc = scenario("zima-udrzet");
 const acts = simHistory(sc);
-const prof = (o: { run?: boolean; xc?: boolean; snow?: boolean; primary?: "ride" | "run" } = {}): CoachProfile => ({
+const prof = (o: { run?: boolean; xc?: boolean; primary?: "ride" | "run" } = {}): CoachProfile => ({
   ...DEFAULT_PROFILE,
   primary: o.primary ?? "ride",
-  snow: !!o.snow,
   sports: { ...DEFAULT_PROFILE.sports, ride: { enabled: (o.primary ?? "ride") === "ride", quality: true }, run: { enabled: !!o.run || o.primary === "run", quality: false }, xc_ski: { enabled: !!o.xc, quality: false } },
 });
 const weeks = (profile: CoachProfile, extra = {}) => runCoach({ ...simInput(sc, acts, sc.start, extra), profile }).coach.horizon;
@@ -33,10 +32,9 @@ describe("další sporty z profilu", () => {
     const w = weeks(prof({ run: true }), { constraints: [{ date: wed, kind: "sport", note: "run" }] })[0]!;
     expect(w.days.filter((d) => d.role !== "rest" && d.sport === "run").map((d) => d.date)).toEqual([wed]);
   });
-  it("běžky: jeden vytrvalostní den týdně jen se zapnutým sněhem", () => {
-    for (const w of weeks(prof({ xc: true }))) expect(count(w, "xc_ski")).toBe(0);
-    for (const w of weeks(prof({ xc: true, snow: true }))) expect(count(w, "xc_ski")).toBe(1);
-    const both = weeks(prof({ xc: true, snow: true, run: true }))[1]!;
+  it("běžky zapnuté: jeden vytrvalostní den týdně", () => {
+    for (const w of weeks(prof({ xc: true }))) expect(count(w, "xc_ski")).toBe(1);
+    const both = weeks(prof({ xc: true, run: true }))[1]!;
     expect([count(both, "run"), count(both, "xc_ski")]).toEqual([1, 1]);
   });
   it("hlavní sport běh + občas kolo: jeden vytrvalostní den týdně na kole", () => {
@@ -49,7 +47,6 @@ describe("další sporty z profilu", () => {
   });
   it("shrnutí profilu říká, co trenér opravdu dělá", () => {
     expect(profileSummary(prof({ run: true })).join(" ")).toMatch(/Běh: nejvýš jeden vytrvalostní den týdně/);
-    expect(profileSummary(prof({ xc: true })).join(" ")).toMatch(/až zapneš „Je sníh“/);
-    expect(profileSummary(prof({ xc: true, snow: true })).join(" ")).toMatch(/jeden vytrvalostní den týdně na běžkách/);
+    expect(profileSummary(prof({ xc: true })).join(" ")).toMatch(/Běžky: jeden vytrvalostní den týdně/);
   });
 });

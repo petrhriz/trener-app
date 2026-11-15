@@ -53,7 +53,7 @@ export function fuelPlan(durationMin: number, tempC: number | null, weightKg: nu
   const lines = [
     `Sacharidy: ${c.text}`,
     `Tekutiny: ${num(fluid, 2)} l/h (${num(fluid * h, 1)} l celkem, odhad)`,
-    durationMin >= 120 || t >= 25 ? `Sodík: ${sodium} mg/h (odhad)` : "Sodík: u jízdy do 2 h a v chladu není potřeba",
+    durationMin >= 120 || t >= 25 ? `Sodík: ${sodium} mg/h (odhad)` : "Sodík: u tréninku do 2 h a v chladu není potřeba",
   ];
   return {
     durationMin,
@@ -70,9 +70,6 @@ export function fuelPlan(durationMin: number, tempC: number | null, weightKg: nu
     lines,
   };
 }
-
-export const SWEAT_TEST_HINT =
-  "Test pocení: zvaž se před a po hodinové jízdě v podobných podmínkách; 1 kg úbytku ≈ 1 l potu, plus co jsi vypil.";
 
 // ---------- Sleep: pravidelnost ----------
 

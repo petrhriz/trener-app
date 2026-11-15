@@ -18,6 +18,7 @@ import m0015 from "../../migrations/0015_plan_versions.sql";
 import m0016 from "../../migrations/0016_no_hockey.sql";
 import m0018 from "../../migrations/0018_gear_bikes.sql";
 import m0019 from "../../migrations/0019_act_names_refetch.sql";
+import m0020 from "../../migrations/0020_no_strength_log.sql";
 
 export const OWNER_ID = 1;
 
@@ -38,9 +39,10 @@ export const TENANT_MIGRATIONS: { name: string; sql: string }[] = [
   { name: "0016", sql: m0016 },
   { name: "0018", sql: m0018 },
   { name: "0019", sql: m0019 },
+  { name: "0020", sql: m0020 },
 ];
 
-/** Tabulky s daty uživatele (vše kromě users). */
+/** Tabulky s daty uživatele (vše kromě users). training_log je zrušená – v seznamu jen kvůli migracím 0001 a 0020. */
 export const TENANT_TABLES = [
   "settings", "sync_state", "activities", "activity_laps", "wellness", "weekly_reviews", "daily_metrics", "planned_workouts",
   "constraints", "proposals", "weather_hourly", "sent_messages", "training_log", "events_log", "gear", "activity_gear",

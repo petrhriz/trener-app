@@ -14,6 +14,9 @@ kondice (`coach/target.ts`), únava, pravidla kontroly týdne (`coach/validate.t
    Když omezení cíl nepustí, trenér to napíše čísly („potřeba 286, dáš 221 → kondice 40,8 → 39,9“).
 4. **Kostra** (tento a příští týden + orientačně další dva): kolik tréninků, kolik kvalit, dlouhý; řešič vybere dny
    podle pravidel (max 3 dny za sebou, kvalita ne po kvalitě ani po dlouhém, dlouhý o víkendu, volby uživatele platí).
+   Dva tréninky za sebou jsou v pořádku (blok), mírně se penalizuje až třetí den v řadě. Aby týdny nebyly všechny
+   stejné, řešič mírně penalizuje kvalitu ve stejný den jako minulý týden a úplně stejné tréninkové dny jako minulý
+   týden (u prvního týdne podle skutečně odjetého minulého týdne).
 5. **Délky** ze zátěže dne a sazby sportu (zátěž za hodinu Z2 z historie uživatele). Změna sportu drží zátěž.
    Kvalita má asi stejný čas jako Z2 den týdne (nejvýš strop kvality), Z2 den nikdy delší než strop dlouhého dne,
    běžecký Z2 do 1,2× typického běhu (aspoň hodina, ve stropu běhu). Tréninků nejvýš tolik, kolik se jich do zátěže
@@ -67,7 +70,7 @@ poslední běžný (Bosquet 41–60 %). Pravidla (nejvýš 3 dny za sebou, kvali
 
 `test/coach/fuzz/` – nic není vázané na jednoho uživatele: generátor (`gen.ts`) mění hlavní sport (kolo / běh), objem
 (0–900 zátěže týdně, i nový uživatel bez historie), počet a rozložení dní, wattmetr, věk (2+1 / 3+1), úroveň, další
-sporty, sníh, pauzy, nepravidelnost i trend. Seed je pevný – každé selhání jde zopakovat.
+sporty (i běžky), pauzy, nepravidelnost i trend. Seed je pevný – každé selhání jde zopakovat.
 
 - `engine.fuzz.test.ts` – 3 000 náhodných plánů (den v roce × cíl × závod × tvoje volby včetně nesmyslných × ráno
   🟢🟡🔴 × únava × počasí × návrat po pauze × stupně kvalit); každý musí splnit pravidla z `check.ts` (tvar a čísla,

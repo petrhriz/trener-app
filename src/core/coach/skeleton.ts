@@ -40,7 +40,18 @@ export interface SkInput {
   long: boolean;
   /** jak často v minulosti trénuješ v jednotlivé dny týdne (1 = po … 7 = ne), 0–1 */
   habit?: Record<number, number>;
+  /** předchozí týdny (nejnovější první) po dnech týdne (1 = po … 7 = ne) – stejné rozložení dní a kvalit se
+   *  penalizuje, aby týdny nebyly všechny stejné */
+  prev?: WeekPattern[];
 }
+
+export interface WeekPattern {
+  trained: number[];
+  keys: number[];
+}
+
+/** váha shody s minulým a předminulým týdnem */
+const PREV_W = [1, 0.6];
 
 export interface SkResult {
   roles: Map<string, Role>;
@@ -105,7 +116,7 @@ export function solveWeek(inp: SkInput): SkResult {
           for (const kd of keys) roles.set(kd.date, "key");
           if (lg) roles.set(lg.date, "long");
           if (!keyRuleOk(roles, tailBy, byDate, relaxed)) continue;
-          const score = scoreOf(roles, days, tailBy, inp.habit);
+          const score = scoreOf(roles, days, tailBy, inp.habit, inp.prev);
           if (!best || score > best.score + 1e-9) best = { score, roles };
         }
       }
@@ -151,25 +162,32 @@ function keyRuleOk(roles: Map<string, Role>, tail: Map<string, PastDay>, by: Map
   return true;
 }
 
-function scoreOf(roles: Map<string, Role>, days: SkDay[], tail: Map<string, PastDay>, habit?: Record<number, number>): number {
+function scoreOf(roles: Map<string, Role>, days: SkDay[], tail: Map<string, PastDay>, habit?: Record<number, number>, prev?: SkInput["prev"]): number {
   let s = 0;
   const trainedOn = (d: string) => { const r = roles.get(d); return r === undefined ? !!tail.get(d)?.trained : r !== "rest"; };
   for (const day of days) {
     const r = roles.get(day.date)!;
     const w = dow(day.date);
     if (r === "rest") continue;
-    // rozložení: dva tréninky po sobě jsou horší než s volnem mezi
-    if (trainedOn(addDays(day.date, -1))) s -= 1.5;
+    // dva dny za sebou jsou v pořádku (blok), třetí den za sebou je mírně horší
+    if (trainedOn(addDays(day.date, -1)) && trainedOn(addDays(day.date, -2))) s -= 0.75;
     if (r === "key") {
-      if (!trainedOn(addDays(day.date, -1))) s += 3;
-      if (w >= 2 && w <= 4) s += 1;
+      if (!trainedOn(addDays(day.date, -1))) s += 1.5;
+      if (w >= 2 && w <= 4) s += 0.5;
+      // kvalita každý týden ve stejný den – raději jinak
+      prev?.slice(0, PREV_W.length).forEach((pw, i) => { if (pw.keys.includes(w)) s -= PREV_W[i]!; });
     }
     if (r === "long") {
       if (w >= 6) s += 3;
       if (day.badWeather) s -= 3;
     }
     if (r === "endurance" && day.badWeather) s -= 1;
-    if (habit) s += (habit[w] ?? 0) * 1.5;
+    if (habit) s += habit[w] ?? 0;
+  }
+  // úplně stejné tréninkové dny jako minulý (předminulý) týden
+  if (prev && days.length === 7) {
+    const now = days.filter((d) => roles.get(d.date) !== "rest").map((d) => dow(d.date)).sort().join();
+    prev.slice(0, PREV_W.length).forEach((pw, i) => { if (now === [...pw.trained].sort().join()) s -= 1.5 * PREV_W[i]!; });
   }
   return s;
 }
