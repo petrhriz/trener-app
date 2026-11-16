@@ -104,6 +104,15 @@ export function illnessHint(rows: HintRow[], D: string): string | null {
   return ILLNESS_HINT_TEXT;
 }
 
+/** Minulá noc VST proti normě (z v ln): jen informace vedle týdenního hodnocení, 🔴 noci odpovídá „výrazně pod normou“. */
+export function hrvNightRating(z: number | null): string | null {
+  if (z == null) return null;
+  if (z < -HRV_SEM.redSd) return "výrazně pod normou";
+  if (z < -1) return "pod normou";
+  if (z > 1) return "nad normou";
+  return "v normě";
+}
+
 export function norm(values: (number | null | undefined)[]): Norm {
   const v = values.filter((x): x is number => typeof x === "number" && Number.isFinite(x));
   const n = v.length;
@@ -132,6 +141,8 @@ export interface Indicator {
   expected: boolean;
   /** text normy do tabulky (např. „73–79“, „do 52“) */
   rangeText: string;
+  /** VST: zhodnocení samotné minulé noci (jen informace, semafor rozhoduje podle týdne) */
+  night?: string | null;
 }
 
 export interface SleepIndicator extends Indicator {
@@ -241,6 +252,7 @@ export function evaluateRecovery(inp: RecoveryInput): RecoveryResult {
     if ((zH(hrv.today) ?? 0) < -HRV_SEM.redSd) hrv.flag = "red";
     else if (zw != null && zw < -HRV_SEM.yellowSd) hrv.flag = "yellow";
     hrv.rating = hrvRating(zw ?? zH(hrv.today));
+    hrv.night = hrvNightRating(zH(hrv.today));
     const zy = zH(yest?.hrv);
     if (hrv.flag === "red" && zy != null && zy < -HRV_SEM.redSd) hrvRed2Days = true;
   }

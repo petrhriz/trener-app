@@ -225,6 +225,7 @@ describe("zotavení – osobní normy (kap. 4)", () => {
     // norma ~75 ms (ln SD ~0,058) → 63 ms je pod −2 SD
     const one = evaluateRecovery({ date: "2026-11-07", rows: rows(60, { hrv: 63, rhr: 52, sleep_s: 7.5 * 3600, sleep_score: 82 }), dayAfter: null, illness: false });
     expect(one.hrv.flag).toBe("red");
+    expect(one.hrv.night).toBe("výrazně pod normou");
     expect(one.state).toBe("yellow");
     const rs = rows(60, { hrv: 63, rhr: 52, sleep_s: 7.5 * 3600, sleep_score: 82 });
     rs[rs.length - 2]!.hrv = 62;
@@ -241,6 +242,8 @@ describe("zotavení – osobní normy (kap. 4)", () => {
     // norma ~75 ms, ln SD ~0,058 → hranice −0,5 SD ≈ 72,9 ms
     const oneNight = evaluateRecovery({ date: "2026-11-07", rows: rows(60, { hrv: 67, rhr: 52, sleep_s: 7.5 * 3600, sleep_score: 82 }), dayAfter: null, illness: false });
     expect(oneNight.hrv.flag).toBe("none");
+    expect(oneNight.hrv.night).toBe("pod normou"); // minulá noc se hodnotí zvlášť
+    expect(oneNight.hrv.rating).toBe("Vyvážené");
     expect(oneNight.state).toBe("green");
     const rs = rows(60, { hrv: 71, rhr: 52, sleep_s: 7.5 * 3600, sleep_score: 82 });
     for (let i = 2; i <= 7; i++) rs[rs.length - i]!.hrv = 71;
