@@ -37,7 +37,7 @@
 | Pravidelnost spánku | časy usnutí a probuzení 14 dní | `src/core/extras.ts` |
 | Energie (místo Body Battery) | tep po 2 min, stres, spánek, aktivity | `src/core/energy.ts` |
 | Zotavení % a ranní semafor 🟢🟡🔴 | VST, klidový tep, spánek proti tvé normě 60 dní | `src/core/recovery.ts`, `readinessScore.ts` |
-| Normální rozsah (průměr ± 1 SD) a „v normě / nad / pod“ | posledních 30–60 dní | `src/core/recovery.ts`, `public/app.js` |
+| Normální rozsah v grafech a dlaždicích (průměr ± 1 SD) a „v normě / nad / pod“; VST v semaforu v ln(ms), rozsah exp(průměr ± SD) | posledních 30–60 dní | `src/core/recovery.ts`, `public/app.js` |
 | Forma (TSB) | CTL − ATL | `src/core/fitness.ts` |
 | CTL / ATL pro dny bez intervals.icu (např. starší roky) | denní zátěž aktivit, exponenciální průměr 42 / 7 dní | `src/core/fitness.ts`, `src/sync/metrics.ts` |
 | Zátěž aktivity bez intervals.icu | NP a FTP (TSS), jinak tep a zóny (HRSS) | `src/core/load.ts` |

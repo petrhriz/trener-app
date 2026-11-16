@@ -8,6 +8,9 @@ export interface WRow {
   sleep_s: number | null;
   sleep_score: number | null;
   sleep_q: string | null;
+  /** průměrný tep a dech ve spánku – jen pro upozornění na možnou nemoc (illnessHint) */
+  sleep_hr?: number | null;
+  sleep_resp?: number | null;
 }
 
 export interface Norm {
@@ -49,6 +52,56 @@ export function hrvWeekLow(rows: { date: string; hrv: number | null }[], today: 
 /** Norma VST v ln(ms) – průměr a SD logaritmů (stejná transformace jako skóre zotavení a týdenní VST). */
 export function hrvLnNorm(rows: { hrv: number | null }[]): Norm {
   return norm(rows.map((r) => (r.hrv != null && r.hrv > 0 ? Math.log(r.hrv) : null)));
+}
+
+/**
+ * VST v ranním semaforu (vše v ln ms proti normě D−60 … D−1): 🟡 = 7denní průměr pod normou − 0,5 SD,
+ * 🔴 = dnešní noc pod − 2 SD. SD aspoň 0,03 jako SD_FLOOR ve skóre zotavení. Hranice 0,5 a 2 SD jsou vlastní volba
+ * (docs/trener/zdroje.md); 7denní průměr ln VST sledují Plews a kol. 2012.
+ */
+export const HRV_SEM = { min7: 4, yellowSd: 0.5, redSd: 2, sdFloor: 0.03 };
+
+/** Průměr ln(VST) za D−6 … D (aspoň HRV_SEM.min7 nocí), jinak null. */
+export function hrvLnWeek(rows: { date: string; hrv: number | null }[], D: string): number | null {
+  const from = addDays(D, -6);
+  const v = rows.filter((r) => r.date >= from && r.date <= D && r.hrv != null && r.hrv > 0).map((r) => Math.log(r.hrv!));
+  return v.length >= HRV_SEM.min7 ? v.reduce((a, b) => a + b, 0) / v.length : null;
+}
+
+/** Slovní hodnocení VST podle odchylky 7denního průměru (bez týdne podle dnešní noci) – obdoba Garminova stavu VST. */
+export function hrvRating(z: number | null): string | null {
+  if (z == null) return null;
+  if (z < -1) return "Nízké";
+  if (z < -HRV_SEM.yellowSd) return "Nevyvážené";
+  if (z > HRV_SEM.yellowSd) return "Vysoké";
+  return "Vyvážené";
+}
+
+/**
+ * Možná nastupující nemoc: tep ve spánku (bez normy klidový tep) i dech ve spánku nad průměr + 2 SD a zároveň
+ * aspoň +3 bpm / +1 dech/min, a to 2 noci po sobě (D a D−1, každá proti 60 nocím před ní, aspoň 21 hodnot).
+ * Mishra a kol. 2020 (tep), Natarajan a kol. 2020 (dech); +3 bpm, +1 dech/min a 2 noci jsou vlastní volba.
+ * Jen informace – semafor ani plán nemění, stav Nemocný se nastavuje ručně.
+ */
+export const ILLNESS_HINT = { sd: 2, hrMin: 3, respMin: 1, nights: 2 };
+export const ILLNESS_HINT_TEXT = "Možná nastupuje nemoc – tep i dech ve spánku jsou 2 noci nad tvou normou. Zvaž lehčí den.";
+type HintRow = { date: string; rhr: number | null; sleep_hr?: number | null; sleep_resp?: number | null };
+const above = (hist: HintRow[], v: number | null | undefined, get: (r: HintRow) => number | null | undefined, min: number): boolean | null => {
+  const n = norm(hist.map(get));
+  if (n.n < MIN_VALUES || v == null) return null;
+  return v > n.mean + ILLNESS_HINT.sd * n.sd && v >= n.mean + min;
+};
+function nightElevated(rows: HintRow[], d: string): boolean {
+  const night = rows.find((r) => r.date === d);
+  if (!night) return false;
+  const hist = rows.filter((r) => r.date >= addDays(d, -60) && r.date < d);
+  const hr = above(hist, night.sleep_hr, (r) => r.sleep_hr, ILLNESS_HINT.hrMin) ?? above(hist, night.rhr, (r) => r.rhr, ILLNESS_HINT.hrMin);
+  const resp = above(hist, night.sleep_resp, (r) => r.sleep_resp, ILLNESS_HINT.respMin);
+  return hr === true && resp === true;
+}
+export function illnessHint(rows: HintRow[], D: string): string | null {
+  for (let i = 0; i < ILLNESS_HINT.nights; i++) if (!nightElevated(rows, addDays(D, -i))) return null;
+  return ILLNESS_HINT_TEXT;
 }
 
 export function norm(values: (number | null | undefined)[]): Norm {
@@ -100,7 +153,8 @@ export interface RecoveryResult {
   flags: { yellow: number; red: number; counted: string[] };
   dayAfter: string | null;
   illness: boolean;
-  hrvYellow2Days: boolean;
+  /** jen informace: tep i dech ve spánku 2 noci nad normou (illnessHint), semafor ani plán nemění */
+  illnessHint: string | null;
   normDays: number;
   reasons: string[];
   /** Zotavení 0–100 % (src/core/readinessScore.ts recoveryScore); null = málo dat */
@@ -161,13 +215,16 @@ export function evaluateRecovery(inp: RecoveryInput): RecoveryResult {
   const reasons: string[] = [];
 
   // ---- HRV ----
-  // norma VST v ln(ms) jako ve skóre zotavení (readinessScore.ts): VST je zešikmená, v ln je rozptyl stejný při nízké
-  // i vysoké VST (Plews a kol. 2012 pracují s ln rMSSD). `norm` zůstává v ms pro zobrazení.
+  // Vše v ln(ms) jako ve skóre zotavení (readinessScore.ts): VST je zešikmená, v ln je rozptyl stejný při nízké
+  // i vysoké VST (Plews a kol. 2012 pracují s ln rMSSD). 🟡 = 7denní průměr ln VST (D−6 … D, aspoň 4 noci) pod
+  // normou − 0,5 SD (týdenní trend jako Garminův stav VST), 🔴 = dnešní noc pod − 2 SD. `norm` zůstává v ms.
   const hN = norm(hist.map((r) => r.hrv));
-  const lN = hrvLnNorm(hist);
+  const ln0 = hrvLnNorm(hist);
+  const lN: Norm = { ...ln0, sd: Math.max(HRV_SEM.sdFloor, ln0.sd) };
+  const week = hrvLnWeek(inp.rows, D);
   const hrv: Indicator = {
     today: today?.hrv ?? null,
-    avg7: avg(last7.map((r) => r.hrv)),
+    avg7: week != null ? Math.exp(week) : null,
     norm: hN,
     status: "ok",
     flag: "none",
@@ -175,24 +232,17 @@ export function evaluateRecovery(inp: RecoveryInput): RecoveryResult {
     expected: false,
     rangeText: lN.n ? `${Math.round(Math.exp(lN.mean - lN.sd))}–${Math.round(Math.exp(lN.mean + lN.sd))}` : "–",
   };
-  const zH = (v: number | null | undefined) => (v != null && v > 0 && lN.sd > 0 ? (Math.log(v) - lN.mean) / lN.sd : null);
-  let hrvYellow2Days = false;
+  const zH = (v: number | null | undefined) => (v != null && v > 0 ? (Math.log(v) - lN.mean) / lN.sd : null);
   let hrvRed2Days = false;
   if (lN.n < MIN_VALUES) hrv.status = "insufficient";
   else if (hrv.today == null) hrv.status = "missing";
   else {
-    const z = zH(hrv.today) ?? 0;
-    if (z < -2) {
-      hrv.flag = "red";
-      hrv.rating = "Nízké";
-    } else if (z < -1) {
-      hrv.flag = "yellow";
-      hrv.rating = "Nevyvážené";
-    } else if (z > 1) hrv.rating = "Vysoké";
-    else hrv.rating = "Vyvážené";
+    const zw = week != null ? (week - lN.mean) / lN.sd : null;
+    if ((zH(hrv.today) ?? 0) < -HRV_SEM.redSd) hrv.flag = "red";
+    else if (zw != null && zw < -HRV_SEM.yellowSd) hrv.flag = "yellow";
+    hrv.rating = hrvRating(zw ?? zH(hrv.today));
     const zy = zH(yest?.hrv);
-    if (hrv.flag !== "none" && zy != null && zy < -1) hrvYellow2Days = true;
-    if (hrv.flag === "red" && zy != null && zy < -2) hrvRed2Days = true;
+    if (hrv.flag === "red" && zy != null && zy < -HRV_SEM.redSd) hrvRed2Days = true;
   }
 
   // ---- Klidový tep ----
@@ -292,6 +342,8 @@ export function evaluateRecovery(inp: RecoveryInput): RecoveryResult {
   const sleepRed2Days = sleep.flag === "red" && sleep.status === "ok" && yest?.sleep_s != null && yest.sleep_s < SLEEP_RED_S;
   const rhrRed2Days = rhr.flag === "red" && !rhr.expected && rN.n >= MIN_VALUES && redThr != null && yest?.rhr != null && yest.rhr > redThr;
   const persistent = (hrvRed2Days && !hrv.expected) || sleepRed2Days || rhr.streak3 || rhrRed2Days;
+  // 🟡 VST je už týdenní trend (7denní průměr), ne jedna noc → stačí sám na 🟡 (dřív „VST 🟡 druhý den po sobě“)
+  const hrvWeekYellow = hrv.status === "ok" && hrv.flag === "yellow" && !hrv.expected;
   let state: State = "green";
   if (inp.illness) {
     state = "red";
@@ -301,10 +353,10 @@ export function evaluateRecovery(inp: RecoveryInput): RecoveryResult {
     if (hrvRed2Days && !hrv.expected) reasons.push("VST výrazně pod normou druhou noc po sobě");
     if (sleepRed2Days) reasons.push("spánek pod 5 h druhou noc po sobě");
     if (rhrRed2Days && !rhr.streak3) reasons.push("klidový tep vysoký druhý den po sobě");
-  } else if (red > 0 || yellow >= 2 || (hrvYellow2Days && !hrv.expected)) {
+  } else if (red > 0 || yellow >= 2 || hrvWeekYellow) {
     state = "yellow";
     if (red > 0) reasons.push(`${counted.find((c) => c.endsWith("(červená)"))!.replace(" (červená)", "")} jednu noc výrazně mimo normu – bez dalšího signálu jen lehčí den`);
-    else if (hrvYellow2Days && yellow < 2) reasons.push("VST pod normou druhý den po sobě");
+    else if (hrvWeekYellow && yellow < 2) reasons.push("VST: průměr 7 dní pod normou");
   }
   // Zotavení v % (pod 34 špatné) – stav jen zhorší, nikdy nezlepší (nemoc ani 🔴 příznak nepřebije). Skóre je
   // jedna noc: pod 15 % dá 🔴 jen spolu s dalším signálem, samo nejvýš 🟡.
@@ -334,7 +386,7 @@ export function evaluateRecovery(inp: RecoveryInput): RecoveryResult {
     flags: { yellow, red, counted },
     dayAfter: inp.dayAfter,
     illness: inp.illness,
-    hrvYellow2Days,
+    illnessHint: illnessHint(inp.rows, D),
     normDays: hist.length,
     reasons,
     score: sc,

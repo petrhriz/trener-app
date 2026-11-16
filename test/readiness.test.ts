@@ -164,7 +164,8 @@ describe("semafor + zotavení v %", async () => {
     expect(r.score).toBe(25);
   });
   it("pod 15 % a jen jeden ukazatel mimo normu (téže noci) → žlutá, ne červená", () => {
-    const r = evaluateRecovery({ ...base, score: { score: 10, drags: [], boosts: [] } });
+    const one = rows.map((x, i) => (i === rows.length - 1 ? { ...x, rhr: 56 } : x));
+    const r = evaluateRecovery({ ...base, rows: one, score: { score: 10, drags: [], boosts: [] } });
     expect(r.flags.yellow + r.flags.red).toBe(1);
     expect(r.state).toBe("yellow");
   });

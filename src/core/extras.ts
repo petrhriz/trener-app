@@ -4,36 +4,49 @@ import { BIKE_SPORTS, type Sport } from "../datasource/types";
 import { dayDm, num } from "../lib/format";
 import { addDays } from "../lib/time";
 
-// ---------- Recovery check: akutní vs. chronická zátěž ----------
-
-/** ACWR = průměrná denní zátěž 7 dní / průměrná denní zátěž 28 dní. ~1,0 stabilní, nad 1,3 pozor, nad 1,5 riziko. */
-export function acwr(loads: Map<string, number>, lastDay: string): { acute: number; chronic: number; ratio: number | null; level: "ok" | "warn" | "high" | "low" } {
-  let a = 0;
-  let c = 0;
-  for (let i = 0; i < 28; i++) {
-    const v = loads.get(addDays(lastDay, -i)) ?? 0;
-    c += v;
-    if (i < 7) a += v;
-  }
-  const acute = a / 7;
-  const chronic = c / 28;
-  const ratio = chronic > 5 ? Math.round((acute / chronic) * 100) / 100 : null;
-  const level = ratio == null ? "ok" : ratio > 1.5 ? "high" : ratio > 1.3 ? "warn" : ratio < 0.6 ? "low" : "ok";
-  return { acute: Math.round(acute * 10) / 10, chronic: Math.round(chronic * 10) / 10, ratio, level };
-}
+// ACWR (poměr zátěže 7/28 dní) se nepočítá: 7 dní je součástí 28 (provázaný výpočet, Lolli a kol. 2019) a nárůst
+// zátěže hlídá ramp rate a Fosterova monotónnost (docs/trener/zdroje.md).
 
 // ---------- Sleep: pravidelnost ----------
 
-/** Rozptyl času vstávání (SD v minutách) za posledních N nocí. Pravidelnost je důležitější než délka. */
-export function sleepRegularity(wakeTimes: (string | null)[]): { n: number; sdMin: number | null; text: string } {
-  const mins = wakeTimes
-    .filter((x): x is string => !!x && x.length >= 16)
-    .map((x) => +x.slice(11, 13) * 60 + +x.slice(14, 16));
-  if (mins.length < 7) return { n: mins.length, sdMin: null, text: "málo dat" };
+const REG_MIN_NIGHTS = 7;
+const DAY_MIN = 1440;
+const HALF_DAY_MIN = 720;
+
+const clockMin = (x: string | null | undefined): number | null =>
+  x && x.length >= 16 ? +x.slice(11, 13) * 60 + +x.slice(14, 16) : null;
+
+function sdOf(mins: number[]): number | null {
+  if (mins.length < REG_MIN_NIGHTS) return null;
   const m = mins.reduce((a, b) => a + b, 0) / mins.length;
-  const sd = Math.sqrt(mins.reduce((a, b) => a + (b - m) ** 2, 0) / (mins.length - 1));
-  const r = Math.round(sd);
-  return { n: mins.length, sdMin: r, text: r <= 30 ? `pravidelné (±${r} min)` : r <= 60 ? `kolísá (±${r} min)` : `nepravidelné (±${r} min)` };
+  return Math.round(Math.sqrt(mins.reduce((a, b) => a + (b - m) ** 2, 0) / (mins.length - 1)));
+}
+
+export interface SleepRegularity {
+  n: number;
+  /** horší z obou SD (usínání, vstávání) v minutách */
+  sdMin: number | null;
+  sdStart: number | null;
+  sdWake: number | null;
+  text: string;
+}
+
+/**
+ * Rozptyl času usínání a vstávání (SD v minutách) za posledních N nocí; hodnocení podle horší z obou.
+ * Usínání se posune o 12 h (poledne = 0), aby 23:30 a 0:30 byly 60 min od sebe, ne 23 h.
+ */
+export function sleepRegularity(nights: { sleep_start?: string | null; wake_time?: string | null }[]): SleepRegularity {
+  const starts = nights.map((r) => clockMin(r.sleep_start)).filter((m): m is number => m != null).map((m) => (m + HALF_DAY_MIN) % DAY_MIN);
+  const wakes = nights.map((r) => clockMin(r.wake_time)).filter((m): m is number => m != null);
+  const sdStart = sdOf(starts);
+  const sdWake = sdOf(wakes);
+  const n = Math.max(starts.length, wakes.length);
+  const sds = [sdStart, sdWake].filter((x): x is number => x != null);
+  if (!sds.length) return { n, sdMin: null, sdStart, sdWake, text: "málo dat" };
+  const worst = Math.max(...sds);
+  const parts = [sdStart != null ? `usínání ±${sdStart} min` : null, sdWake != null ? `vstávání ±${sdWake} min` : null].filter(Boolean).join(", ");
+  const label = worst <= 30 ? "pravidelné" : worst <= 60 ? "kolísá" : "nepravidelné";
+  return { n, sdMin: worst, sdStart, sdWake, text: `${label} (${parts})` };
 }
 
 // ---------- Zone calculator: kontrola LTHR proti skutečnému max. tepu ----------

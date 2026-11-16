@@ -20,7 +20,7 @@ shrnutí nad předpočítanými čísly – bez něj vše funguje.
 | Vybavení | km na kolech, lyžích a botách, servis dílů |
 
 **Upozornění** se ukážou jako bublina po otevření stránky: servis dílu (řetěz, vosk…), končící Garmin klíč,
-🔴 stav zotavení, 3 dny zvýšený klidový tep, forma pod −25, ramp rate nad +5, poměr zátěže 7/28 nad 1,3,
+🔴 stav zotavení, 3 dny zvýšený klidový tep, forma pod −25, ramp rate nad +5,
 selhání synchronizace. „Rozumím“ = stejné upozornění se už neukáže.
 
 **Přizpůsobivost:** plán se nikdy nedohání. Vynechaný trénink se nepřesouvá, plán se přepočítá.

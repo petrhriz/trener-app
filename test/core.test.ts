@@ -4,14 +4,14 @@ import { dm, hms, num, signed, zonePct, zoneTime } from "../src/lib/format";
 import { addDays, dow, localNow, mondayOf } from "../src/lib/time";
 import { computeMetrics, formZone, project, weeklyLoadTarget } from "../src/core/fitness";
 import { activityLoad, hrTssFromAvg, tssFromPower } from "../src/core/load";
-import { type WRow, evaluateRecovery, norm, sleepRating } from "../src/core/recovery";
+import { ILLNESS_HINT_TEXT, type WRow, evaluateRecovery, illnessHint, norm, sleepRating } from "../src/core/recovery";
 import { classify, qualityFromName } from "../src/core/quality";
 import { carbsFor } from "../src/core/nutrition";
 import { type Hour, dayWeather, isGreen } from "../src/core/weather";
 import { intervalWorkout, renderIcu, validate, z2Workout } from "../src/core/workout";
 import { TARGET_PCT, pctRange } from "../src/core/zones";
 import { evaluatePast } from "../src/core/qualityDesign";
-import { acwr, easyNotEasy, lthrSanity, sleepRegularity } from "../src/core/extras";
+import { easyNotEasy, lthrSanity, sleepRegularity } from "../src/core/extras";
 import { computeDrift, expectedLapNames } from "../src/core/activity";
 import { numbersOk } from "../src/llm/llm";
 import { encodeWorkoutFit, fitCrc } from "../src/plan/fit";
@@ -198,13 +198,14 @@ describe("zotavení – osobní normy (kap. 4)", () => {
   });
   it("dva 🟡 → 🟡; den po dlouhé zátěži jeden 🟡 nepočítá", () => {
     const today = { hrv: 69, rhr: 56, sleep_s: 7 * 3600, sleep_score: 80 };
-    const r1 = evaluateRecovery({ date: "2026-11-07", rows: rows(60, today), dayAfter: null, illness: false });
+    const lowWeek = () => { const rs = rows(60, today); for (let i = 2; i <= 7; i++) rs[rs.length - i]!.hrv = 72; return rs; };
+    const r1 = evaluateRecovery({ date: "2026-11-07", rows: lowWeek(), dayAfter: null, illness: false });
     expect(r1.hrv.flag).toBe("yellow");
     expect(r1.hrv.rating).toBe("Nevyvážené");
     expect(r1.rhr.flag).toBe("yellow");
     expect(r1.rhr.rating).toBe("Zvýšený");
     expect(r1.state).toBe("yellow");
-    const r2 = evaluateRecovery({ date: "2026-11-07", rows: rows(60, today), dayAfter: "jízdě se zátěží 135", illness: false });
+    const r2 = evaluateRecovery({ date: "2026-11-07", rows: lowWeek(), dayAfter: "jízdě se zátěží 135", illness: false });
     expect(r2.hrv.expected).toBe(true);
     expect(r2.flags.yellow).toBe(1);
     expect(r2.state).toBe("green");
@@ -236,6 +237,32 @@ describe("zotavení – osobní normy (kap. 4)", () => {
     expect(r.hrv.rangeText).toMatch(/^7[01]–7[89]$/);
     expect(r.hrv.rating).toBe("Vyvážené");
   });
+  it("VST 🟡 podle 7denního průměru: jedna nízká noc nestačí, nízký týden sám dá 🟡", () => {
+    // norma ~75 ms, ln SD ~0,058 → hranice −0,5 SD ≈ 72,9 ms
+    const oneNight = evaluateRecovery({ date: "2026-11-07", rows: rows(60, { hrv: 67, rhr: 52, sleep_s: 7.5 * 3600, sleep_score: 82 }), dayAfter: null, illness: false });
+    expect(oneNight.hrv.flag).toBe("none");
+    expect(oneNight.state).toBe("green");
+    const rs = rows(60, { hrv: 71, rhr: 52, sleep_s: 7.5 * 3600, sleep_score: 82 });
+    for (let i = 2; i <= 7; i++) rs[rs.length - i]!.hrv = 71;
+    const week = evaluateRecovery({ date: "2026-11-07", rows: rs, dayAfter: null, illness: false });
+    expect(week.hrv.flag).toBe("yellow");
+    expect(week.hrv.rating).toBe("Nevyvážené");
+    expect(week.hrv.avg7).toBeCloseTo(71, 5);
+    expect(week.state).toBe("yellow");
+    expect(week.reasons.join(" ")).toContain("průměr 7 dní");
+  });
+  it("VST: týden s méně než 4 nocemi žlutou nedá", () => {
+    const rs = rows(60, { hrv: 71, rhr: 52, sleep_s: 7.5 * 3600, sleep_score: 82 });
+    for (let i = 2; i <= 7; i++) rs[rs.length - i]!.hrv = i <= 3 ? 71 : null;
+    expect(evaluateRecovery({ date: "2026-11-07", rows: rs, dayAfter: null, illness: false }).hrv.flag).toBe("none");
+  });
+  it("VST: SD normy aspoň 0,03 (stálá VST nedá žlutou za 1 ms)", () => {
+    const rs = rows(60, { hrv: 74, rhr: 52, sleep_s: 7.5 * 3600, sleep_score: 82 }).map((r) => ({ ...r, hrv: r.date === "2026-11-07" ? 74 : 75 }));
+    for (let i = 2; i <= 7; i++) rs[rs.length - i]!.hrv = 74;
+    const r = evaluateRecovery({ date: "2026-11-07", rows: rs, dayAfter: null, illness: false });
+    expect(r.hrv.flag).toBe("none");
+    expect(r.hrv.rangeText).toBe("73–77");
+  });
   it("klidový tep zvýšený 3 dny po sobě → 🔴", () => {
     const rs = rows(60, { hrv: 75, rhr: 56, sleep_s: 7.5 * 3600, sleep_score: 82 });
     rs[rs.length - 2]!.rhr = 56;
@@ -243,6 +270,22 @@ describe("zotavení – osobní normy (kap. 4)", () => {
     const r = evaluateRecovery({ date: "2026-11-07", rows: rs, dayAfter: null, illness: false });
     expect(r.rhr.streak3).toBe(true);
     expect(r.state).toBe("red");
+  });
+  it("upozornění na možnou nemoc: tep i dech ve spánku 2 noci nad normou", () => {
+    const hint = (hr: [number, number], resp: [number, number]) => {
+      const rs = rows(60, {}).map((r, i) => ({ ...r, sleep_hr: 55 + (i % 2), sleep_resp: 13 + (i % 2) * 0.4 }));
+      const n = rs.length;
+      Object.assign(rs[n - 2]!, { sleep_hr: hr[0], sleep_resp: resp[0], rhr: 52 });
+      Object.assign(rs[n - 1]!, { sleep_hr: hr[1], sleep_resp: resp[1], rhr: 52, hrv: 75 });
+      return rs;
+    };
+    expect(illnessHint(hint([60, 60], [15, 15]), "2026-11-07")).toBe(ILLNESS_HINT_TEXT);
+    expect(illnessHint(hint([55, 60], [15, 15]), "2026-11-07")).toBeNull(); // jen 1 noc
+    expect(illnessHint(hint([60, 60], [13, 13]), "2026-11-07")).toBeNull(); // jen tep
+    expect(illnessHint(hint([57.5, 57.5], [15, 15]), "2026-11-07")).toBeNull(); // nad 2 SD, ale ne o 3 bpm
+    const r = evaluateRecovery({ date: "2026-11-07", rows: hint([60, 60], [15, 15]), dayAfter: null, illness: false });
+    expect(r.illnessHint).toBe(ILLNESS_HINT_TEXT);
+    expect(r.state).toBe("green"); // semafor nemění
   });
   it("nemoc → 🔴", () => {
     expect(evaluateRecovery({ date: "2026-11-07", rows: rows(60, { hrv: 75, rhr: 52, sleep_s: 8 * 3600 }), dayAfter: null, illness: true }).state).toBe("red");
@@ -368,16 +411,16 @@ describe("sacharidy na trénink (kap. 9)", () => {
 
 // ---------- doplňky ----------
 describe("doplňky z referencí", () => {
-  it("ACWR", () => {
-    const m = new Map<string, number>();
-    for (let i = 0; i < 28; i++) m.set(addDays("2026-11-07", -i), i < 7 ? 100 : 50);
-    const a = acwr(m, "2026-11-07");
-    expect(a.ratio).toBeCloseTo(100 / 62.5, 2);
-    expect(a.level).toBe("high");
-  });
-  it("pravidelnost spánku", () => {
-    expect(sleepRegularity(Array(7).fill("2026-11-01T06:30")).sdMin).toBe(0);
-    expect(sleepRegularity(["2026-11-01T06:30"]).sdMin).toBeNull();
+  it("pravidelnost spánku: usínání i vstávání, hodnocení podle horší SD", () => {
+    expect(sleepRegularity(Array(7).fill({ wake_time: "2026-11-01T06:30" })).sdMin).toBe(0);
+    expect(sleepRegularity([{ wake_time: "2026-11-01T06:30" }]).sdMin).toBeNull();
+    // usínání střídavě 23:30 a 0:30 → SD ~31 min, ne ~12 h
+    const nights = Array.from({ length: 8 }, (_, i) => ({ sleep_start: i % 2 ? "2026-11-01T23:30" : "2026-11-02T00:30", wake_time: "2026-11-02T07:00" }));
+    const r = sleepRegularity(nights);
+    expect(r.sdStart).toBe(32);
+    expect(r.sdWake).toBe(0);
+    expect(r.sdMin).toBe(32);
+    expect(r.text).toBe("kolísá (usínání ±32 min, vstávání ±0 min)");
   });
   it("LTHR vs. max tep", () => {
     expect(lthrSanity(196, 204, 200)).toContain("98 %");

@@ -208,7 +208,7 @@ api.get("/overview", async (c) => {
       rhrPast: { today: tw?.rhr ?? null, rating: vsN(tw?.rhr, nm("rhr"), true), norm: nm("rhr"), series: series("rhr") },
       fitPast: { ...pastFit, load7 },
     } : {}),
-    readiness: { state: recD.state, label: recD.stateLabel, score: recShow.score, scoreDrags: recShow.scoreDrags, scoreBoosts: recShow.scoreBoosts, reasons: [...recD.flags.counted, ...recD.reasons], decision: r.today.decision, why: r.today.decisionWhy, missing: r.missingData },
+    readiness: { state: recD.state, label: recD.stateLabel, illnessHint: recD.illnessHint, score: recShow.score, scoreDrags: recShow.scoreDrags, scoreBoosts: recShow.scoreBoosts, reasons: [...recD.flags.counted, ...recD.reasons], decision: r.today.decision, why: r.today.decisionWhy, missing: r.missingData },
     bb: { max: (tw?.bb_latest != null ? tw : sw)?.bb_max ?? null, min: (tw?.bb_latest != null ? tw : sw)?.bb_min ?? null, latest: liveOr(tw, sw, "bb_latest"), charged: (tw?.bb_latest != null ? tw : sw)?.bb_charged ?? null, drained: (tw?.bb_latest != null ? tw : sw)?.bb_drained ?? null, series: last14.map((w) => ({ date: w.date, max: w.bb_max, min: w.bb_min })), norm: nm("bb_max") },
     hrv: { today: carry ? sw?.hrv ?? null : r.recovery.hrv.today, rating: r.recovery.hrv.rating, flag: r.recovery.hrv.flag, range: r.recovery.hrv.rangeText, avg7: r.recovery.hrv.avg7, series: series("hrv"), norm: nm("hrv") },
     rhr: { today: carry ? sw?.rhr ?? null : r.recovery.rhr.today, rating: r.recovery.rhr.rating, flag: r.recovery.rhr.flag, range: r.recovery.rhr.rangeText, avg7: r.recovery.rhr.avg7, series: series("rhr"), norm: nm("rhr") },
@@ -930,7 +930,7 @@ api.get("/recovery", async (c) => {
     norms: { hrv: n("hrv"), rhr: n("rhr"), sleep: n("sleep_s"), score: n("sleep_score"), resp: n("sleep_resp"), stress: n("stress_avg"), bb: n("bb_max") },
     // semafor i pro minulý den (stejný výpočet, jen k tomu datu)
     recovery: T === T0 ? r.recovery : recoveryFor({ ...ctx, T, well: ctx.well.filter((w) => w.date <= T) } as any),
-    sleepReg: sleepRegularity(ctx.well.filter((w) => w.date >= addDays(T, -14)).map((w) => w.wake_time)),
+    sleepReg: sleepRegularity(ctx.well.filter((w) => w.date >= addDays(T, -14))),
   });
 });
 

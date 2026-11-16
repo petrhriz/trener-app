@@ -5,7 +5,7 @@ import { hrQuality, qualityFromName } from "../core/quality";
 import { hardEasyDays } from "../core/rpe";
 import { ftpCheck } from "../core/ftpCheck";
 import { workoutFromIcu } from "../core/workout";
-import { acwr, lthrSanity, sleepRegularity, weeklyReview, type WeeklyReview } from "../core/extras";
+import { lthrSanity, sleepRegularity, weeklyReview, type WeeklyReview } from "../core/extras";
 import { FORM_ZONE_RANGE, formZone, rampLabel, weeklyLoadTarget } from "../core/fitness";
 import type { Change, PlanDay, PlanResult } from "../core/plan";
 import { bestIn, eftp } from "../core/power";
@@ -57,7 +57,7 @@ export function recoveryFor(ctx: Ctx): RecoveryResult {
   const r = evaluateRecovery({
     score: { score: rs.score, drags: rs.drags.map(txt), boosts: rs.boosts.map(txt), missing: rs.missing.map((k) => SCORE_LABEL[k]) },
     date: ctx.T,
-    rows: ctx.well.map((w) => ({ date: w.date, hrv: w.hrv, rhr: w.rhr, sleep_s: w.sleep_s, sleep_score: w.sleep_score, sleep_q: w.sleep_q })),
+    rows: ctx.well.map((w) => ({ date: w.date, hrv: w.hrv, rhr: w.rhr, sleep_s: w.sleep_s, sleep_score: w.sleep_score, sleep_q: w.sleep_q, sleep_hr: w.sleep_hr, sleep_resp: w.sleep_resp })),
     dayAfter: dayAfterReason(ctx),
     illness,
   });
@@ -78,7 +78,6 @@ export interface FitnessTable {
   load7: number;
   loadPrev7: number;
   maintenance: string | null;
-  acwr: ReturnType<typeof acwr>;
 }
 
 function vo2Last(ctx: Ctx, upTo: string): number | null {
@@ -134,16 +133,12 @@ export function fitnessTable(ctx: Ctx): FitnessTable {
   const ef = eftpOf(ctx);
   const ftp = ctx.s.ftp;
 
-  const loads = new Map<string, number>();
-  for (const a of ctx.acts) loads.set(a.date, (loads.get(a.date) ?? 0) + (a.load ?? 0));
-  const ac = acwr(loads, endDay);
-
   const target = r2 ? weeklyLoadTarget(r2.ctl, ctx.s.goal) : null;
   const maintenance = target && (load7 < target.lo || load7 > target.hi) ? `Zátěž za 7 dní ${load7} je ${load7 < target.lo ? "pod" : "nad"} pásmem pro cíl (${target.lo}–${target.hi}).` : null;
 
   const rows = [
     { label: "Kondice (CTL)", v1: num(r1?.ctl, 1), v2: num(r2?.ctl, 1), diff: r1 && r2 ? signed(r2.ctl - r1.ctl, 1) : "–", sub: `ramp rate ${signed(ramp, 1)} za 7 dní · ${rampLabel(ramp)}`, iv: (ramp ?? 0) > 5 },
-    { label: "Únava (ATL)", v1: num(r1?.atl, 1), v2: num(r2?.atl, 1), diff: r1 && r2 ? signed(r2.atl - r1.atl, 1) : "–", sub: `zátěž za 7 dní ${load7} (${l7.length} aktivit) · předchozích 7 dní ${loadPrev7}${ac.ratio != null ? ` · poměr 7/28 dní ${num(ac.ratio, 2)}` : ""}`, iv: false },
+    { label: "Únava (ATL)", v1: num(r1?.atl, 1), v2: num(r2?.atl, 1), diff: r1 && r2 ? signed(r2.atl - r1.atl, 1) : "–", sub: `zátěž za 7 dní ${load7} (${l7.length} aktivit) · předchozích 7 dní ${loadPrev7}`, iv: false },
     { label: "Forma (TSB)", v1: num(f(r1), 1), v2: num(form2, 1), diff: r1 && r2 ? signed(form2! - f(r1)!, 1) : "–", sub: zone ? `${zone} (${FORM_ZONE_RANGE[zone]})` : "–", iv: (form2 ?? 0) < -25 },
     { label: "VO2max (Garmin)", v1: num(v1), v2: num(v2), diff: v1 != null && v2 != null ? signed(v2 - v1) : "–", sub: `${trend} · rozpětí 30 d ${v30.length ? `${Math.min(...v30)}–${Math.max(...v30)}` : "–"} · průměr 14 d ${num(A, 1)} (předtím ${num(P, 1)})${ef ? ` · eFTP ${ef.w} W` : ""}${ftp ? `, FTP ${ftp} W` : ""}`, iv: false },
   ];
@@ -153,7 +148,7 @@ export function fitnessTable(ctx: Ctx): FitnessTable {
   notes.push(`Kondice, únava a forma z intervals.icu (forma = kondice − únava dne)${done ? ", včetně dnešní aktivity" : ""}${indoorHr ? "; jízdy na trenažéru se počítají s vyšší zátěží z tepu, stejně jako v plánu, takže se kondice může od intervals.icu mírně lišit" : ""}.`);
   if (A != null && P != null && A - P <= -2) notes.push("VO2max průměr klesl o 2 a víc.");
   if (ef && ftp) notes.push(`FTP ${ftp} W je z testu (nastavené v intervals.icu). eFTP ${ef.w} W je odhad intervals.icu z jízd bez testu${Math.abs(ef.w - ftp) / ftp > 0.03 ? ` – liší se o ${Math.round(Math.abs(ef.w - ftp))} W, ${zone === "Čerstvý" ? "zvaž nový test" : "test až při formě Čerstvý"}` : ", sedí s FTP"}.`);
-  return { col1, col2, rows, note: notes.join(" "), ctl: r2?.ctl ?? null, atl: r2?.atl ?? null, form: form2, ramp, load7, loadPrev7, maintenance, acwr: ac };
+  return { col1, col2, rows, note: notes.join(" "), ctl: r2?.ctl ?? null, atl: r2?.atl ?? null, form: form2, ramp, load7, loadPrev7, maintenance };
 }
 
 // ---------- 🗓️ plán ----------
@@ -441,7 +436,7 @@ export async function readiness(ctx: Ctx): Promise<Readiness> {
   const changes = plan.changes.filter((c) => c.date <= addDays(T, 1));
   const warnings = [...alertsFrom(ctx, rec, fit)];
   const tw = ctx.well.find((w) => w.date === T);
-  const reg = sleepRegularity(ctx.well.filter((w) => w.date >= addDays(T, -14)).map((w) => w.wake_time));
+  const reg = sleepRegularity(ctx.well.filter((w) => w.date >= addDays(T, -14)));
   const maxSeen = Math.max(0, ...ctx.acts.filter((a) => isBike(a.sport)).map((a) => a.max_hr ?? 0)) || null;
   const lthrNote = lthrSanity(ctx.s.hr_zones?.lthr ?? null, ctx.s.hr_zones?.max ?? null, maxSeen);
   const missing: string[] = [];
@@ -474,8 +469,6 @@ export function alertsFrom(ctx: Ctx, rec: RecoveryResult, fit: FitnessTable): st
   if (rec.illness) w.push("Nemoc: nic nedohánět, po návratu postupně. Při bolesti na hrudi nebo závrati k lékaři.");
   if (fit.form != null && fit.form < -25) w.push(`Forma ${num(fit.form, 1)} je pod −25.`);
   if (fit.ramp != null && fit.ramp > 5) w.push(`Ramp rate ${signed(fit.ramp, 1)} za 7 dní je nad +5.`);
-  if (fit.acwr.level === "high") w.push(`Poměr zátěže 7/28 dní ${num(fit.acwr.ratio, 2)} je nad 1,5 – riziko přetížení.`);
-  else if (fit.acwr.level === "warn") w.push(`Poměr zátěže 7/28 dní ${num(fit.acwr.ratio, 2)} je nad 1,3.`);
   // Foster: jednotvárná zátěž / strain nad obvyklým (src/core/foster.ts)
   const fo = fosterOf(ctx.acts, ctx.T);
   if (fo.note) w.push(`${fo.note[0]!.toUpperCase()}${fo.note.slice(1)}.`);
