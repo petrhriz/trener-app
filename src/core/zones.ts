@@ -70,6 +70,8 @@ export interface ZoneHistRow {
 export interface ZonesOfDay {
   ftp: number | null;
   hr: HrZones | null;
+  /** běžecké zóny z Garminu (aktuální, bez historie); null = nejsou */
+  hrRun?: HrZones | null;
 }
 
 /**

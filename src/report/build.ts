@@ -280,7 +280,7 @@ export async function planForCoach(ctx: Ctx, rec: RecoveryResult, opt: { dryRun?
     goal: ctx.s.goal,
     raceDate: ctx.s.goal === "zavod" ? ctx.s.goal_date : null,
     profile,
-    zones: { ftp: ctx.s.ftp ?? null, hr: ctx.s.hr_zones },
+    zones: { ftp: ctx.s.ftp ?? null, hr: ctx.s.hr_zones, hrRun: ctx.s.hr_zones_run ?? null },
     acts,
     power,
     metric: (d) => metricOn(ctx, d),
@@ -519,7 +519,8 @@ export function plannedFor(ctx: Ctx, a: FullAct): PlannedForAct | null {
 
 export function activityReport(ctx: Ctx, a: FullAct): ActivityAnalysis {
   const z = zonesFor(ctx.zh, a.date, ctx.s);
-  return analyzeActivity(a, plannedFor(ctx, a), z.ftp, z.hr);
+  // běh: hranice zón stejné, podle jakých Garmin spočítal čas v zónách (RUNNING)
+  return analyzeActivity(a, plannedFor(ctx, a), z.ftp, a.sport === "run" && z.hrRun ? z.hrRun : z.hr);
 }
 
 // ---------- 📅 týden ----------

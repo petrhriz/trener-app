@@ -506,10 +506,11 @@ api.get("/activity/:id/streams", async (c) => {
   const fromQ = Number(c.req.query("from")), toQ = Number(c.req.query("to"));
   const part = c.req.query("from") != null && isFinite(fromQ) && isFinite(toQ) && toQ > fromQ;
   // v6: průběhy uložené z intervals.icu před připojením Garminu (bez trasy a zón) se načtou znovu
-  const key = `streams:v6:${id}${part ? `:${Math.round(fromQ)}-${Math.round(toQ)}` : ""}`;
+  // v7: běh barví tep podle běžeckých zón z Garminu
+  const key = `streams:v7:${id}${part ? `:${Math.round(fromQ)}-${Math.round(toQ)}` : ""}`;
   const cached = await c.env.KV.get(key, "json");
   if (cached) return c.json(cached);
-  const row = await first<{ icu_id: string | null; date: string }>(c.env.DB, "SELECT icu_id, date FROM activities WHERE id = ?", id);
+  const row = await first<{ icu_id: string | null; date: string; sport: string }>(c.env.DB, "SELECT icu_id, date, sport FROM activities WHERE id = ?", id);
   if (!row) return c.json({ error: "Aktivitu nemám." }, 404);
   let get: (t: string) => (number | null)[] | null;
   // hlavní zdroj Garmin (všechny kanály vč. kadence, teploty, dechu, výkonnostního stavu a trasy, celá historie)
@@ -554,7 +555,7 @@ api.get("/activity/:id/streams", async (c) => {
   // zóny platné v den aktivity (stará jízda se barví podle tehdejšího FTP, ne dnešního)
   const s0 = await getSettings(c.env.DB);
   const zd = zonesFor(await loadZoneHistory(c.env.DB), row.date, s0);
-  const s = { ...s0, hr_zones: zd.hr };
+  const s = { ...s0, hr_zones: row.sport === "run" && s0.hr_zones_run ? s0.hr_zones_run : zd.hr };
   const ftp = zd.ftp ?? 250;
   const out = {
     src,
@@ -1044,7 +1045,8 @@ api.get("/vo2", async (c) => {
   const byKey = new Map<string, { date: string; v: number; sport: string; src: string }>();
   for (const f of fit) {
     const sport = f.sport === "run" ? "run" : "ride";
-    byKey.set(`${f.date}|${sport}`, { date: f.date, v: Math.round(f.v), sport, src: "fit" });
+    // Garmin ukazuje VO2max useknutý na celé číslo (56,5 → 56), ne zaokrouhlený
+    byKey.set(`${f.date}|${sport}`, { date: f.date, v: Math.floor(f.v), sport, src: "fit" });
   }
   const fitDays = new Set(fit.map((f) => f.date));
   for (const r of rows) {

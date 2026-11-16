@@ -183,11 +183,17 @@ export async function syncTick(env: Env, opts: { force?: boolean; manual?: boole
       }
     }
     if (ds instanceof GarminClient) {
-      const hz = await ds.hrZones();
+      const { ride: hz, run: hzRun } = await ds.hrZonesBySport();
       if (hz && (!s.hr_zones || s.hr_zones.source !== "manual")) {
         const v = { ...hz, source: "garmin" };
         sqls.push(setSettingSql("hr_zones", v));
         s.hr_zones = v;
+      }
+      // běžecké zóny z Garminu: podle nich Garmin počítá čas v zónách u běhu
+      if (hzRun) {
+        const v = { ...hzRun, source: "garmin" };
+        sqls.push(setSettingSql("hr_zones_run", v));
+        s.hr_zones_run = v;
       }
     }
     if (!s.garmin_key_created) sqls.push(setSettingSql("garmin_key_created", T));

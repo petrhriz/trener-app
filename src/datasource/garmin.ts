@@ -38,6 +38,9 @@ export function parseTokenResponse(body: string): string {
   return unq;
 }
 
+/** Zóny tepu jednoho sportu z Garminu (dolní hranice Z1..Z5, max, práh, klid). */
+type GarminHrZones = { floors: number[]; max: number; lthr: number | null; rest: number | null };
+
 export class GarminClient implements DataSource {
   name = "garmin" as const;
   constructor(private env: Env) {}
@@ -147,16 +150,16 @@ export class GarminClient implements DataSource {
     return typeof r?.fitnessAge === "number" ? Math.round(r.fitnessAge * 10) / 10 : null;
   }
 
-  async hrZones(): Promise<{ floors: number[]; max: number; lthr: number | null; rest: number | null } | null> {
-    const r = await this.get<any[]>(`/biometric-service/heartRateZones/v2`);
-    const z = (r ?? []).find((x) => x.sport === "CYCLING") ?? (r ?? []).find((x) => x.sport === "DEFAULT") ?? r?.[0];
-    if (!z?.zone1Floor) return null;
-    return {
+  /** Zóny tepu z Garminu zvlášť pro kolo (CYCLING, jinak DEFAULT) a běh (RUNNING); běh null, když ho Garmin nemá. */
+  async hrZonesBySport(): Promise<{ ride: GarminHrZones | null; run: GarminHrZones | null }> {
+    const r = (await this.get<any[]>(`/biometric-service/heartRateZones/v2`)) ?? [];
+    const conv = (z: any): GarminHrZones | null => (z?.zone1Floor ? {
       floors: [z.zone1Floor, z.zone2Floor, z.zone3Floor, z.zone4Floor, z.zone5Floor],
       max: z.maxHeartRateUsed,
       lthr: z.lactateThresholdHeartRateUsed ?? null,
       rest: z.restingHeartRateUsed ?? null,
-    };
+    } : null);
+    return { ride: conv(r.find((x) => x.sport === "CYCLING") ?? r.find((x) => x.sport === "DEFAULT") ?? r[0]), run: conv(r.find((x) => x.sport === "RUNNING")) };
   }
 
   /** Tep během dne (vzorek po 2 min): [[ms, bpm|null], …] */

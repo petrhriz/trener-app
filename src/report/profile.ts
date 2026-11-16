@@ -30,7 +30,7 @@ export function athleteProfile(ctx: Ctx) {
   const power = ctx.acts.map((a) => ({ id: a.id, date: a.date, mmp: a.mmp, max20: a.max20, pwr_z: a.pwr_z }));
   const best = (secs: number) => { const b = bestIn(power, addDays(T, -90), T, secs); return b ? { w: Math.round(b.w), wkg: weight ? Math.round((b.w / weight) * 100) / 100 : null, date: b.date } : null; };
   // VO2max: nejnovější z FIT souboru aktivity (kolo / běh zvlášť), jinak z Garmin wellness
-  const vo2 = (sport: "ride" | "run") => { const a = [...ctx.acts].reverse().find((x) => (x as any).vo2_fit != null && (sport === "run" ? x.sport === "run" : x.sport !== "run")); return a ? { v: Math.round((a as any).vo2_fit), date: a.date } : null; };
+  const vo2 = (sport: "ride" | "run") => { const a = [...ctx.acts].reverse().find((x) => (x as any).vo2_fit != null && (sport === "run" ? x.sport === "run" : x.sport !== "run")); return a ? { v: Math.floor((a as any).vo2_fit), date: a.date } : null; };
   const vo2w = [...ctx.well].reverse().find((x) => x.vo2max != null) ?? null;
   const m = ctx.metrics.find((x) => x.date === T) ?? ctx.metrics[ctx.metrics.length - 1] ?? null;
   return {
@@ -45,7 +45,7 @@ export function athleteProfile(ctx: Ctx) {
     hr: { max: s.hr_zones?.max ?? null, lthr: s.hr_zones?.lthr ?? null, rest, source: s.hr_zones?.source ?? null },
     powerZones: ftp ? powerZones(ftp, s.power_zones_pct).map((z, i) => ({ name: POWER_NAMES[i] ?? `Z${i + 1}`, lo: z.lo, hi: z.hi })) : null,
     hrBike: hrRows(s.hr_zones),
-    hrRun: hrRows(runHrZones(s.hr_zones)),
+    hrRun: hrRows(s.hr_zones_run ?? runHrZones(s.hr_zones)),
     best: { s5: best(5), m1: best(60), m5: best(300), m20: best(1200) },
     vo2: { ride: vo2("ride"), run: vo2("run"), garmin: vo2w ? { v: vo2w.vo2max, date: vo2w.date } : null },
     fitness: m ? { ctl: Math.round(m.ctl * 10) / 10, atl: Math.round(m.atl * 10) / 10, form: Math.round((m.ctl - m.atl) * 10) / 10 } : null,

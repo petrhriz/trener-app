@@ -161,6 +161,8 @@ export const EASY_LOAD_H = { power: 41.6, hr: 46.2, run: 64 };
 export interface Zones {
   ftp: number | null;
   hr: HrZones | null;
+  /** běžecké zóny z Garminu (RUNNING); bez nich se běh počítá z prahu (runHrZones) */
+  hrRun?: HrZones | null;
 }
 
 export interface BuildInput {
@@ -251,7 +253,8 @@ function fromLibrary(w: LibWorkout, cat: Cat, ftp: number, minutes: number, indo
 
 export function buildWorkout(inp: BuildInput): Built {
   const { sport, zones, indoor } = inp;
-  const hr = sport === "run" ? runHrZones(zones.hr) : zones.hr;
+  // běh: zóny z Garminu (RUNNING); dopočet z prahu jen když je Garmin nemá
+  const hr = sport === "run" ? zones.hrRun ?? runHrZones(zones.hr) : zones.hr;
   const calib = inp.calib ?? 1;
   const minutes = Math.max(20, Math.round(inp.minutes));
   const L = SPORT_LABEL[sport]!;

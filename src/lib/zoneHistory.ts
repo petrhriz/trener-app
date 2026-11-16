@@ -13,8 +13,8 @@ export async function loadZoneHistory(db: D1Database): Promise<ZoneHistRow[]> {
 }
 
 /** FTP a zóny platné v den `date` (bez historie = dnešní nastavení). */
-export function zonesFor(hist: ZoneHistRow[] | undefined, date: string, s: Pick<Settings, "ftp" | "hr_zones">): ZonesOfDay {
-  return zonesAt(hist ?? [], date, { ftp: s.ftp, hr: s.hr_zones });
+export function zonesFor(hist: ZoneHistRow[] | undefined, date: string, s: Pick<Settings, "ftp" | "hr_zones"> & Partial<Pick<Settings, "hr_zones_run">>): ZonesOfDay {
+  return { ...zonesAt(hist ?? [], date, { ftp: s.ftp, hr: s.hr_zones }), hrRun: s.hr_zones_run ?? null };
 }
 
 /** Když se dnešní FTP nebo zóny liší od historie, zapíše řádek s platností od dneška. Vrací true při zápisu. */

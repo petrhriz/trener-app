@@ -6,6 +6,8 @@ export interface Settings {
   ftp: number | null;
   /** Hranice zón tepu (dolní hranice Z1..Z5) + max, z Garminu nebo ručně */
   hr_zones: { floors: number[]; max: number; lthr: number | null; rest: number | null; source: string } | null;
+  /** Zóny tepu pro běh přímo z Garminu (sport RUNNING); Garmin podle nich počítá čas v zónách u běhu */
+  hr_zones_run: { floors: number[]; max: number; lthr: number | null; rest: number | null; source: string } | null;
   /** horní hranice Z1..Z6 v % FTP (Coggan, jako výchozí intervals.icu) */
   power_zones_pct: number[];
   goal: "udrzeni" | "zvyseni" | "pokles" | "zavod";
@@ -50,6 +52,7 @@ export const DEFAULTS: Settings = {
   first_name: "",
   ftp: null,
   hr_zones: null,
+  hr_zones_run: null,
   power_zones_pct: [55, 75, 90, 105, 120, 150],
   goal: "zvyseni",
   goal_name: null,
